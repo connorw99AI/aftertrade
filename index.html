@@ -801,6 +801,31 @@ function Ledger() {
     persistUploadedTrades([...uploadedTrades, ...(Array.isArray(trades) ? trades : [trades])]);
   };
 
+  // clears everything and returns to account creation — used by "Sign out & reset" in Settings
+  const handleSignOut = async () => {
+    try {
+      await window.storage.delete("ledger-rules", false);
+      await window.storage.delete("ledger-setups", false);
+      await window.storage.delete("ledger-setup-overrides", false);
+      await window.storage.delete("ledger-settings", false);
+      await window.storage.delete("ledger-uploaded-trades", false);
+    } catch (e) { console.error(e); }
+    setRules(DEFAULT_RULES);
+    setSetups(DEFAULT_SETUPS);
+    setSetupOverrides({});
+    setUploadedTrades([]);
+    setPage("dashboard");
+    setSettings({
+      currency: "$", marketCloseTime: "10:00 PM", timezone: "UK",
+      notifyDailyStory: true, notifyRuleBreak: true, notifyWeekly: false,
+      onboarded: false,
+      hasSeenWelcome: false,
+      startingBalance: null,
+      extractionApiUrl: "https://aftertrade.connor-w99.workers.dev/",
+    });
+    setGlobalCurrency("$");
+  };
+
   // all trades — starts empty; populated only by what the user uploads
   const ALL_TRADES = useMemo(() => [...uploadedTrades], [uploadedTrades]);
 
@@ -1090,7 +1115,7 @@ function Ledger() {
           <AllSummariesPage period={summaryPeriod} periodGroups={periodGroups} onOpenDetail={openSummaryDetail} setPage={setPage} />
         )}
         {page === "settings" && (
-          <SettingsPage settings={settings} persistSettings={persistSettings} setPage={setPage} onUploadTrade={() => setShowUploadModal(true)} uploadedTrades={uploadedTrades} />
+          <SettingsPage settings={settings} persistSettings={persistSettings} setPage={setPage} onUploadTrade={() => setShowUploadModal(true)} uploadedTrades={uploadedTrades} onSignOut={handleSignOut} />
         )}
         {page === "setupLibrary" && (
           <SetupLibraryPage
@@ -2655,9 +2680,10 @@ function AccountPage({ totalPL, openPL, winRate, wins, evaluated, violatedTrades
   );
 }
 
-function SettingsPage({ settings, persistSettings, setPage, onUploadTrade, uploadedTrades }) {
+function SettingsPage({ settings, persistSettings, setPage, onUploadTrade, uploadedTrades, onSignOut }) {
   const CURRENCIES = [{ sym: "$", label: "USD" }, { sym: "£", label: "GBP" }, { sym: "€", label: "EUR" }, { sym: "A$", label: "AUD" }];
   const update = (patch) => persistSettings({ ...settings, ...patch });
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   return (
     <div>
@@ -2751,6 +2777,48 @@ function SettingsPage({ settings, persistSettings, setPage, onUploadTrade, uploa
             </button>
           </div>
         ))}
+      </Card>
+
+      {/* ACCOUNT */}
+      <div style={{ ...mono, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: C.faint, marginBottom: 12 }}>Account</div>
+      <Card style={{ padding: 18, marginBottom: 28, border: `1px solid ${C.hairSoft}` }}>
+        {!confirmingSignOut ? (
+          <>
+            <div style={{ ...mono, fontSize: 11.5, color: C.muted, marginBottom: 14, lineHeight: 1.6 }}>
+              Sign out and clear all data on this device — rules, setups, uploaded trades, and settings. This can't be undone.
+            </div>
+            <button onClick={() => setConfirmingSignOut(true)} style={{
+              background: "none", border: `1px solid ${C.redDim}`, color: C.red, borderRadius: 2, padding: "9px 16px",
+              fontSize: 12.5, fontWeight: 600, cursor: "pointer", ...mono,
+            }}>
+              Sign out & reset
+            </button>
+          </>
+        ) : (
+          <div className="at-fade-in">
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <AlertTriangle size={15} color={C.red} />
+              <span style={{ ...display, fontWeight: 600, fontSize: 14, color: C.bright }}>Sign out and reset everything?</span>
+            </div>
+            <div style={{ ...mono, fontSize: 11.5, color: C.muted, marginBottom: 16, lineHeight: 1.6 }}>
+              This permanently deletes every rule, setup, and trade you've logged on this device, and takes you back to account creation. There's no undo.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={onSignOut} style={{
+                background: C.red, color: C.ink, border: "none", borderRadius: 2, padding: "9px 16px",
+                fontSize: 12.5, fontWeight: 700, cursor: "pointer", ...mono,
+              }}>
+                Yes, sign out & delete everything
+              </button>
+              <button onClick={() => setConfirmingSignOut(false)} style={{
+                background: "none", color: C.muted, border: `1px solid ${C.hair}`, borderRadius: 2, padding: "9px 16px",
+                fontSize: 12.5, fontWeight: 600, cursor: "pointer", ...mono,
+              }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );
