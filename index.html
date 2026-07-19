@@ -36,16 +36,16 @@ body{margin:0;background:#0A0C10}
 </helmet>
 
 <sc-if value="{{needsStartingBalance}}" hint-placeholder-val="{{false}}">
-  <div style="min-height:100vh;background:#0A0C10;color:#EDF1F5;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;padding:24px">
-    <img src="{{ logoUri }}" style="width:44px;height:auto;display:block;margin-bottom:14px">
-    <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-bottom:6px;text-align:center">
+  <div style="height:100vh;width:100vw;box-sizing:border-box;overflow:hidden;background:#0A0C10;color:#EDF1F5;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;padding:20px">
+    <img src="{{ logoUri }}" style="width:40px;height:auto;display:block;margin-bottom:12px">
+    <div style="font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;margin-bottom:6px;text-align:center">
       <span style="color:#22D3C8">after</span>trade
     </div>
-    <div style="font-size:12px;color:#7C8794;margin-bottom:28px;text-align:center;max-width:280px;line-height:1.6">Before anything else, tell Aftertrade your starting account balance — every stat, chart, and summary is calculated from this.</div>
-    <div style="width:100%;max-width:320px;padding:22px;border-radius:18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">
+    <div style="font-size:11.5px;color:#7C8794;margin-bottom:22px;text-align:center;max-width:280px;line-height:1.5">Before anything else, tell Aftertrade your starting account balance — every stat, chart, and summary is calculated from this.</div>
+    <div style="width:100%;max-width:320px;padding:20px;border-radius:18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">
       <div style="font-size:9px;text-transform:uppercase;color:#7C8794;margin-bottom:6px">Starting balance</div>
       <input type="number" value="{{onboardingBalanceInput}}" sc-camel-on-change="{{onOnboardingBalanceChange}}" placeholder="10000"
-        style="width:100%;box-sizing:border-box;background:#0A0C10;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 12px;font-size:15px;color:#EDF1F5;font-family:'IBM Plex Mono',monospace;margin-bottom:14px">
+        style="width:100%;box-sizing:border-box;background:#0A0C10;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 12px;font-size:15px;color:#EDF1F5;font-family:'IBM Plex Mono',monospace;margin-bottom:12px">
       <button sc-camel-on-click="{{confirmStartingBalance}}" style="width:100%;background:#22D3C8;color:#0A0C10;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace">Get started</button>
     </div>
   </div>
@@ -888,9 +888,10 @@ body{margin:0;background:#0A0C10}
             </div>
             <div style="flex:1">
               <div style="font-size:9px;text-transform:uppercase;color:#7C8794;margin-bottom:4px">Side</div>
-              <select sc-camel-on-change="{{pt.onSideChange}}" style="width:100%;box-sizing:border-box;background:#0A0C10;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 9px;font-size:12px;color:#EDF1F5;font-family:'IBM Plex Mono',monospace">
-                <option>Buy</option><option>Sell</option>
-              </select>
+              <div style="display:flex;gap:4px">
+                <button sc-camel-on-click="{{pt.setBuy}}" style="flex:1;background:{{pt.buyBg}};color:{{pt.buyColor}};border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 0;font-size:12px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace">Buy</button>
+                <button sc-camel-on-click="{{pt.setSell}}" style="flex:1;background:{{pt.sellBg}};color:{{pt.sellColor}};border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 0;font-size:12px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace">Sell</button>
+              </div>
             </div>
           </div>
           <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -1253,6 +1254,9 @@ class Component extends DCLogic {
   removePendingTrade = (id) => this.setState(s => ({ pendingTrades: s.pendingTrades.filter(p => p._id !== id) }));
   onPendingFieldChange = (id, field) => (e) => {
     const value = e.target.value;
+    this.setState(s => ({ pendingTrades: s.pendingTrades.map(p => p._id === id ? { ...p, [field]: value } : p) }));
+  };
+  setPendingField = (id, field, value) => () => {
     this.setState(s => ({ pendingTrades: s.pendingTrades.map(p => p._id === id ? { ...p, [field]: value } : p) }));
   };
   confirmUpload = () => {
@@ -1966,7 +1970,14 @@ class Component extends DCLogic {
       pendingTrades: this.state.pendingTrades.map(p => ({
         ...p,
         onPairChange: this.onPendingFieldChange(p._id, "pair"),
-        onSideChange: this.onPendingFieldChange(p._id, "side"),
+        setBuy: this.setPendingField(p._id, "side", "Buy"),
+        setSell: this.setPendingField(p._id, "side", "Sell"),
+        isBuy: p.side !== "Sell",
+        isSell: p.side === "Sell",
+        buyBg: p.side !== "Sell" ? "#22D3C8" : "rgba(255,255,255,0.04)",
+        buyColor: p.side !== "Sell" ? "#0A0C10" : "#7C8794",
+        sellBg: p.side === "Sell" ? "#FF5B4F" : "rgba(255,255,255,0.04)",
+        sellColor: p.side === "Sell" ? "#0A0C10" : "#7C8794",
         onPlChange: this.onPendingFieldChange(p._id, "pl"),
         onDateChange: this.onPendingFieldChange(p._id, "date"),
         onSetupChange: this.onPendingFieldChange(p._id, "setup"),
