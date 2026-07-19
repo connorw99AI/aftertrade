@@ -35,6 +35,24 @@ body{margin:0;background:#0A0C10}
 </style>
 </helmet>
 
+<sc-if value="{{needsStartingBalance}}" hint-placeholder-val="{{false}}">
+  <div style="min-height:100vh;background:#0A0C10;color:#EDF1F5;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;padding:24px">
+    <img src="{{ logoUri }}" style="width:44px;height:auto;display:block;margin-bottom:14px">
+    <div style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin-bottom:6px;text-align:center">
+      <span style="color:#22D3C8">after</span>trade
+    </div>
+    <div style="font-size:12px;color:#7C8794;margin-bottom:28px;text-align:center;max-width:280px;line-height:1.6">Before anything else, tell Aftertrade your starting account balance — every stat, chart, and summary is calculated from this.</div>
+    <div style="width:100%;max-width:320px;padding:22px;border-radius:18px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">
+      <div style="font-size:9px;text-transform:uppercase;color:#7C8794;margin-bottom:6px">Starting balance</div>
+      <input type="number" value="{{onboardingBalanceInput}}" sc-camel-on-change="{{onOnboardingBalanceChange}}" placeholder="10000"
+        style="width:100%;box-sizing:border-box;background:#0A0C10;border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:11px 12px;font-size:15px;color:#EDF1F5;font-family:'IBM Plex Mono',monospace;margin-bottom:14px">
+      <button sc-camel-on-click="{{confirmStartingBalance}}" style="width:100%;background:#22D3C8;color:#0A0C10;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:'IBM Plex Mono',monospace">Get started</button>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{hasStartingBalance}}" hint-placeholder-val="{{true}}">
+
 <div style="min-height:100vh;background:#0A0C10;color:#EDF1F5;display:flex;flex-direction:column;font-family:'IBM Plex Mono',monospace">
   <div style="max-width:520px;margin:0 auto;width:100%;display:flex;flex-direction:column;flex:1">
 
@@ -657,6 +675,7 @@ body{margin:0;background:#0A0C10}
 
   </div>
 </div>
+</sc-if>
 
 <sc-if value="{{isUploadReading}}" hint-placeholder-val="{{false}}">
   <div style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:30;display:flex;align-items:center;justify-content:center;padding:20px">
@@ -845,7 +864,7 @@ body{margin:0;background:#0A0C10}
               <input type="date" value="{{pt.date}}" sc-camel-on-change="{{pt.onDateChange}}" style="width:100%;box-sizing:border-box;background:#0A0C10;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 9px;font-size:12px;color:#EDF1F5;font-family:'IBM Plex Mono',monospace">
             </div>
           </div>
-          <div style="display:flex;gap:8px">
+          <div style="display:flex;gap:8px;margin-bottom:8px">
             <div style="flex:1">
               <div style="font-size:9px;text-transform:uppercase;color:#7C8794;margin-bottom:4px">Setup (optional)</div>
               <input type="text" value="{{pt.setup}}" sc-camel-on-change="{{pt.onSetupChange}}" placeholder="Breakout retest" style="width:100%;box-sizing:border-box;background:#0A0C10;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 9px;font-size:12px;color:#EDF1F5;font-family:'IBM Plex Mono',monospace">
@@ -853,6 +872,12 @@ body{margin:0;background:#0A0C10}
             <div style="flex:1">
               <div style="font-size:9px;text-transform:uppercase;color:#7C8794;margin-bottom:4px">R-multiple (optional)</div>
               <input type="text" value="{{pt.r}}" sc-camel-on-change="{{pt.onRChange}}" placeholder="1.4" style="width:100%;box-sizing:border-box;background:#0A0C10;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 9px;font-size:12px;color:#EDF1F5;font-family:'IBM Plex Mono',monospace">
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <div style="flex:1">
+              <div style="font-size:9px;text-transform:uppercase;color:#7C8794;margin-bottom:4px">Risk % (optional)</div>
+              <input type="text" value="{{pt.riskPct}}" sc-camel-on-change="{{pt.onRiskPctChange}}" placeholder="1.5" style="width:100%;box-sizing:border-box;background:#0A0C10;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:8px 9px;font-size:12px;color:#EDF1F5;font-family:'IBM Plex Mono',monospace">
             </div>
           </div>
         </div>
@@ -897,9 +922,18 @@ class Component extends DCLogic {
     selectedSummaryIdx: 0,
     summaryCameFromHistory: false,
     uploadStep: "idle", // idle | reading | review
+    onboardingBalanceInput: "",
     pendingTrades: [], // staged trades shown on the review screen, one per uploaded file
     uploadErrors: [],
     importMessage: null,
+  };
+
+  // formats a number with thousands separators, e.g. 1000 -> "1,000.00" — used everywhere
+  // a money value is displayed so five- and six-figure balances stay readable
+  fmtMoney = (v, decimals = 2) => {
+    const n = Number(v);
+    if (isNaN(n)) return (0).toFixed(decimals);
+    return n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   };
 
   ruleTypes = [
@@ -924,14 +958,14 @@ class Component extends DCLogic {
   addRule = () => {
     const t = this.ruleTypes[this.state.ruleTypeIdx];
     this.setState(s => ({
-      rules: [...s.rules, { label: `${t.label}: ${s.newRuleValue}`, detail: `threshold: ${s.newRuleValue}`, active: true, violations: 0, cost: 0 }],
+      rules: [...s.rules, { label: `${t.label}: ${s.newRuleValue}`, detail: `threshold: ${s.newRuleValue}`, active: true, violations: 0, cost: 0, type: t.key, value: Number(s.newRuleValue) }],
     }));
   };
   onCustomTextChange = (e) => this.setState({ customRuleText: e.target.value });
   addCustomRule = () => {
     if (!this.state.customRuleText.trim()) return;
     this.setState(s => ({
-      rules: [...s.rules, { label: s.customRuleText.trim(), detail: "custom rule · interpreted for rule-break checks", active: true, violations: 0, cost: 0 }],
+      rules: [...s.rules, { label: s.customRuleText.trim(), detail: "custom rule · not automatically checked", active: true, violations: 0, cost: 0, type: "custom", value: null }],
       customRuleText: "",
     }));
   };
@@ -965,6 +999,12 @@ class Component extends DCLogic {
     }));
   };
   onBalanceChange = (e) => this.setState(s => ({ settings: { ...s.settings, startingBalance: e.target.value } }));
+  onOnboardingBalanceChange = (e) => this.setState({ onboardingBalanceInput: e.target.value });
+  confirmStartingBalance = () => {
+    const v = Number(this.state.onboardingBalanceInput);
+    if (!this.state.onboardingBalanceInput || isNaN(v) || v < 0) return;
+    this.setState(s => ({ settings: { ...s.settings, startingBalance: v } }));
+  };
   onCloseTimeChange = (e) => this.setState(s => ({ settings: { ...s.settings, marketCloseTime: e.target.value } }));
   onTimezoneChange = (e) => this.setState(s => ({ settings: { ...s.settings, timezone: e.target.value } }));
   onExtractionUrlChange = (e) => this.setState(s => ({ settings: { ...s.settings, extractionApiUrl: e.target.value } }));
@@ -972,7 +1012,24 @@ class Component extends DCLogic {
   toggleNotif = (key) => this.setState(s => ({ settings: { ...s.settings, [key]: !s.settings[key] } }));
   startSignOut = () => this.setState({ confirmingSignOut: true });
   cancelSignOut = () => this.setState({ confirmingSignOut: false });
-  confirmSignOut = () => this.setState({ confirmingSignOut: false, page: "dashboard" });
+  confirmSignOut = () => this.setState({
+    page: "dashboard",
+    rules: [], setups: [], newSetupName: "", customSetupText: "",
+    instruments: [], newInstrumentName: "",
+    summaryData: { daily: [], weekly: [], monthly: [], quarterly: [], annual: [] },
+    uploadedTrades: [],
+    ruleTypeIdx: 0, newRuleValue: "1.5", customRuleText: "",
+    settings: {
+      currency: "$", startingBalance: null, marketCloseTime: "10:00 PM", timezone: "UK",
+      notifyDailyStory: true, notifyRuleBreak: true, notifyWeekly: false,
+      extractionApiUrl: "https://aftertrade.connor-w99.workers.dev/",
+    },
+    confirmingSignOut: false, menuOpen: false,
+    selectedTradeIdx: null, chartWindowDays: 7, selectedDayIdx: null,
+    selectedSummaryType: null, selectedSummaryIdx: 0, summaryCameFromHistory: false,
+    uploadStep: "idle", onboardingBalanceInput: "", pendingTrades: [], uploadErrors: [],
+    importMessage: null,
+  });
   selectTrade = (i) => this.setState(s => ({ selectedTradeIdx: s.selectedTradeIdx === i ? null : i }));
   zoomChartIn = () => this.setState(s => ({ chartWindowDays: Math.max(2, Math.round(s.chartWindowDays / 2)), selectedTradeIdx: null }));
   zoomChartOut = () => this.setState(s => ({ chartWindowDays: Math.min(365, s.chartWindowDays * 2), selectedTradeIdx: null }));
@@ -994,10 +1051,37 @@ class Component extends DCLogic {
       const result = reader.result; // "data:image/png;base64,AAAA..."
       const match = /^data:(image\/[a-zA-Z+.-]+);base64,(.*)$/.exec(result);
       if (!match) { reject(new Error("Not a readable image")); return; }
-      resolve({ mediaType: match[1], base64: match[2] });
+      resolve({ mediaType: match[1], base64: match[2], dataUrl: result });
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+
+  // Full-resolution phone screenshots can be several MB as base64, which is enough
+  // to make a batch of several uploads slow or fail outright. Downscale + recompress
+  // to a reasonable size before sending — this is more than enough detail for reading
+  // a trade table, and the original file itself is never modified.
+  resizeImageForApi = (dataUrl, maxDim = 1400, quality = 0.82) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      const resizedDataUrl = canvas.toDataURL("image/jpeg", quality);
+      const match = /^data:(image\/[a-zA-Z+.-]+);base64,(.*)$/.exec(resizedDataUrl);
+      resolve(match ? { mediaType: match[1], base64: match[2] } : null);
+    };
+    img.onerror = () => resolve(null); // fall back to the original on any decode failure
+    img.src = dataUrl;
   });
 
   extractTradesFromFile = async (file) => {
@@ -1006,19 +1090,26 @@ class Component extends DCLogic {
     let imageBase64, mediaType;
     try {
       const r = await this.readFileAsBase64(file);
-      imageBase64 = r.base64; mediaType = r.mediaType;
+      const resized = await this.resizeImageForApi(r.dataUrl);
+      imageBase64 = resized ? resized.base64 : r.base64;
+      mediaType = resized ? resized.mediaType : r.mediaType;
     } catch (e) {
       return { trades: [], error: "Couldn't read this file as an image." };
     }
     let response;
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
       response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64, mediaType }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
     } catch (e) {
-      return { trades: [], error: `Network error reaching the extraction endpoint: ${e.message || e}` };
+      const timedOut = e && e.name === "AbortError";
+      return { trades: [], error: timedOut ? "Timed out waiting for the extraction endpoint (25s)." : `Network error reaching the extraction endpoint: ${e.message || e}` };
     }
     let data;
     try {
@@ -1042,32 +1133,47 @@ class Component extends DCLogic {
     const files = e.target.files ? Array.from(e.target.files) : [];
     if (!files.length) return;
     this.setState({ uploadStep: "reading" });
-    const todayStr = "2026-07-18";
+    const now = new Date(); const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
     const pendingTrades = [];
     const errors = [];
     let seq = 0;
-    for (const file of files) {
-      const { trades, error } = await this.extractTradesFromFile(file);
-      if (error) errors.push(error);
-      if (trades.length === 0 && error) {
-        // couldn't read this screenshot at all — still give a blank row so it isn't lost
-        pendingTrades.push({ _id: `p${Date.now()}_${seq++}`, pair: "", side: "Buy", pl: "", date: todayStr, setup: "", r: "" });
-      }
-      trades.forEach(t => {
-        pendingTrades.push({
-          _id: `p${Date.now()}_${seq++}`,
-          pair: t.pair || "",
-          side: this.normalizeSide(t.side),
-          pl: typeof t.pl === "number" ? String(t.pl) : "",
-          date: t.date || todayStr,
-          setup: "",
-          r: typeof t.rrPlanned === "number" ? String(t.rrPlanned) : "",
+    try {
+      for (const file of files) {
+        let trades = [], error = null;
+        try {
+          const result = await this.extractTradesFromFile(file);
+          trades = result.trades || [];
+          error = result.error;
+        } catch (err) {
+          error = `Unexpected error reading this screenshot: ${err && err.message ? err.message : err}`;
+        }
+        if (error) errors.push(error);
+        if (trades.length === 0 && error) {
+          // couldn't read this screenshot at all — still give a blank row so it isn't lost
+          pendingTrades.push({ _id: `p${Date.now()}_${seq++}`, pair: "", side: "Buy", pl: "", date: todayStr, setup: "", r: "", riskPct: "" });
+        }
+        trades.forEach(t => {
+          if (!t || typeof t !== "object") return;
+          pendingTrades.push({
+            _id: `p${Date.now()}_${seq++}`,
+            pair: t.pair || "",
+            side: this.normalizeSide(t.side),
+            pl: typeof t.pl === "number" ? String(t.pl) : "",
+            date: t.date || todayStr,
+            setup: "",
+            r: typeof t.rrPlanned === "number" ? String(t.rrPlanned) : "",
+            riskPct: typeof t.riskPct === "number" ? String(t.riskPct) : "",
+          });
         });
-      });
+      }
+    } catch (err) {
+      errors.push(`Something went wrong processing these files: ${err && err.message ? err.message : err}`);
     }
     if (!pendingTrades.length) {
-      pendingTrades.push({ _id: `p${Date.now()}_${seq++}`, pair: "", side: "Buy", pl: "", date: todayStr, setup: "", r: "" });
+      pendingTrades.push({ _id: `p${Date.now()}_${seq++}`, pair: "", side: "Buy", pl: "", date: todayStr, setup: "", r: "", riskPct: "" });
     }
+    // always leave the loading state — no matter what happened above, the person needs
+    // to land on a screen they can act on, not be stuck on the loader indefinitely
     this.setState({ uploadStep: "review", pendingTrades, uploadErrors: errors });
   };
   cancelUpload = () => this.setState({ uploadStep: "idle", pendingTrades: [], uploadErrors: [] });
@@ -1082,6 +1188,7 @@ class Component extends DCLogic {
     const toAdd = valid.map(t => ({
       pair: t.pair.trim(), side: t.side, pl: Number(t.pl), date: t.date,
       setup: t.setup.trim() || null, r: t.r.trim() ? (t.r.trim().match(/R$/i) ? t.r.trim() : `${t.r.trim()}R`) : null,
+      riskPct: t.riskPct.trim() && !isNaN(Number(t.riskPct)) ? Number(t.riskPct) : null,
     }));
     this.setState(s => ({
       uploadedTrades: [...s.uploadedTrades, ...toAdd],
@@ -1132,48 +1239,136 @@ class Component extends DCLogic {
   renderVals() {
     const { page, rules, setups, instruments, settings, confirmingSignOut, menuOpen } = this.state;
     const teal = "#22D3C8", green = "#3BD671", red = "#FF5B4F", muted = "#7C8794", hairOn = "rgba(34,211,200,0.18)";
+    const allUploaded = this.state.uploadedTrades;
 
-    const setupStats = setups.map(s => ({
+    // ── Setup Library — real trade counts/win rate/P&L per setup, derived from
+    // uploaded trades' setup field, merged with any setups added manually (with 0 trades so far)
+    const setupAgg = {};
+    allUploaded.forEach(t => {
+      if (!t.setup) return;
+      if (!setupAgg[t.setup]) setupAgg[t.setup] = { trades: 0, wins: 0, pl: 0 };
+      setupAgg[t.setup].trades += 1;
+      if (t.pl > 0) setupAgg[t.setup].wins += 1;
+      setupAgg[t.setup].pl = +(setupAgg[t.setup].pl + t.pl).toFixed(2);
+    });
+    const setupNames = [...new Set([...setups.map(s => s.name), ...Object.keys(setupAgg)])];
+    const mergedSetups = setupNames.map(name => {
+      const manualIdx = setups.findIndex(s => s.name === name);
+      const manual = manualIdx >= 0 ? setups[manualIdx] : null;
+      const agg = setupAgg[name] || { trades: 0, wins: 0, pl: 0 };
+      return {
+        name, manualIdx,
+        active: manual ? manual.active : true,
+        detail: manual ? manual.detail : "auto-tracked from uploaded trades",
+        trades: agg.trades,
+        winRate: agg.trades ? `${Math.round((agg.wins / agg.trades) * 100)}%` : "—",
+        pl: agg.pl,
+      };
+    });
+    const setupStats = mergedSetups.map(s => ({
       name: s.name, trades: s.trades, winRate: s.winRate,
-      pl: `${s.pl >= 0 ? "+" : "-"}$${Math.abs(s.pl)}`, plColor: s.pl >= 0 ? green : red,
+      pl: `${s.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(s.pl), 2)}`, plColor: s.pl >= 0 ? green : red,
       opacity: s.active ? "1" : "0.55",
     }));
-    const setupsVals = setups.map((s, i) => ({
+    const setupsVals = mergedSetups.map(s => ({
       label: s.name, detail: s.detail,
       textColor: s.active ? "#EDF1F5" : "#5A6272",
       trackColor: s.active ? teal : "rgba(255,255,255,0.12)",
       knobAlign: s.active ? "flex-end" : "flex-start",
-      toggle: () => this.toggleSetup(i), remove: () => this.removeSetup(i),
+      toggle: s.manualIdx >= 0 ? () => this.toggleSetup(s.manualIdx) : () => {},
+      remove: s.manualIdx >= 0 ? () => this.removeSetup(s.manualIdx) : () => {},
     }));
-    const bestSetup = setups.length ? setups.reduce((a, b) => (b.pl > a.pl ? b : a), setups[0]) : { name: "—", pl: 0 };
-    const totalSetupPl = setups.reduce((sum, s) => sum + s.pl, 0);
+    const bestSetup = mergedSetups.length ? mergedSetups.reduce((a, b) => (b.pl > a.pl ? b : a), mergedSetups[0]) : { name: "—", pl: 0 };
+    const totalSetupPl = mergedSetups.reduce((sum, s) => sum + s.pl, 0);
     const setupsSummary = [
-      { label: "Best setup", value: bestSetup.name, sub: `${bestSetup.pl >= 0 ? "+" : "-"}$${Math.abs(bestSetup.pl)}`, subColor: bestSetup.pl >= 0 ? green : red, color: teal },
-      { label: "Active setups", value: `${setups.filter(s => s.active).length} of ${setups.length}`, sub: "", subColor: muted, color: "#EDF1F5" },
-      { label: "Total P/L", value: `${totalSetupPl >= 0 ? "+" : "-"}$${Math.abs(totalSetupPl)}`, sub: "last 30 days", subColor: muted, color: totalSetupPl >= 0 ? green : red },
+      { label: "Best setup", value: bestSetup.name, sub: `${bestSetup.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(bestSetup.pl), 2)}`, subColor: bestSetup.pl >= 0 ? green : red, color: teal },
+      { label: "Active setups", value: `${mergedSetups.filter(s => s.active).length} of ${mergedSetups.length}`, sub: "", subColor: muted, color: "#EDF1F5" },
+      { label: "Total P/L", value: `${totalSetupPl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(totalSetupPl), 2)}`, sub: "all uploaded trades", subColor: muted, color: totalSetupPl >= 0 ? green : red },
     ];
 
-    const instrumentStats = instruments.map(p => ({
+    // ── Instrument Library — same pattern, grouped by trade pair
+    const instrAgg = {};
+    allUploaded.forEach(t => {
+      if (!t.pair) return;
+      if (!instrAgg[t.pair]) instrAgg[t.pair] = { trades: 0, pl: 0 };
+      instrAgg[t.pair].trades += 1;
+      instrAgg[t.pair].pl = +(instrAgg[t.pair].pl + t.pl).toFixed(2);
+    });
+    const instrNames = [...new Set([...instruments.map(p => p.name), ...Object.keys(instrAgg)])];
+    const mergedInstruments = instrNames.map(name => {
+      const manualIdx = instruments.findIndex(p => p.name === name);
+      const manual = manualIdx >= 0 ? instruments[manualIdx] : null;
+      const agg = instrAgg[name] || { trades: 0, pl: 0 };
+      return {
+        name, manualIdx,
+        active: manual ? manual.active : true,
+        trades: agg.trades, pl: agg.pl,
+      };
+    });
+    const instrumentStats = mergedInstruments.map(p => ({
       name: p.name, trades: p.trades,
-      pl: `${p.pl >= 0 ? "+" : "-"}$${Math.abs(p.pl)}`, plColor: p.pl >= 0 ? green : red,
+      pl: `${p.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(p.pl), 2)}`, plColor: p.pl >= 0 ? green : red,
       opacity: p.active ? "1" : "0.55",
     }));
-    const instrumentsVals = instruments.map((p, i) => ({
+    const instrumentsVals = mergedInstruments.map(p => ({
       label: p.name, detail: p.active ? "tracked" : "inactive",
       textColor: p.active ? "#EDF1F5" : "#5A6272",
       trackColor: p.active ? teal : "rgba(255,255,255,0.12)",
       knobAlign: p.active ? "flex-end" : "flex-start",
-      toggle: () => this.toggleInstrument(i), remove: () => this.removeInstrument(i),
+      toggle: p.manualIdx >= 0 ? () => this.toggleInstrument(p.manualIdx) : () => {},
+      remove: p.manualIdx >= 0 ? () => this.removeInstrument(p.manualIdx) : () => {},
     }));
-    const bestInstrument = instruments.length ? instruments.reduce((a, b) => (b.pl > a.pl ? b : a), instruments[0]) : { name: "—", pl: 0 };
-    const totalInstrumentPl = instruments.reduce((sum, p) => sum + p.pl, 0);
+    const bestInstrument = mergedInstruments.length ? mergedInstruments.reduce((a, b) => (b.pl > a.pl ? b : a), mergedInstruments[0]) : { name: "—", pl: 0 };
+    const totalInstrumentPl = mergedInstruments.reduce((sum, p) => sum + p.pl, 0);
     const instrumentsSummary = [
-      { label: "Most profitable", value: bestInstrument.name, sub: `${bestInstrument.pl >= 0 ? "+" : "-"}$${Math.abs(bestInstrument.pl)}`, subColor: bestInstrument.pl >= 0 ? green : red, color: teal },
-      { label: "Tracked instruments", value: `${instruments.filter(p => p.active).length} of ${instruments.length}`, sub: "", subColor: muted, color: "#EDF1F5" },
-      { label: "Total P/L", value: `${totalInstrumentPl >= 0 ? "+" : "-"}$${Math.abs(totalInstrumentPl)}`, sub: "last 30 days", subColor: muted, color: totalInstrumentPl >= 0 ? green : red },
+      { label: "Most profitable", value: bestInstrument.name, sub: `${bestInstrument.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(bestInstrument.pl), 2)}`, subColor: bestInstrument.pl >= 0 ? green : red, color: teal },
+      { label: "Tracked instruments", value: `${mergedInstruments.filter(p => p.active).length} of ${mergedInstruments.length}`, sub: "", subColor: muted, color: "#EDF1F5" },
+      { label: "Total P/L", value: `${totalInstrumentPl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(totalInstrumentPl), 2)}`, sub: "all uploaded trades", subColor: muted, color: totalInstrumentPl >= 0 ? green : red },
     ];
 
-    const mostBrokenRule = rules.length ? rules.reduce((a, b) => (b.cost < a.cost ? b : a), rules[0]) : { label: "—", cost: 0 };
+    // ── Real rule evaluation — checks each uploaded trade against active, structured
+    // rules. Only rule types where the data is actually collected get evaluated;
+    // custom rules (and types needing data we don't collect, like news timing) stay at 0
+    // rather than faking a result.
+    const evalTrades = this.state.uploadedTrades;
+    const evalDateGroups = {};
+    evalTrades.forEach(t => {
+      if (!evalDateGroups[t.date]) evalDateGroups[t.date] = { pl: 0, count: 0 };
+      evalDateGroups[t.date].pl = +(evalDateGroups[t.date].pl + t.pl).toFixed(2);
+      evalDateGroups[t.date].count += 1;
+    });
+    const evaluatedRules = rules.map(r => {
+      if (!r.type || r.type === "custom" || !r.active || r.value == null) {
+        return { ...r, violations: 0, cost: 0 };
+      }
+      let violations = 0, cost = 0;
+      if (r.type === "minRR") {
+        evalTrades.forEach(t => {
+          const rVal = t.r ? parseFloat(t.r) : null;
+          if (rVal !== null && !isNaN(rVal) && rVal < r.value) { violations++; if (t.pl < 0) cost += t.pl; }
+        });
+      } else if (r.type === "maxTradesPerDay") {
+        Object.values(evalDateGroups).forEach(day => {
+          if (day.count > r.value) {
+            violations += (day.count - r.value);
+            if (day.pl < 0) cost += day.pl * ((day.count - r.value) / day.count);
+          }
+        });
+      } else if (r.type === "dailyLossLimit") {
+        Object.values(evalDateGroups).forEach(day => {
+          if (day.pl <= -Math.abs(r.value)) { violations++; cost += day.pl; }
+        });
+      } else if (r.type === "maxRiskPct") {
+        evalTrades.forEach(t => {
+          if (typeof t.riskPct === "number" && t.riskPct > r.value) { violations++; if (t.pl < 0) cost += t.pl; }
+        });
+      }
+      // noRevenge / noNewsWindow: not evaluated — this app doesn't collect trade
+      // timestamps or a news calendar, so violations stay 0 rather than guessing
+      return { ...r, violations, cost: +cost.toFixed(2) };
+    });
+
+    const mostBrokenRule = evaluatedRules.length ? evaluatedRules.reduce((a, b) => (b.cost < a.cost ? b : a), evaluatedRules[0]) : { label: "—", cost: 0 };
 
     // ── Real numbers, computed from what's actually been uploaded/configured — nothing here is mock data.
     const uploadedRaw = this.state.uploadedTrades;
@@ -1192,60 +1387,60 @@ class Component extends DCLogic {
     const avgLoss = losses.length ? grossLoss / losses.length : 0;
     const largestWin = wins.length ? Math.max(...wins.map(t => t.pl)) : 0;
     const largestLoss = losses.length ? Math.min(...losses.map(t => t.pl)) : 0;
-    const violationCount = rules.reduce((s, r) => s + (r.violations || 0), 0);
-    const violationCost = rules.reduce((s, r) => s + Math.abs(r.cost || 0), 0);
+    const violationCount = evaluatedRules.reduce((s, r) => s + (r.violations || 0), 0);
+    const violationCost = evaluatedRules.reduce((s, r) => s + Math.abs(r.cost || 0), 0);
     const adherencePct = uploadedRaw.length && rules.length ? Math.max(0, 100 - Math.round((violationCount / uploadedRaw.length) * 100)) : 100;
     // Edge Score is meaningless with no trades or no rules to check adherence against — reads 0 rather than a fake baseline
     const edgeScore = (!hasTradesData || rules.length === 0) ? 0 : Math.round(winRatePct * 0.5 + adherencePct * 0.5);
     const startingBalanceVal = settings.startingBalance != null ? Number(settings.startingBalance) : 0;
     const currentBalance = startingBalanceVal + totalPl;
     const avgRiskPct = hasTradesData ? +((uploadedRaw.reduce((s, t) => s + (Math.abs(t.pl) / Math.max(1, startingBalanceVal || currentBalance || 1)) * 100, 0)) / uploadedRaw.length).toFixed(1) : 0;
-    const todayStr = "2026-07-18";
+    const now = new Date(); const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
     const todaysPl = uploadedRaw.filter(t => t.date === todayStr).reduce((s, t) => s + t.pl, 0);
     const rNumericTrades = uploadedRaw.filter(t => t.r && /^[+-]?[\d.]+R$/.test(t.r));
     const avgR = rNumericTrades.length ? rNumericTrades.reduce((s, t) => s + parseFloat(t.r), 0) / rNumericTrades.length : 0;
 
     const destinations = [
-      { label: "Account Overview", meta: `$${currentBalance.toFixed(2)}`, sub: `${adherencePct}% adherence`, subColor: teal, go: () => this.setPage("account") },
-      { label: "Setup Library", meta: setups.length ? `Best: ${bestSetup.name}` : "no setups yet", sub: setups.length ? `${bestSetup.pl >= 0 ? "+" : "-"}$${Math.abs(bestSetup.pl)}` : "", subColor: bestSetup.pl >= 0 ? green : red, go: () => this.setPage("setups") },
-      { label: "Instrument Library", meta: instruments.length ? `Best: ${bestInstrument.name}` : "no instruments yet", sub: instruments.length ? `${bestInstrument.pl >= 0 ? "+" : "-"}$${Math.abs(bestInstrument.pl)}` : "", subColor: bestInstrument.pl >= 0 ? green : red, go: () => this.setPage("instruments") },
+      { label: "Account Overview", meta: `$${this.fmtMoney(currentBalance, 2)}`, sub: `${adherencePct}% adherence`, subColor: teal, go: () => this.setPage("account") },
+      { label: "Setup Library", meta: setups.length ? `Best: ${bestSetup.name}` : "no setups yet", sub: setups.length ? `${bestSetup.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(bestSetup.pl), 2)}` : "", subColor: bestSetup.pl >= 0 ? green : red, go: () => this.setPage("setups") },
+      { label: "Instrument Library", meta: instruments.length ? `Best: ${bestInstrument.name}` : "no instruments yet", sub: instruments.length ? `${bestInstrument.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(bestInstrument.pl), 2)}` : "", subColor: bestInstrument.pl >= 0 ? green : red, go: () => this.setPage("instruments") },
       { label: "Rules", meta: rules.length ? `${rules.filter(r => r.active).length} of ${rules.length} active` : "no rules yet", sub: "", subColor: teal, go: () => this.setPage("rules") },
       { label: "Journal", meta: `${uploadedRaw.length} trade${uploadedRaw.length !== 1 ? "s" : ""}`, sub: "", subColor: teal, go: () => this.setPage("journal") },
       { label: "Summaries", meta: "daily & weekly stories", sub: "", subColor: teal, go: () => this.setPage("summaries") },
     ];
 
     const snapshotStats = [
-      { label: "Balance", value: `$${currentBalance.toFixed(2)}`, sub: hasTradesData ? `${totalPl >= 0 ? "+" : "-"}$${Math.abs(totalPl).toFixed(2)} all-time` : "no trades yet", subColor: green, color: "#EDF1F5" },
+      { label: "Balance", value: `$${this.fmtMoney(currentBalance, 2)}`, sub: hasTradesData ? `${totalPl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(totalPl), 2)} all-time` : "no trades yet", subColor: green, color: "#EDF1F5" },
       { label: "Edge Score", value: String(edgeScore), sub: !hasTradesData ? "no trades yet" : rules.length === 0 ? "add a rule to start tracking" : (edgeScore >= 70 ? "Strong" : edgeScore >= 45 ? "Inconsistent" : "Weak"), subColor: muted, color: teal },
       { label: "Avg Risk %", value: hasTradesData ? `${avgRiskPct}%` : "—", sub: "per trade", subColor: muted, color: "#EDF1F5" },
     ];
     const perfStats = [
       { label: "Win rate", value: hasTradesData ? `${winRatePct}%` : "—", sub: hasTradesData ? `${wins.length}/${uploadedRaw.length} trades` : "no trades yet", color: "#EDF1F5" },
       { label: "Profit factor", value: hasTradesData && grossLoss > 0 ? profitFactor.toFixed(2) : "—", sub: "gross profit ÷ loss", color: "#EDF1F5" },
-      { label: "Total P/L", value: hasTradesData ? `${totalPl >= 0 ? "+" : "-"}$${Math.abs(totalPl).toFixed(2)}` : "—", sub: "all uploaded trades", color: totalPl >= 0 ? green : red },
-      { label: "Avg win / loss", value: hasTradesData ? `$${avgWin.toFixed(0)} / $${avgLoss.toFixed(0)}` : "—", sub: "", color: "#EDF1F5" },
-      { label: "Largest win", value: wins.length ? `+$${largestWin.toFixed(2)}` : "—", sub: "", color: green },
-      { label: "Largest loss", value: losses.length ? `-$${Math.abs(largestLoss).toFixed(2)}` : "—", sub: "", color: red },
+      { label: "Total P/L", value: hasTradesData ? `${totalPl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(totalPl), 2)}` : "—", sub: "all uploaded trades", color: totalPl >= 0 ? green : red },
+      { label: "Avg win / loss", value: hasTradesData ? `$${this.fmtMoney(avgWin, 0)} / $${this.fmtMoney(avgLoss, 0)}` : "—", sub: "", color: "#EDF1F5" },
+      { label: "Largest win", value: wins.length ? `+$${this.fmtMoney(largestWin, 2)}` : "—", sub: "", color: green },
+      { label: "Largest loss", value: losses.length ? `-$${this.fmtMoney(Math.abs(largestLoss), 2)}` : "—", sub: "", color: red },
       { label: "Trades logged", value: String(uploadedRaw.length), sub: "", color: "#EDF1F5" },
       { label: "Rules active", value: `${rules.filter(r => r.active).length} of ${rules.length}`, sub: "", color: "#EDF1F5" },
     ];
     const disciplineStats = [
       { label: "Rule adherence", value: rules.length ? `${adherencePct}%` : "—", sub: "", subColor: muted, color: teal },
-      { label: "Violations", value: String(violationCount), sub: violationCount > 0 ? `$${violationCost.toFixed(2)} lost` : "", subColor: red, color: "#E8A33D" },
-      { label: "Most broken rule", value: violationCount > 0 ? mostBrokenRule.label : "—", sub: violationCount > 0 ? `-$${Math.abs(mostBrokenRule.cost).toFixed(2)}` : "", subColor: muted, color: "#EDF1F5" },
+      { label: "Violations", value: String(violationCount), sub: violationCount > 0 ? `$${this.fmtMoney(violationCost, 2)} lost` : "", subColor: red, color: "#E8A33D" },
+      { label: "Most broken rule", value: violationCount > 0 ? mostBrokenRule.label : "—", sub: violationCount > 0 ? `-$${this.fmtMoney(Math.abs(mostBrokenRule.cost), 2)}` : "", subColor: muted, color: "#EDF1F5" },
     ];
-    const patterns = rules.filter(r => (r.violations || 0) > 0).map(r => ({
-      label: r.label, count: r.violations, cost: `-$${Math.abs(r.cost).toFixed(2)}`,
+    const patterns = evaluatedRules.filter(r => (r.violations || 0) > 0).map(r => ({
+      label: r.label, count: r.violations, cost: `-$${this.fmtMoney(Math.abs(r.cost), 2)}`,
     }));
 
     const accountLinks = [
-      { label: "Highest cost violation", value: violationCount > 0 ? mostBrokenRule.label : "—", sub: violationCount > 0 ? `-$${Math.abs(mostBrokenRule.cost).toFixed(2)}` : "", subColor: red, go: () => this.setPage("rules") },
-      { label: "Best setup", value: setups.length ? bestSetup.name : "—", sub: setups.length ? `${bestSetup.pl >= 0 ? "+" : "-"}$${Math.abs(bestSetup.pl)}` : "", subColor: bestSetup.pl >= 0 ? green : red, go: () => this.setPage("setups") },
-      { label: "Most profitable instrument", value: instruments.length ? bestInstrument.name : "—", sub: instruments.length ? `${bestInstrument.pl >= 0 ? "+" : "-"}$${Math.abs(bestInstrument.pl)}` : "", subColor: bestInstrument.pl >= 0 ? green : red, go: () => this.setPage("instruments") },
+      { label: "Highest cost violation", value: violationCount > 0 ? mostBrokenRule.label : "—", sub: violationCount > 0 ? `-$${this.fmtMoney(Math.abs(mostBrokenRule.cost), 2)}` : "", subColor: red, go: () => this.setPage("rules") },
+      { label: "Best setup", value: setups.length ? bestSetup.name : "—", sub: setups.length ? `${bestSetup.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(bestSetup.pl), 2)}` : "", subColor: bestSetup.pl >= 0 ? green : red, go: () => this.setPage("setups") },
+      { label: "Most profitable instrument", value: instruments.length ? bestInstrument.name : "—", sub: instruments.length ? `${bestInstrument.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(bestInstrument.pl), 2)}` : "", subColor: bestInstrument.pl >= 0 ? green : red, go: () => this.setPage("instruments") },
     ];
 
     const dow = ["S","M","T","W","T","F","S"];
-    const TODAY = new Date(2026, 6, 18);
+    const TODAY = new Date();
     const calendarMonth = TODAY.toLocaleDateString(undefined, { month: "long", year: "numeric" });
     const tradesByDate = {};
     this.state.uploadedTrades.forEach(t => {
@@ -1266,7 +1461,7 @@ class Component extends DCLogic {
       calendarDays.push({
         blank: false, notBlank: true, day,
         hasTrades, rawPl: hasTrades ? info.pl : 0, rawTrades: hasTrades ? info.count : 0,
-        pl: hasTrades ? `${info.pl >= 0 ? "+" : "-"}$${Math.abs(info.pl).toFixed(0)}` : "—",
+        pl: hasTrades ? `${info.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(info.pl), 0)}` : "—",
         plColor: !hasTrades ? "#5A6272" : info.pl >= 0 ? green : red,
         tradesLabel: hasTrades ? `${info.count} trade${info.count === 1 ? "" : "s"}` : "",
         bg: hasTrades ? (info.pl >= 0 ? "rgba(59,214,113,0.08)" : "rgba(255,91,79,0.08)") : "rgba(255,255,255,0.02)",
@@ -1302,7 +1497,7 @@ class Component extends DCLogic {
 
     const trades = [...withDaysAgo].reverse().slice(0, 12).map(t => ({
       pair: t.pair, side: t.side.toUpperCase(), date: `${t.dateLabel}`, setup: t.setup, r: t.r || "—",
-      pl: `${t.pl >= 0 ? "+" : "-"}$${Math.abs(t.pl).toFixed(2)}`,
+      pl: `${t.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(t.pl), 2)}`,
       plColor: t.pl >= 0 ? green : red,
     }));
 
@@ -1399,19 +1594,57 @@ class Component extends DCLogic {
       pair: selT.shortDate, side: `${selT.tradeCount} trade${selT.tradeCount !== 1 ? "s" : ""}`,
       date: selT.shortDate, setup: `${selT.tradeCount} trade${selT.tradeCount !== 1 ? "s" : ""} in this period`,
       r: "",
-      pl: `${selT.pl >= 0 ? "+" : "-"}$${Math.abs(selT.pl).toFixed(2)}`,
+      pl: `${selT.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(selT.pl), 2)}`,
       plColor: selT.pl >= 0 ? green : red,
       close: () => this.selectTrade(selectedTradeIdx),
     } : {
       pair: selT.pair, side: selT.side.toUpperCase(), date: selT.dateLabel, setup: selT.setup, r: selT.r || "—",
-      pl: `${selT.pl >= 0 ? "+" : "-"}$${Math.abs(selT.pl).toFixed(2)}`,
+      pl: `${selT.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(selT.pl), 2)}`,
       plColor: selT.pl >= 0 ? green : red,
       close: () => this.selectTrade(selectedTradeIdx),
     }) : null;
 
     const PERIOD_LABELS = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", annual: "Annual" };
     const PERIOD_ORDER = ["daily", "weekly", "monthly", "quarterly", "annual"];
-    const summaryData = this.state.summaryData;
+    // ── Summaries — generated from real uploaded trades, grouped into each period.
+    // Most recent period first within each type.
+    const isoWeekStart = (d) => { const t = new Date(d); const day = (t.getDay() + 6) % 7; t.setDate(t.getDate() - day); return t; };
+    const groupTrades = (keyFn, labelFn) => {
+      const groups = {};
+      allUploaded.forEach(t => {
+        const d = new Date(t.date + "T12:00:00");
+        const key = keyFn(d);
+        if (!groups[key]) groups[key] = { key, d, pl: 0, trades: 0, violations: 0 };
+        groups[key].pl = +(groups[key].pl + t.pl).toFixed(2);
+        groups[key].trades += 1;
+      });
+      return Object.values(groups)
+        .sort((a, b) => b.d - a.d)
+        .map(g => ({ range: labelFn(g.d), pl: g.pl, trades: g.trades, violations: g.violations }));
+    };
+    const summaryData = {
+      daily: groupTrades(
+        (d) => d.toDateString(),
+        (d) => d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+      ),
+      weekly: groupTrades(
+        (d) => isoWeekStart(d).toDateString(),
+        (d) => { const start = isoWeekStart(d); const end = new Date(start); end.setDate(end.getDate() + 6);
+          return `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${end.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`; }
+      ),
+      monthly: groupTrades(
+        (d) => `${d.getFullYear()}-${d.getMonth()}`,
+        (d) => d.toLocaleDateString(undefined, { month: "long", year: "numeric" })
+      ),
+      quarterly: groupTrades(
+        (d) => `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`,
+        (d) => `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`
+      ),
+      annual: groupTrades(
+        (d) => `${d.getFullYear()}`,
+        (d) => `${d.getFullYear()}`
+      ),
+    };
     const fmtSummaryEntry = (type, e, idx) => {
       const avgPerTrade = e.pl / Math.max(1, e.trades);
       const winRate = Math.max(28, Math.min(85, Math.round(50 + avgPerTrade / 4)));
@@ -1428,13 +1661,13 @@ class Component extends DCLogic {
         type, idx,
         title: `${PERIOD_LABELS[type]} story`,
         range: e.range,
-        pl: `${e.pl >= 0 ? "+" : "-"}$${Math.abs(e.pl).toFixed(2)}`, plColor: e.pl >= 0 ? green : red,
+        pl: `${e.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(e.pl), 2)}`, plColor: e.pl >= 0 ? green : red,
         violationsText: `${e.violations} violation${e.violations !== 1 ? "s" : ""}`,
         tradesText: `${e.trades} trade${e.trades !== 1 ? "s" : ""}`,
         winRateText: `${winRate}%`,
         avgRText: `${avgR >= 0 ? "+" : ""}${avgR.toFixed(1)}R`, avgRColor: avgR >= 0 ? green : red,
-        bestTradeText: `+$${bestTrade.toFixed(2)}`,
-        worstTradeText: `-$${Math.abs(worstTrade).toFixed(2)}`,
+        bestTradeText: `+$${this.fmtMoney(bestTrade, 2)}`,
+        worstTradeText: `-$${this.fmtMoney(Math.abs(worstTrade), 2)}`,
         adherenceText: `${adherencePct}%`,
         narrative,
       };
@@ -1477,7 +1710,7 @@ class Component extends DCLogic {
 
     const navDefs = [
       ["dashboard", "◆", "Dashboard", ""],
-      ["account", "◎", "Account Overview", `$${currentBalance.toFixed(2)}`],
+      ["account", "◎", "Account Overview", `$${this.fmtMoney(currentBalance, 2)}`],
       ["setups", "◈", "Setup Library", `Best: ${bestSetup.name}`],
       ["instruments", "◇", "Instrument Library", `Best: ${bestInstrument.name}`],
       ["rules", "▤", "Rules", `${rules.filter(r => r.active).length} of ${rules.length} active`],
@@ -1492,7 +1725,7 @@ class Component extends DCLogic {
       go: () => this.setPage(id),
     }));
 
-    const rulesVals = rules.map((r, i) => ({
+    const rulesVals = evaluatedRules.map((r, i) => ({
       label: r.label, detail: r.detail,
       textColor: r.active ? "#EDF1F5" : "#5A6272",
       trackColor: r.active ? teal : "rgba(255,255,255,0.12)",
@@ -1500,9 +1733,9 @@ class Component extends DCLogic {
       toggle: () => this.toggleRule(i),
       remove: () => this.removeRule(i),
     }));
-    const ruleStats = rules.map(r => ({
+    const ruleStats = evaluatedRules.map(r => ({
       label: r.label,
-      cost: r.violations > 0 ? `-$${Math.abs(r.cost).toFixed(2)}` : "—",
+      cost: r.violations > 0 ? `-$${this.fmtMoney(Math.abs(r.cost), 2)}` : "—",
       violationsText: `${r.violations} violation${r.violations !== 1 ? "s" : ""}${!r.active ? " · inactive" : ""}`,
       opacity: r.active ? "1" : "0.55",
     }));
@@ -1558,8 +1791,8 @@ class Component extends DCLogic {
       equityPoints, linePath, fillPath, hasSelectedTrade, selectedTrade,
       yAxisLabels, xAxisLabels, startBalanceLineY, startingEquityLabel,
       chartWindowLabel, canZoomIn, canZoomOut, zoomChartIn: this.zoomChartIn, zoomChartOut: this.zoomChartOut,
-      currentBalanceLabel: `$${currentBalance.toFixed(2)}`,
-      todaysPlLabel: `${todaysPl >= 0 ? "+" : "-"}$${Math.abs(todaysPl).toFixed(2)} today`,
+      currentBalanceLabel: `$${this.fmtMoney(currentBalance, 2)}`,
+      todaysPlLabel: `${todaysPl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(todaysPl), 2)} today`,
       todaysPlColor: todaysPl >= 0 ? green : red,
       winRatePctLabel: hasTradesData ? `${winRatePct}% win rate` : "no trades yet",
       edgeScoreLabel: String(edgeScore),
@@ -1580,6 +1813,9 @@ class Component extends DCLogic {
       customRuleText: this.state.customRuleText, onCustomTextChange: this.onCustomTextChange, addCustomRule: this.addCustomRule,
       uploadedCount: `${uploadedRaw.length} trade${uploadedRaw.length !== 1 ? "s" : ""}`,
       startingBalance: settings.startingBalance, onBalanceChange: this.onBalanceChange,
+      needsStartingBalance: settings.startingBalance == null, hasStartingBalance: settings.startingBalance != null,
+      onboardingBalanceInput: this.state.onboardingBalanceInput, onOnboardingBalanceChange: this.onOnboardingBalanceChange,
+      confirmStartingBalance: this.confirmStartingBalance,
       marketCloseTime: settings.marketCloseTime, onCloseTimeChange: this.onCloseTimeChange,
       timezone: settings.timezone, onTimezoneChange: this.onTimezoneChange,
       extractionApiUrl: settings.extractionApiUrl, onExtractionUrlChange: this.onExtractionUrlChange,
@@ -1598,6 +1834,7 @@ class Component extends DCLogic {
         onDateChange: this.onPendingFieldChange(p._id, "date"),
         onSetupChange: this.onPendingFieldChange(p._id, "setup"),
         onRChange: this.onPendingFieldChange(p._id, "r"),
+        onRiskPctChange: this.onPendingFieldChange(p._id, "riskPct"),
         remove: () => this.removePendingTrade(p._id),
       })),
       pendingCount: this.state.pendingTrades.length,
