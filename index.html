@@ -414,7 +414,18 @@ body{margin:0;background:#0A0C10}
         <div style="font-size:10.5px;color:#7C8794;margin-bottom:16px">{{tradeCount}} trades logged</div>
 
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:600">{{calendarMonth}}</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <button sc-camel-on-click="{{prevCalendarMonth}}" style="width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#EDF1F5;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0">‹</button>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:600;min-width:118px;text-align:center">{{calendarMonth}}</div>
+            <button sc-camel-on-click="{{nextCalendarMonth}}" style="width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#EDF1F5;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;padding:0">›</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <button sc-camel-on-click="{{jumpToCurrentMonth}}" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#7C8794;border-radius:7px;padding:5px 9px;font-size:9.5px;cursor:pointer;font-family:'IBM Plex Mono',monospace">Today</button>
+            <label style="width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#22D3C8;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;position:relative">
+              📅
+              <input type="date" sc-camel-on-change="{{onJumpToDate}}" style="position:absolute;inset:0;opacity:0;cursor:pointer">
+            </label>
+          </div>
         </div>
         <div style="border-radius:16px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);padding:10px;flex:1;display:flex;flex-direction:column;min-height:0">
           <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px">
@@ -459,6 +470,18 @@ body{margin:0;background:#0A0C10}
                 <div style="font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700">{{dayDetail.winRate}}</div>
               </div>
             </div>
+          </div>
+          <div style="font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:#7C8794;margin-bottom:10px">Trades</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{dayDetail.trades}}" as="dt" hint-placeholder-count="4">
+              <div style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between">
+                <div>
+                  <div style="font-size:12.5px;font-weight:600">{{dt.pair}} · {{dt.side}}</div>
+                  <div style="font-size:10px;color:#7C8794;margin-top:2px">{{dt.setup}}</div>
+                </div>
+                <div style="font-size:13px;font-weight:700;color:{{dt.plColor}}">{{dt.pl}}</div>
+              </div>
+            </sc-for>
           </div>
         </sc-if>
       </div>
@@ -520,19 +543,20 @@ body{margin:0;background:#0A0C10}
               <div>
                 <div style="font-size:9px;letter-spacing:0.08em;color:#7C8794;margin-bottom:4px">WIN RATE</div>
                 <div style="font-size:15px;font-weight:700">{{summaryDetail.winRateText}}</div>
+                <div style="font-size:9.5px;color:#7C8794;margin-top:2px">{{summaryDetail.winLossText}}</div>
               </div>
               <div>
                 <div style="font-size:9px;letter-spacing:0.08em;color:#7C8794;margin-bottom:4px">AVG R-MULTIPLE</div>
                 <div style="font-size:15px;font-weight:700;color:{{summaryDetail.avgRColor}}">{{summaryDetail.avgRText}}</div>
               </div>
               <div>
-                <div style="font-size:9px;letter-spacing:0.08em;color:#7C8794;margin-bottom:4px">RULE ADHERENCE</div>
-                <div style="font-size:15px;font-weight:700">{{summaryDetail.adherenceText}}</div>
+                <div style="font-size:9px;letter-spacing:0.08em;color:#7C8794;margin-bottom:4px">PROFIT FACTOR</div>
+                <div style="font-size:15px;font-weight:700">{{summaryDetail.profitFactorText}}</div>
               </div>
             </div>
           </div>
 
-          <div style="display:flex;gap:10px">
+          <div style="display:flex;gap:10px;margin-bottom:20px">
             <div style="flex:1;padding:14px;border-radius:14px;background:rgba(59,214,113,0.06);border:1px solid rgba(59,214,113,0.22)">
               <div style="font-size:9px;letter-spacing:0.08em;color:#7C8794;margin-bottom:4px">BEST TRADE</div>
               <div style="font-size:15px;font-weight:700;color:#3BD671">{{summaryDetail.bestTradeText}}</div>
@@ -542,6 +566,21 @@ body{margin:0;background:#0A0C10}
               <div style="font-size:15px;font-weight:700;color:#FF5B4F">{{summaryDetail.worstTradeText}}</div>
             </div>
           </div>
+
+          <sc-if value="{{summaryDetail.hasChildren}}" hint-placeholder-val="{{false}}">
+            <div style="font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:#7C8794;margin-bottom:10px">{{summaryDetail.childrenLabel}}</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{summaryDetail.children}}" as="ch" hint-placeholder-count="5">
+                <div sc-camel-on-click="{{ch.open}}" style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between;cursor:pointer">
+                  <div>
+                    <div style="font-size:12.5px;font-weight:600">{{ch.label}}</div>
+                    <div style="font-size:10px;color:#7C8794;margin-top:2px">{{ch.sub}}</div>
+                  </div>
+                  <div style="font-size:13px;font-weight:700;color:{{ch.plColor}}">{{ch.pl}}</div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
         </sc-if>
       </div>
     </sc-if>
@@ -918,9 +957,11 @@ class Component extends DCLogic {
     selectedTradeIdx: null,
     chartWindowDays: 7,
     selectedDayIdx: null,
+    calendarYear: null, calendarMonthIdx: null,
     selectedSummaryType: null,
     selectedSummaryIdx: 0,
     summaryCameFromHistory: false,
+    summaryNavStack: [],
     uploadStep: "idle", // idle | reading | review
     onboardingBalanceInput: "",
     pendingTrades: [], // staged trades shown on the review screen, one per uploaded file
@@ -1035,14 +1076,46 @@ class Component extends DCLogic {
   zoomChartOut = () => this.setState(s => ({ chartWindowDays: Math.min(365, s.chartWindowDays * 2), selectedTradeIdx: null }));
 
   goToDay = (i) => this.setState({ page: "dayDetail", selectedDayIdx: i });
+  prevCalendarMonth = () => this.setState(s => {
+    const today = new Date();
+    const y = s.calendarYear != null ? s.calendarYear : today.getFullYear();
+    const m = s.calendarMonthIdx != null ? s.calendarMonthIdx : today.getMonth();
+    const d = new Date(y, m - 1, 1);
+    return { calendarYear: d.getFullYear(), calendarMonthIdx: d.getMonth() };
+  });
+  nextCalendarMonth = () => this.setState(s => {
+    const today = new Date();
+    const y = s.calendarYear != null ? s.calendarYear : today.getFullYear();
+    const m = s.calendarMonthIdx != null ? s.calendarMonthIdx : today.getMonth();
+    const d = new Date(y, m + 1, 1);
+    return { calendarYear: d.getFullYear(), calendarMonthIdx: d.getMonth() };
+  });
+  jumpToCurrentMonth = () => this.setState({ calendarYear: null, calendarMonthIdx: null });
+  onJumpToDate = (e) => {
+    const v = e.target.value; // "YYYY-MM-DD"
+    if (!v) return;
+    const [y, m, d] = v.split("-").map(Number);
+    this.setState({ calendarYear: y, calendarMonthIdx: m - 1, page: "journal" });
+  };
   backFromDay = () => this.setState({ page: "journal" });
 
   openSummary = (type, idx, fromHistory) => this.setState({
     page: "summaryDetail", selectedSummaryType: type, selectedSummaryIdx: idx,
-    summaryCameFromHistory: !!fromHistory,
+    summaryCameFromHistory: !!fromHistory, summaryNavStack: [],
   });
+  openChildSummary = (type, idx) => this.setState(s => ({
+    selectedSummaryType: type, selectedSummaryIdx: idx,
+    summaryNavStack: [...s.summaryNavStack, { type: s.selectedSummaryType, idx: s.selectedSummaryIdx }],
+  }));
   openSummaryHistory = (type) => this.setState({ page: "summaryHistory", selectedSummaryType: type });
-  backFromSummaryDetail = () => this.setState(s => ({ page: s.summaryCameFromHistory ? "summaryHistory" : "summaries" }));
+  backFromSummaryDetail = () => this.setState(s => {
+    if (s.summaryNavStack.length) {
+      const stack = [...s.summaryNavStack];
+      const prev = stack.pop();
+      return { selectedSummaryType: prev.type, selectedSummaryIdx: prev.idx, summaryNavStack: stack };
+    }
+    return { page: s.summaryCameFromHistory ? "summaryHistory" : "summaries" };
+  });
   backFromSummaryHistory = () => this.setState({ page: "summaries" });
 
   readFileAsBase64 = (file) => new Promise((resolve, reject) => {
@@ -1441,25 +1514,29 @@ class Component extends DCLogic {
 
     const dow = ["S","M","T","W","T","F","S"];
     const TODAY = new Date();
-    const calendarMonth = TODAY.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    const viewedYear = this.state.calendarYear != null ? this.state.calendarYear : TODAY.getFullYear();
+    const viewedMonth = this.state.calendarMonthIdx != null ? this.state.calendarMonthIdx : TODAY.getMonth();
+    const viewedMonthDate = new Date(viewedYear, viewedMonth, 1);
+    const calendarMonth = viewedMonthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
     const tradesByDate = {};
     this.state.uploadedTrades.forEach(t => {
-      if (!tradesByDate[t.date]) tradesByDate[t.date] = { pl: 0, count: 0 };
+      if (!tradesByDate[t.date]) tradesByDate[t.date] = { pl: 0, count: 0, trades: [] };
       tradesByDate[t.date].pl = +(tradesByDate[t.date].pl + t.pl).toFixed(2);
       tradesByDate[t.date].count += 1;
+      tradesByDate[t.date].trades.push(t);
     });
-    const calMonthFirst = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
-    const daysInMonth = new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0).getDate();
+    const calMonthFirst = new Date(viewedYear, viewedMonth, 1);
+    const daysInMonth = new Date(viewedYear, viewedMonth + 1, 0).getDate();
     const leadingBlanks = calMonthFirst.getDay();
     const calendarDays = [];
     for (let i = 0; i < leadingBlanks; i++) calendarDays.push({ blank: true, notBlank: false });
     for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = `${TODAY.getFullYear()}-${String(TODAY.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dateStr = `${viewedYear}-${String(viewedMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const info = tradesByDate[dateStr];
       const hasTrades = !!info;
       const idx = calendarDays.length;
       calendarDays.push({
-        blank: false, notBlank: true, day,
+        blank: false, notBlank: true, day, dateStr,
         hasTrades, rawPl: hasTrades ? info.pl : 0, rawTrades: hasTrades ? info.count : 0,
         pl: hasTrades ? `${info.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(info.pl), 0)}` : "—",
         plColor: !hasTrades ? "#5A6272" : info.pl >= 0 ? green : red,
@@ -1469,17 +1546,28 @@ class Component extends DCLogic {
       });
     }
     const calendarDow = dow.map(d => ({ label: d }));
+    const isCurrentMonth = viewedYear === TODAY.getFullYear() && viewedMonth === TODAY.getMonth();
 
     const selectedDayIdx = this.state.selectedDayIdx;
     const hasDayDetail = selectedDayIdx !== null && !!calendarDays[selectedDayIdx] && calendarDays[selectedDayIdx].notBlank;
     const dayDetailRaw = hasDayDetail ? calendarDays[selectedDayIdx] : null;
-    const dayDetail = dayDetailRaw ? {
-      dayLabel: `${calendarMonth.split(" ")[0]} ${dayDetailRaw.day}`,
-      pl: dayDetailRaw.pl, plColor: dayDetailRaw.plColor,
-      tradesLabel: dayDetailRaw.hasTrades ? `${dayDetailRaw.rawTrades} trade${dayDetailRaw.rawTrades === 1 ? "" : "s"}` : "No trades logged",
-      hasTrades: dayDetailRaw.hasTrades,
-      winRate: "—",
-    } : null;
+    const dayDetail = dayDetailRaw ? (() => {
+      const dayInfo = tradesByDate[dayDetailRaw.dateStr];
+      const dayTrades = dayInfo ? dayInfo.trades : [];
+      const wins = dayTrades.filter(t => t.pl > 0).length;
+      return {
+        dayLabel: `${calendarMonth.split(" ")[0]} ${dayDetailRaw.day}`,
+        pl: dayDetailRaw.pl, plColor: dayDetailRaw.plColor,
+        tradesLabel: dayDetailRaw.hasTrades ? `${dayDetailRaw.rawTrades} trade${dayDetailRaw.rawTrades === 1 ? "" : "s"}` : "No trades logged",
+        hasTrades: dayDetailRaw.hasTrades,
+        winRate: dayTrades.length ? `${Math.round((wins / dayTrades.length) * 100)}%` : "—",
+        trades: dayTrades.map(t => ({
+          pair: t.pair, side: t.side,
+          pl: `${t.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(t.pl), 2)}`, plColor: t.pl >= 0 ? green : red,
+          setup: t.setup || "—",
+        })),
+      };
+    })() : null;
 
     // ── Real trade history — built entirely from what the user has uploaded.
     // Starts empty; nothing here is synthetic/mock data.
@@ -1607,20 +1695,33 @@ class Component extends DCLogic {
     const PERIOD_LABELS = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", quarterly: "Quarterly", annual: "Annual" };
     const PERIOD_ORDER = ["daily", "weekly", "monthly", "quarterly", "annual"];
     // ── Summaries — generated from real uploaded trades, grouped into each period.
-    // Most recent period first within each type.
+    // Most recent period first within each type. Each entry keeps its raw date/trades
+    // so summary pages can drill down into their constituent sub-periods.
     const isoWeekStart = (d) => { const t = new Date(d); const day = (t.getDay() + 6) % 7; t.setDate(t.getDate() - day); return t; };
     const groupTrades = (keyFn, labelFn) => {
       const groups = {};
       allUploaded.forEach(t => {
         const d = new Date(t.date + "T12:00:00");
         const key = keyFn(d);
-        if (!groups[key]) groups[key] = { key, d, pl: 0, trades: 0, violations: 0 };
+        if (!groups[key]) groups[key] = { key, d, pl: 0, trades: [], violations: 0 };
         groups[key].pl = +(groups[key].pl + t.pl).toFixed(2);
-        groups[key].trades += 1;
+        groups[key].trades.push(t);
       });
       return Object.values(groups)
         .sort((a, b) => b.d - a.d)
-        .map(g => ({ range: labelFn(g.d), pl: g.pl, trades: g.trades, violations: g.violations }));
+        .map(g => {
+          const wins = g.trades.filter(t => t.pl > 0);
+          const losses = g.trades.filter(t => t.pl < 0);
+          const grossProfit = wins.reduce((s, t) => s + t.pl, 0);
+          const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pl, 0));
+          return {
+            range: labelFn(g.d), pl: g.pl, trades: g.trades.length, violations: g.violations,
+            d: g.d, rawTrades: g.trades,
+            wins: wins.length, losses: losses.length,
+            winRate: g.trades.length ? Math.round((wins.length / g.trades.length) * 100) : 0,
+            grossProfit, grossLoss, profitFactor: grossLoss > 0 ? grossProfit / grossLoss : 0,
+          };
+        });
     };
     const summaryData = {
       daily: groupTrades(
@@ -1645,18 +1746,47 @@ class Component extends DCLogic {
         (d) => `${d.getFullYear()}`
       ),
     };
+    const CHILD_TYPE = { weekly: "daily", monthly: "weekly", quarterly: "monthly", annual: "quarterly" };
+    const childrenOf = (type, e) => {
+      if (type === "daily") {
+        return e.rawTrades.map(t => ({
+          isTrade: true,
+          label: `${t.pair} · ${t.side}`,
+          sub: t.setup || "—",
+          pl: `${t.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(t.pl), 2)}`, plColor: t.pl >= 0 ? green : red,
+          open: () => {},
+        }));
+      }
+      const childType = CHILD_TYPE[type];
+      if (!childType) return [];
+      const inRange = (childDate) => {
+        if (type === "weekly") return childDate.toDateString() === e.d.toDateString();
+        if (type === "monthly") return isoWeekStart(childDate).getFullYear() === e.d.getFullYear() && isoWeekStart(childDate).getMonth() === e.d.getMonth();
+        if (type === "quarterly") return childDate.getFullYear() === e.d.getFullYear() && Math.floor(childDate.getMonth() / 3) === Math.floor(e.d.getMonth() / 3);
+        if (type === "annual") return childDate.getFullYear() === e.d.getFullYear();
+        return false;
+      };
+      return summaryData[childType]
+        .map((c, i) => ({ c, i }))
+        .filter(({ c }) => inRange(c.d))
+        .map(({ c, i }) => ({
+          isTrade: false,
+          label: c.range, sub: `${c.trades} trade${c.trades !== 1 ? "s" : ""}`,
+          pl: `${c.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(c.pl), 2)}`, plColor: c.pl >= 0 ? green : red,
+          open: () => this.openChildSummary(childType, i),
+        }));
+    };
     const fmtSummaryEntry = (type, e, idx) => {
-      const avgPerTrade = e.pl / Math.max(1, e.trades);
-      const winRate = Math.max(28, Math.min(85, Math.round(50 + avgPerTrade / 4)));
-      const avgR = Math.max(-1.5, Math.min(2.5, avgPerTrade / 80));
-      const bestTrade = e.pl >= 0 ? Math.abs(avgPerTrade) * 2.6 + 40 : Math.abs(avgPerTrade) * 1.4 + 20;
-      const worstTrade = -(Math.abs(avgPerTrade) * 1.9 + 35);
-      const adherencePct = Math.max(35, 100 - e.violations * 7);
+      const bestTrade = e.rawTrades.length ? e.rawTrades.reduce((a, b) => (b.pl > a.pl ? b : a)) : null;
+      const worstTrade = e.rawTrades.length ? e.rawTrades.reduce((a, b) => (b.pl < a.pl ? b : a)) : null;
+      const rNumeric = e.rawTrades.filter(t => t.r && !isNaN(parseFloat(t.r)));
+      const avgR = rNumeric.length ? rNumeric.reduce((s, t) => s + parseFloat(t.r), 0) / rNumeric.length : null;
       const periodWord = { daily: "day", weekly: "week", monthly: "month", quarterly: "quarter", annual: "year" }[type];
-      const narrative = `You took ${e.trades} trade${e.trades !== 1 ? "s" : ""} this ${periodWord}, closing ${winRate}% in your favor. ` +
+      const narrative = `You took ${e.trades} trade${e.trades !== 1 ? "s" : ""} this ${periodWord}, closing ${e.winRate}% in your favor` +
+        (e.profitFactor > 0 ? ` with a profit factor of ${e.profitFactor.toFixed(2)}.` : `.`) + ` ` +
         (e.violations > 0
           ? `${e.violations} trade${e.violations !== 1 ? "s" : ""} broke a rule you'd set — worth a look before the next ${periodWord}.`
-          : `Every trade stayed inside your rules — clean ${periodWord}.`);
+          : `Every trade stayed inside your active rules — clean ${periodWord}.`);
       return {
         type, idx,
         title: `${PERIOD_LABELS[type]} story`,
@@ -1664,12 +1794,16 @@ class Component extends DCLogic {
         pl: `${e.pl >= 0 ? "+" : "-"}$${this.fmtMoney(Math.abs(e.pl), 2)}`, plColor: e.pl >= 0 ? green : red,
         violationsText: `${e.violations} violation${e.violations !== 1 ? "s" : ""}`,
         tradesText: `${e.trades} trade${e.trades !== 1 ? "s" : ""}`,
-        winRateText: `${winRate}%`,
-        avgRText: `${avgR >= 0 ? "+" : ""}${avgR.toFixed(1)}R`, avgRColor: avgR >= 0 ? green : red,
-        bestTradeText: `+$${this.fmtMoney(bestTrade, 2)}`,
-        worstTradeText: `-$${this.fmtMoney(Math.abs(worstTrade), 2)}`,
-        adherenceText: `${adherencePct}%`,
+        winRateText: `${e.winRate}%`,
+        winLossText: `${e.wins}W / ${e.losses}L`,
+        avgRText: avgR !== null ? `${avgR >= 0 ? "+" : ""}${avgR.toFixed(2)}R` : "—", avgRColor: (avgR || 0) >= 0 ? green : red,
+        profitFactorText: e.profitFactor > 0 ? e.profitFactor.toFixed(2) : "—",
+        bestTradeText: bestTrade ? `+$${this.fmtMoney(Math.abs(bestTrade.pl), 2)}` : "—",
+        worstTradeText: worstTrade && worstTrade.pl < 0 ? `-$${this.fmtMoney(Math.abs(worstTrade.pl), 2)}` : "—",
         narrative,
+        children: childrenOf(type, e),
+        hasChildren: childrenOf(type, e).length > 0,
+        childrenLabel: type === "daily" ? "Trades" : `${PERIOD_LABELS[CHILD_TYPE[type]]} summaries`,
       };
     };
     const currentSummaries = PERIOD_ORDER.map(type => {
@@ -1787,6 +1921,9 @@ class Component extends DCLogic {
       hasSummaryHistory, summaryHistoryTitle, summaryHistoryList,
       backFromSummaryHistory: this.backFromSummaryHistory,
       hasDayDetail, dayDetail, backFromDay: this.backFromDay,
+      prevCalendarMonth: this.prevCalendarMonth, nextCalendarMonth: this.nextCalendarMonth,
+      jumpToCurrentMonth: this.jumpToCurrentMonth, isCurrentMonth,
+      onJumpToDate: this.onJumpToDate,
       trades, tradeCount: `${uploadedRaw.length} trade${uploadedRaw.length !== 1 ? "s" : ""}`,
       equityPoints, linePath, fillPath, hasSelectedTrade, selectedTrade,
       yAxisLabels, xAxisLabels, startBalanceLineY, startingEquityLabel,
