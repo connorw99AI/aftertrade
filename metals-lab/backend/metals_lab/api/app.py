@@ -154,7 +154,7 @@ def create_app(state: State) -> FastAPI:
             "provisional_trades": sum(1 for t in trades if t["provisional"]),
             "return_pct": round((book.equity / alloc - 1) * 100, 3) if book and alloc else None,
             "max_drawdown_closed_pct": round(mdd * 100, 3),
-            "sample_size_note": None if len(trades) >= 30 else f"{len(trades)} closed trades: too few to judge",
+            "sample_size_note": None if len(trades) >= 30 else f"{len(trades)} closed trade{'' if len(trades) == 1 else 's'}: too few to judge",
             "last_signal": {**last_sig, "signal": json.loads(last_sig["signal_json"])} if last_sig else None,
             "last_audit": last_audit, "last_risk": last_risk,
         }

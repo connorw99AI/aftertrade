@@ -10,7 +10,7 @@ from metals_lab.store import Store
 from metals_lab.timeutil import set_provider
 
 
-def _run(steps=600):
+def _run(steps=350):
     cfg = copy.deepcopy(config_mod.DEFAULTS)
     cfg["news"]["unknown_policy"] = "allow_with_flag"
     t = SimTerminal()

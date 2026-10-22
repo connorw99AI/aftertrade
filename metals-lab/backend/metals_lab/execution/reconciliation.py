@@ -202,7 +202,17 @@ class Reconciler:
         outs = [x for x in ds if x["entry"] in (1, 2, 3)]
         exit_price = outs[-1]["price"] if outs else None
         sig = json.loads(first["signal_json"] or "{}")
-        exit_reason = "; ".join(sorted({(x["comment"] or "") for x in outs})) or "closed"
+        reasons = set()
+        for x in outs:
+            c = x["comment"] or ""
+            it = self.db.one("SELECT proposal_json FROM intents WHERE comment_tag=?", (c,)) if c.startswith("ML") else None
+            if it:
+                reasons.add(json.loads(it["proposal_json"] or "{}").get("signal", {}).get("rationale") or "strategy exit")
+            elif "sl" in c.lower() or "tp" in c.lower():
+                reasons.add(f"server-side stop/target ({c})")
+            else:
+                reasons.add(c or "closed outside the bot (no comment)")
+        exit_reason = "; ".join(sorted(reasons)) or "closed"
         self.db.x("INSERT INTO trades(trade_id,bot_id,group_id,position_keys_json,symbol,side,volume,entry_time,exit_time,entry_price,"
                   "exit_price,gross,commission,swap,fee,net,provisional,entry_rationale,exit_rationale) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
                   (group_id, bot_id, group_id, json.dumps([r["position_key"] for r in rows]),

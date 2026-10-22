@@ -10,3 +10,4 @@ config/news_calendar.csv
 dashboard/node_modules/
 dashboard/.next/
 *.log
+dashboard/tsconfig.tsbuildinfo
