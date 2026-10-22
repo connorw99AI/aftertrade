@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+data/
+reports/
+config/config.yaml
+config/news_calendar.csv
+dashboard/node_modules/
+dashboard/.next/
+*.log

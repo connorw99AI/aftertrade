@@ -1,0 +1,10 @@
+# as_of: 1970-01-01T00:00:00Z
+# Operator-maintained calendar. Verify each row against the official sources and then set as_of to the
+# verification time. Until as_of is recent, the auditor reports news status UNKNOWN.
+# Sources: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm
+#          https://www.bls.gov/schedule/news_release/   (CPI, Employment Situation, PPI)
+#          https://www.bea.gov/news/schedule              (GDP, PCE)
+# Times in UTC. impact: HIGH | MEDIUM | LOW. known_since_utc enables point-in-time backtests.
+# The example row below is a FORMAT EXAMPLE ONLY, not a verified date.
+event_time_utc,currency,title,impact,known_since_utc
+2099-01-01T13:30:00Z,USD,FORMAT EXAMPLE - replace with verified events,HIGH,2098-12-01T00:00:00Z

@@ -1,0 +1,73 @@
+# Metals Creature Lab - example configuration.
+# Copy to config/config.yaml. Contains NO credentials: the system attaches to the MT5
+# terminal you have already logged into. Credential-like keys are rejected on load.
+
+mt5:
+  terminal_path: null            # e.g. "C:/Program Files/MetaTrader 5/terminal64.exe"; null = attach to running terminal
+  timeout_ms: 60000
+  server_timezone: auto          # or an IANA zone matching your broker's server clock, e.g. "Europe/Athens"
+  sessions_export: null          # e.g. "C:/Users/<you>/AppData/Roaming/MetaQuotes/Terminal/Common/Files/metals_lab_sessions.json"
+
+instruments:
+  gold: null                     # exact terminal symbol (e.g. "XAUUSD"); required if discovery finds several candidates
+  silver: null
+  reference_symbols: []          # optional read-only auditor inputs, e.g. ["EURUSD"]; never traded
+
+# Optional explicit sessions in SERVER time if you do not use the MQL5 export.
+# sessions:
+#   gold:   {windows: [{days: [0,1,2,3,4], start: "01:00", end: "24:00"}], closures: ["2026-12-25"]}
+#   silver: {windows: [{days: [0,1,2,3,4], start: "01:00", end: "24:00"}], closures: ["2026-12-25"]}
+
+capital:
+  bot_fraction: 0.10             # each of 10 bots gets 10% of the starting balance snapshot
+
+risk:
+  risk_per_trade: 0.005
+  daily_loss_pause: 0.02
+  max_drawdown_pause: 0.10
+  max_positions_per_bot: 2
+  max_bot_margin_fraction: 0.5
+  min_account_margin_level: 300
+  max_account_margin_used: 0.5
+  max_metals_gross_exposure: 3.0
+  max_same_direction_exposure: 2.0
+  max_spread_points: {GOLD: 80, SILVER: 80}
+  commission_per_lot_side_estimate: 0.0   # set to your demo's commission for planning; actual commission comes from deals
+
+news:
+  provider: csv
+  path: config/news_calendar.csv
+  max_age_hours: 192
+  pre_minutes: 30
+  post_minutes: 30
+  impacts: [HIGH]
+  unknown_policy: manual_review   # manual_review | delay | allow_with_flag
+  filter_enabled: true
+
+execution:
+  deviation_points: 30
+  approval_ttl_seconds: 20
+  loop_interval_seconds: 10
+  intent_timeout_seconds: 120
+  settle_seconds: 300
+
+api:
+  host: 127.0.0.1
+  port: 8765
+  token_env: METALS_LAB_API_TOKEN
+
+storage:
+  db_path: data/state.sqlite
+  cache_dir: data/cache
+
+strategies:
+  S01: {params: {}}
+  S02: {params: {}}
+  S03: {params: {}}
+  S04: {params: {}}
+  S05: {params: {}}
+  S06: {params: {}}
+  S07: {params: {}}
+  S08: {params: {}}
+  S09: {params: {}}
+  S10: {params: {}}
