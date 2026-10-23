@@ -2,21 +2,21 @@
 Generated from `Strategy.describe()`; regenerate with `python scripts/gen_strategy_doc.py` after changing rules.
 
 ## S01 Trend Pullback Scalper
-- Style: scalp | instruments: GOLD, SILVER | timeframes: M5 (decisions on completed M5 bars) | min history: 700 bars | magic: 7710001
+- Style: scalp | instruments: GOLD, SILVER | timeframes: M1 (decisions on completed M1 bars) | min history: 700 bars | magic: 7710001
 
-Trades short pullbacks to the 20-EMA in the direction of an established M5 trend (EMA50 vs EMA200 with positive slope), only during London/New York liquidity.
+Trades short pullbacks to the 20-EMA in the direction of an established M1 trend (EMA50 vs EMA200 with positive slope), only during London/New York liquidity.
 
 **Long (OPEN_LONG / CLOSE_LONG).** Uptrend (EMA50 > EMA200 and EMA50 rising over 10 bars); previous bar's low touched/pierced EMA20 with RSI(7) < pullback level; current bar closes back above EMA20, bullish body, RSI rising.
 
 **Short (OPEN_SHORT / COVER_SHORT).** Mirror image: downtrend, rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20.
 
-**Exits, stops, targets, max holding.** Server-side stop at entry -/+ stop_atr x ATR(14); target at reward_risk x stop distance; close early if price closes through EMA50 against the trade; max hold 12 bars (1 hour).
+**Exits, stops, targets, max holding.** Server-side stop at entry -/+ stop_atr x ATR(14); target at reward_risk x stop distance; close early if price closes through EMA50 against the trade; max hold 30 bars (30 minutes).
 
 **Invalidation.** Close through EMA50 against the position invalidates the trend premise.
 
 **Spread, liquidity and volatility filters.** Hours 07:00-20:00 UTC; spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 to avoid dead and disorderly markets.
 
-**Limitations.** Generic trend-pullback logic, not a published metals-specific edge. On M5 OHLC the order of stop/target hits inside a bar is unknown; costs are a large fraction of the target.
+**Limitations.** Generic trend-pullback logic, not a published metals-specific edge. On M1 OHLC the order of stop/target hits inside a bar is unknown; costs are a large fraction of the target.
 
 | Parameter | Default | Research grid | Rationale |
 |---|---|---|---|
@@ -26,9 +26,9 @@ Trades short pullbacks to the 20-EMA in the direction of an established M5 trend
 | `rsi_n` | 7 | 5, 7 | Short RSI to measure pullback depth. |
 | `rsi_pull` | 40 | 35, 40, 45 | Pullback must push RSI below this (long). |
 | `stop_atr` | 1.2 | 1.0, 1.2, 1.5 | Stop beyond normal M5 noise. |
-| `reward_risk` | 1.5 | 1.0, 1.5, 2.0 | Target as multiple of stop distance. |
-| `max_hold_bars` | 12 | 8, 12, 18 | Scalps that do not work quickly are closed. |
-| `max_spread_atr` | 0.15 | 0.1, 0.15, 0.2 | Skip when spread consumes >15% of ATR. |
+| `reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Larger multiple so the target clears M1 costs. |
+| `max_hold_bars` | 30 | 15, 30, 45 | Scalps that do not work quickly are closed (30 min). |
+| `max_spread_atr` | 0.3 | 0.2, 0.3, 0.4 | M1 ranges are small: skip when spread exceeds 30% of ATR(14,M1). |
 | `start_hour` | 7 | – | UTC start of liquid hours. |
 | `end_hour` | 20 | – | UTC end of liquid hours. |
 
@@ -83,7 +83,7 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 
 **Short (OPEN_SHORT / COVER_SHORT).** Mirror: high of last two bars > prior N-bar high, close back below it with bearish body.
 
-**Exits, stops, targets, max holding.** Stop beyond the failed-breakout extreme + 0.2 ATR; target reward_risk x risk; max hold 10 bars.
+**Exits, stops, targets, max holding.** Stop beyond the failed-breakout extreme + 0.2 ATR; target reward_risk x risk; max hold 10 bars (50 minutes).
 
 **Invalidation.** A new extreme beyond the breakout high/low (= the stop) invalidates the failure.
 
@@ -96,27 +96,27 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 | `lookback` | 20 | 15, 20, 30 | Prior range length (Turtle Soup uses 20). |
 | `reward_risk` | 1.5 | 1.0, 1.5, 2.0 | Target multiple. |
 | `adx_max` | 30 | 25, 30 | Avoid fading strong trends. |
-| `max_hold_bars` | 10 | 6, 10, 15 | Reversal should work quickly. |
-| `max_spread_atr` | 0.15 | 0.15 | Cost guard. |
+| `max_hold_bars` | 10 | 6, 10, 15 | Reversal should work quickly (50 min). |
+| `max_spread_atr` | 0.15 | 0.15, 0.2 | Cost guard: spread <= 15% of ATR(14,M5). |
 
 **Sources.**
 
 - Connors, L. & Raschke, L.B. (1995) Street Smarts: High Probability Short-Term Trading Strategies, M. Gordon Publishing - 'Turtle Soup' failed 20-day breakout pattern (daily bars; adapted here to M5, which is NOT validated by the source).
 
 ## S04 London Opening Range Breakout
-- Style: day | instruments: GOLD, SILVER | timeframes: M15 (decisions on completed M15 bars) | min history: 200 bars | magic: 7710004
+- Style: day | instruments: GOLD, SILVER | timeframes: M5 (decisions on completed M5 bars) | min history: 200 bars | magic: 7710004
 
 Builds the first hour range after the London open (Europe/London local time, so UK DST is handled) and trades the first decisive close beyond it, flat by late afternoon London time.
 
-**Long (OPEN_LONG / CLOSE_LONG).** First M15 close above OR high + buffer_atr x ATR(14) between OR end and entry cut-off, OR width within limits.
+**Long (OPEN_LONG / CLOSE_LONG).** First M5 close above OR high + buffer_atr x ATR(14) between OR end and entry cut-off, OR width within limits.
 
-**Short (OPEN_SHORT / COVER_SHORT).** First M15 close below OR low - buffer.
+**Short (OPEN_SHORT / COVER_SHORT).** First M5 close below OR low - buffer.
 
 **Exits, stops, targets, max holding.** Stop at the opposite side of the range (or range midpoint if the range is wider than wide_range_atr x ATR); target tp_range_mult x OR width; time exit at exit_time London.
 
 **Invalidation.** Close back inside the opposite half of the range = stop; one breakout attempt per day.
 
-**Spread, liquidity and volatility filters.** OR width between min_range_atr and max_range_atr x ATR(14, M15); spread guard.
+**Spread, liquidity and volatility filters.** OR width between min_range_atr and max_range_atr x ATR(14, M5); spread guard.
 
 **Limitations.** Spot metals trade almost 24h; 'London open' is a liquidity event, not an exchange open, so ORB evidence from equities does not transfer automatically. Breakouts fail regularly on rotational days.
 
@@ -127,12 +127,12 @@ Builds the first hour range after the London open (Europe/London local time, so 
 | `or_end` | 09:00 | 08:30, 09:00 | One-hour opening range. |
 | `entry_cutoff` | 12:00 | 11:00, 12:00, 13:00 | No new entries after midday London. |
 | `exit_time` | 16:30 | 15:00, 16:30 | Flat before US afternoon. |
-| `buffer_atr` | 0.1 | 0.0, 0.1, 0.25 | Close must clear the range by a small margin. |
-| `min_range_atr` | 1.0 | 0.5, 1.0 | Too-narrow ranges produce noise breaks. |
-| `max_range_atr` | 5.0 | 4.0, 5.0, 6.0 | Too-wide ranges leave little room. |
-| `wide_range_atr` | 3.0 | 3.0 | Use midpoint stop for wide ranges. |
+| `buffer_atr` | 0.2 | 0.0, 0.1, 0.25 | Close must clear the range by a small margin. |
+| `min_range_atr` | 2.0 | 1.5, 2.0, 3.0 | Too-narrow ranges produce noise breaks (in M5 ATRs). |
+| `max_range_atr` | 10.0 | 8.0, 10.0, 12.0 | Too-wide ranges leave little room (in M5 ATRs). |
+| `wide_range_atr` | 6.0 | 6.0 | Use midpoint stop for wide ranges (in M5 ATRs). |
 | `tp_range_mult` | 1.5 | 1.0, 1.5, 2.0 | Target as multiple of the range. |
-| `max_hold_bars` | 40 | – | Safety cap (10h). |
+| `max_hold_bars` | 120 | – | Safety cap (10h of M5 bars). |
 | `max_spread_atr` | 0.2 | – | Cost guard. |
 
 **Sources.**
@@ -142,7 +142,7 @@ Builds the first hour range after the London open (Europe/London local time, so 
 - Batten et al. (2017) PLoS ONE - intraday precious-metals volatility rises with the opening of major markets.
 
 ## S05 London-Range Breakout & Retest
-- Style: day | instruments: GOLD, SILVER | timeframes: M15 (decisions on completed M15 bars) | min history: 200 bars | magic: 7710005
+- Style: day | instruments: GOLD, SILVER | timeframes: M5 (decisions on completed M5 bars) | min history: 200 bars | magic: 7710005
 
 Marks the London-morning range (08:00-13:00 London). After a decisive break during the US session handover, waits for price to come back and hold the broken level before entering.
 
@@ -154,7 +154,7 @@ Marks the London-morning range (08:00-13:00 London). After a decisive break duri
 
 **Invalidation.** Close back inside the range beyond the level by more than stop distance = stop; setup expires after retest_bars.
 
-**Spread, liquidity and volatility filters.** Range width 1.5-8 ATR(M15); spread guard; one setup per side per day.
+**Spread, liquidity and volatility filters.** Range width 3-16 ATR(14, M5); spread guard; one setup per side per day.
 
 **Limitations.** Pattern literature is mostly equities/discretionary; retests are subjective and here are encoded with fixed tolerances. Many US releases fall inside the setup window; the auditor will delay those.
 
@@ -164,10 +164,10 @@ Marks the London-morning range (08:00-13:00 London). After a decisive break duri
 | `range_end` | 13:00 | – | Before US data/NY open. |
 | `breakout_atr` | 0.2 | 0.1, 0.2, 0.4 | Decisive close beyond level. |
 | `retest_tol_atr` | 0.25 | 0.15, 0.25, 0.4 | How close the retest must come. |
-| `retest_bars` | 8 | 6, 8, 12 | Setup expiry (2h). |
+| `retest_bars` | 24 | 12, 24, 36 | Setup expiry (2h of M5 bars). |
 | `stop_atr` | 0.5 | 0.5, 0.75 | Below the retest structure. |
 | `reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Target multiple. |
-| `max_hold_bars` | 32 | – | Safety cap. |
+| `max_hold_bars` | 96 | – | Safety cap (8h of M5 bars). |
 | `max_spread_atr` | 0.2 | – | Cost guard. |
 
 **Sources.**
@@ -177,15 +177,15 @@ Marks the London-morning range (08:00-13:00 London). After a decisive break duri
 - Cai, Cheung & Wong (2001) 'What moves the gold market?', J. Futures Markets 21(3):257-278 - intraday volatility patterns and US macro announcement effects (the reason the auditor guards 13:30/14:30 UK releases).
 
 ## S06 Volatility Compression Breakout
-- Style: day | instruments: GOLD, SILVER | timeframes: H1 (decisions on completed H1 bars) | min history: 300 bars | magic: 7710006
+- Style: day | instruments: GOLD, SILVER | timeframes: M15 (decisions on completed M15 bars) | min history: 300 bars | magic: 7710006
 
-Detects H1 volatility compression (Bollinger Bands inside Keltner Channels for several bars) and trades the direction of the release beyond the compression range.
+Detects M15 volatility compression (Bollinger Bands inside Keltner Channels for several bars) and trades the direction of the release beyond the compression range.
 
 **Long (OPEN_LONG / CLOSE_LONG).** Squeeze lasted >= min_squeeze bars and has just released; close > highest high of the squeeze period.
 
 **Short (OPEN_SHORT / COVER_SHORT).** Same release; close < lowest low of the squeeze period.
 
-**Exits, stops, targets, max holding.** Stop stop_atr x ATR(20); target reward_risk x risk; strategy close when close crosses back through EMA20; max hold 24 bars; flatten Friday from 20:00 UTC (weekend gap risk).
+**Exits, stops, targets, max holding.** Stop stop_atr x ATR(20); target reward_risk x risk; strategy close when close crosses back through EMA20; max hold 64 bars (16h); flatten Friday from 20:00 UTC (weekend gap risk).
 
 **Invalidation.** Close back through EMA20 against the position.
 
@@ -197,11 +197,11 @@ Detects H1 volatility compression (Bollinger Bands inside Keltner Channels for s
 |---|---|---|---|
 | `bb_k` | 2.0 | – | Standard. |
 | `kc_k` | 1.5 | 1.25, 1.5, 2.0 | Carter's setting. |
-| `min_squeeze` | 6 | 4, 6, 10 | Bars of compression required. |
+| `min_squeeze` | 12 | 8, 12, 20 | Bars of compression required (3h of M15). |
 | `stop_atr` | 1.5 | 1.0, 1.5, 2.0 | Stop. |
 | `reward_risk` | 2.0 | 1.5, 2.0, 3.0 | Target multiple. |
-| `max_hold_bars` | 24 | 12, 24, 48 | One day. |
-| `max_spread_atr` | 0.1 | – | Cost guard. |
+| `max_hold_bars` | 64 | 32, 64, 96 | 16 hours of M15 bars. |
+| `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are smaller than H1). |
 
 **Sources.**
 
@@ -272,29 +272,29 @@ Turtle-style multiday channel breakout: enter on a close beyond the prior 55-day
 - Hurst, Ooi & Pedersen (2017) 'A Century of Evidence on Trend-Following Investing', J. Portfolio Management 44(1).
 
 ## S09 Time-Series Momentum
-- Style: swing | instruments: GOLD, SILVER | timeframes: D1 (decisions on completed D1 bars) | min history: 200 bars | magic: 7710009
+- Style: swing | instruments: GOLD, SILVER | timeframes: H1 (decisions on completed H1 bars) | min history: 400 bars | magic: 7710009
 
-Each metal is held long or short according to the sign of its own volatility-scaled past return, re-evaluated weekly. Position size comes from the stop-based risk budget (a volatility scaling).
+Each metal is held long or short according to the sign of its own volatility-scaled past return, re-evaluated once per day on H1 bars (short-horizon adaptation). Position size comes from the stop-based risk budget (a volatility scaling).
 
-**Long (OPEN_LONG / CLOSE_LONG).** On the first D1 bar of each week: lookback return / (daily vol x sqrt(lookback)) > entry_strength.
+**Long (OPEN_LONG / CLOSE_LONG).** On the first H1 bar of each UTC day: lookback return / (daily vol x sqrt(lookback)) > entry_strength.
 
 **Short (OPEN_SHORT / COVER_SHORT).** Same, < -entry_strength.
 
-**Exits, stops, targets, max holding.** On weekly evaluation close if strength sign flips or |strength| < exit_strength; catastrophic server stop stop_atr x ATR(20).
+**Exits, stops, targets, max holding.** On the daily evaluation close if strength sign flips or |strength| < exit_strength; catastrophic server stop stop_atr x ATR(20).
 
 **Invalidation.** Sign reversal of the trend measure.
 
-**Spread, liquidity and volatility filters.** Spread guard; weekly rebalance only (limits turnover).
+**Spread, liquidity and volatility filters.** Spread guard; one evaluation per day (limits turnover).
 
-**Limitations.** Published results are portfolio-level across 58 markets; single-metal TSMOM is noisy. Weekly evaluation is a design choice.
+**Limitations.** Published results are portfolio-level across 58 markets; single-metal TSMOM is noisy. The H1, ~5-day horizon is an untested adaptation of the monthly-horizon evidence.
 
 | Parameter | Default | Research grid | Rationale |
 |---|---|---|---|
-| `lookback` | 126 | 63, 126, 252 | ~6 months, inside the 1-12m range studied. |
+| `lookback` | 120 | 48, 120, 240 | 120 H1 bars (~5 trading days); far shorter than the 1-12 month horizons studied. |
 | `entry_strength` | 0.5 | 0.25, 0.5, 1.0 | Require a meaningful trend. |
 | `exit_strength` | 0.0 | 0.0, 0.25 | Exit on sign flip. |
 | `stop_atr` | 3.0 | 3.0, 4.0 | Catastrophic stop only. |
-| `max_hold_bars` | 400 | – | Safety cap. |
+| `max_hold_bars` | 480 | – | Safety cap (~4 weeks of H1 bars). |
 | `max_spread_atr` | 0.05 | – | Cost guard. |
 
 **Sources.**
@@ -303,17 +303,17 @@ Each metal is held long or short according to the sign of its own volatility-sca
 - Kim, Tse & Wald (2016) 'Time series momentum and volatility scaling', J. Financial Markets 30 - critique: much of the effect comes from volatility scaling and weakens post-2009.
 
 ## S10 Gold/Silver Ratio Reversion
-- Style: swing | instruments: GOLD, SILVER | timeframes: D1 (decisions on completed D1 bars) | min history: 200 bars | magic: 7710010
+- Style: day | instruments: GOLD, SILVER | timeframes: M15 (decisions on completed M15 bars) | min history: 200 bars | magic: 7710010
 
-Relative-value research strategy on the log gold/silver ratio. When the ratio is stretched, buy the cheap metal and sell the rich one as one explicitly defined two-leg trade group; exit both legs together.
+Intraday relative-value strategy on the log gold/silver ratio (M15). When the ratio is stretched, buy the cheap metal and sell the rich one as one explicitly defined two-leg trade group; exit both legs together.
 
 **Long (OPEN_LONG / CLOSE_LONG).** z(ln(Gold/Silver), lookback) > entry_z: OPEN_LONG silver + OPEN_SHORT gold (group).
 
 **Short (OPEN_SHORT / COVER_SHORT).** z < -entry_z: OPEN_SHORT silver + OPEN_LONG gold (group).
 
-**Exits, stops, targets, max holding.** Close both legs when |z| < exit_z (reversion) or |z| > stop_z (divergence stop); max hold 40 days; each leg also carries a server stop at leg_stop_atr x ATR(20) so it is protected if the bot is offline. If one leg is closed (e.g. by its stop) the other leg is closed ('group broken').
+**Exits, stops, targets, max holding.** Close both legs when |z| < exit_z (reversion) or |z| > stop_z (divergence stop); max hold 96 bars (one day); each leg also carries a server stop at leg_stop_atr x ATR(20, M15) so it is protected if the bot is offline. If one leg is closed (e.g. by its stop) the other leg is closed ('group broken').
 
-**Invalidation.** Rolling 120-day return correlation < min_corr (relationship breakdown) blocks entries.
+**Invalidation.** Rolling 120-bar return correlation < min_corr (relationship breakdown) blocks entries.
 
 **Spread, liquidity and volatility filters.** Both instruments must be tradable; spread guard on both legs.
 
@@ -321,13 +321,13 @@ Relative-value research strategy on the log gold/silver ratio. When the ratio is
 
 | Parameter | Default | Research grid | Rationale |
 |---|---|---|---|
-| `lookback` | 120 | 60, 120, 250 | ~6 months of trading days. |
+| `lookback` | 192 | 96, 192, 384 | 192 M15 bars (~2 trading days) for the intraday mean. |
 | `entry_z` | 2.0 | 1.5, 2.0, 2.5 | Stretch threshold. |
 | `exit_z` | 0.5 | 0.0, 0.5 | Reversion target. |
 | `stop_z` | 3.5 | 3.0, 3.5, 4.0 | Divergence stop. |
 | `min_corr` | 0.5 | 0.3, 0.5 | Relationship filter. |
 | `leg_stop_atr` | 3.0 | 3.0, 4.0 | Per-leg protective server stop. |
-| `max_hold_bars` | 40 | 20, 40, 60 | ~2 months. |
+| `max_hold_bars` | 96 | 48, 96, 192 | One day of M15 bars. |
 
 **Sources.**
 

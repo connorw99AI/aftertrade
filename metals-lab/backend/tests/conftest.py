@@ -47,6 +47,19 @@ def intraday_frames():
     return _frames(synthetic.generate(days=90, seed=3), "M5")
 
 
+_FRAME_CACHE: dict = {}
+
+
+def frames_for_strategy(cls):
+    """SYNTHETIC frames sized to the strategy's timeframe (cached per timeframe set)."""
+    key = tuple(sorted(cls.timeframes))
+    if key not in _FRAME_CACHE:
+        p = cls.primary_timeframe
+        days = 20 if p == "M1" else 90 if p in ("M5", "M15") else 1100
+        _FRAME_CACHE[key] = synthetic.frames_for(cls.timeframes, days=days, seed=3 if days < 1000 else 5)
+    return _FRAME_CACHE[key]
+
+
 @pytest.fixture(scope="session")
 def swing_frames():
     return _frames(synthetic.generate(days=1100, seed=5, tf_minutes=60), "H1")

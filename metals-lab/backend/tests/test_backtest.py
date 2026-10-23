@@ -140,8 +140,11 @@ def test_rejections_and_partials_are_seeded_and_reported(specs):
 
 
 def test_deterministic_and_labels(intraday_frames, specs):
-    a = Backtester(build("S03"), intraday_frames, specs, data_meta={"x": {"source": "SYNTHETIC"}}).run()
-    b = Backtester(build("S03"), intraday_frames, specs, data_meta={"x": {"source": "SYNTHETIC"}}).run()
+    from conftest import frames_for_strategy
+    from metals_lab.strategies import STRATEGY_CLASSES
+    fr = frames_for_strategy(STRATEGY_CLASSES["S03"])
+    a = Backtester(build("S03"), fr, specs, data_meta={"x": {"source": "SYNTHETIC"}}).run()
+    b = Backtester(build("S03"), fr, specs, data_meta={"x": {"source": "SYNTHETIC"}}).run()
     pd.testing.assert_frame_equal(a.trades.drop(columns=["entry_indicators"]), b.trades.drop(columns=["entry_indicators"]))
     assert any("SCALPER_ON_OHLC" in r for r in a.reliability)
     assert any("SYNTHETIC" in r for r in a.reliability)

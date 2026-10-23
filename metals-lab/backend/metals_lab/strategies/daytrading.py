@@ -23,18 +23,18 @@ class LondonOpeningRangeBreakout(Strategy):
     strategy_id = "S04"
     name = "London Opening Range Breakout"
     style = Style.DAY
-    timeframes = ("M15",)
-    primary_timeframe = "M15"
+    timeframes = ("M5",)
+    primary_timeframe = "M5"
     min_history_bars = 200
     magic_offset = 4
     description = ("Builds the first hour range after the London open (Europe/London local time, so UK DST is handled) "
                    "and trades the first decisive close beyond it, flat by late afternoon London time.")
-    long_rules = "First M15 close above OR high + buffer_atr x ATR(14) between OR end and entry cut-off, OR width within limits."
-    short_rules = "First M15 close below OR low - buffer."
+    long_rules = "First M5 close above OR high + buffer_atr x ATR(14) between OR end and entry cut-off, OR width within limits."
+    short_rules = "First M5 close below OR low - buffer."
     exit_rules = ("Stop at the opposite side of the range (or range midpoint if the range is wider than wide_range_atr x ATR); "
                   "target tp_range_mult x OR width; time exit at exit_time London.")
     invalidation_rules = "Close back inside the opposite half of the range = stop; one breakout attempt per day."
-    filters = "OR width between min_range_atr and max_range_atr x ATR(14, M15); spread guard."
+    filters = "OR width between min_range_atr and max_range_atr x ATR(14, M5); spread guard."
     citations = (
         "Crabel, T. (1990) Day Trading with Short Term Price Patterns and Opening Range Breakout, Traders Press.",
         "Zarattini, C. & Aziz, A. (2023) 'Can Day Trading Really Be Profitable? Evidence of Sustainable Long-term Profits "
@@ -49,12 +49,12 @@ class LondonOpeningRangeBreakout(Strategy):
         "or_end": Param("09:00", "One-hour opening range.", ("08:30", "09:00")),
         "entry_cutoff": Param("12:00", "No new entries after midday London.", ("11:00", "12:00", "13:00")),
         "exit_time": Param("16:30", "Flat before US afternoon.", ("15:00", "16:30")),
-        "buffer_atr": Param(0.1, "Close must clear the range by a small margin.", (0.0, 0.1, 0.25)),
-        "min_range_atr": Param(1.0, "Too-narrow ranges produce noise breaks.", (0.5, 1.0)),
-        "max_range_atr": Param(5.0, "Too-wide ranges leave little room.", (4.0, 5.0, 6.0)),
-        "wide_range_atr": Param(3.0, "Use midpoint stop for wide ranges.", (3.0,)),
+        "buffer_atr": Param(0.2, "Close must clear the range by a small margin.", (0.0, 0.1, 0.25)),
+        "min_range_atr": Param(2.0, "Too-narrow ranges produce noise breaks (in M5 ATRs).", (1.5, 2.0, 3.0)),
+        "max_range_atr": Param(10.0, "Too-wide ranges leave little room (in M5 ATRs).", (8.0, 10.0, 12.0)),
+        "wide_range_atr": Param(6.0, "Use midpoint stop for wide ranges (in M5 ATRs).", (6.0,)),
         "tp_range_mult": Param(1.5, "Target as multiple of the range.", (1.0, 1.5, 2.0)),
-        "max_hold_bars": Param(40, "Safety cap (10h).", ()),
+        "max_hold_bars": Param(120, "Safety cap (10h of M5 bars).", ()),
         "max_spread_atr": Param(0.2, "Cost guard.", ()),
     }
 
@@ -87,9 +87,9 @@ class LondonOpeningRangeBreakout(Strategy):
     def entry_signals(self, ctx):
         sigs = []
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "M15", 20):
+            if ctx.position(role) or not ctx.has(role, "M5", 20):
                 continue
-            r = ctx.last(role, "M15")
+            r = ctx.last(role, "M5")
             if r["orb_dir"] == 0 or pd.isna(r["atr"]):
                 continue
             width = r["or_high"] - r["or_low"]
@@ -115,7 +115,7 @@ class LondonOpeningRangeBreakout(Strategy):
     def exit_signals(self, ctx):
         out = []
         for pos in ctx.positions:
-            r = ctx.last(pos.role, "M15")
+            r = ctx.last(pos.role, "M5")
             if r["time_exit"] or r["ldate"] != pd.Timestamp(pos.opened_at).tz_convert(self.p["tz"]).date():
                 out.append(self.close_signal(ctx, pos, f"day-trade time exit ({self.p['exit_time']} London)", {"close": r["close"]}))
         return out
@@ -125,8 +125,8 @@ class BreakoutRetest(Strategy):
     strategy_id = "S05"
     name = "London-Range Breakout & Retest"
     style = Style.DAY
-    timeframes = ("M15",)
-    primary_timeframe = "M15"
+    timeframes = ("M5",)
+    primary_timeframe = "M5"
     min_history_bars = 200
     magic_offset = 5
     description = ("Marks the London-morning range (08:00-13:00 London). After a decisive break during the US "
@@ -136,7 +136,7 @@ class BreakoutRetest(Strategy):
     short_rules = "Mirror for a break below range low and a failed retest from below."
     exit_rules = "Stop = min(retest low, level) - stop_atr x ATR; target reward_risk x risk; time exit 16:00 New York."
     invalidation_rules = "Close back inside the range beyond the level by more than stop distance = stop; setup expires after retest_bars."
-    filters = "Range width 1.5-8 ATR(M15); spread guard; one setup per side per day."
+    filters = "Range width 3-16 ATR(14, M5); spread guard; one setup per side per day."
     citations = (
         "Bulkowski, T. (2005) Encyclopedia of Chart Patterns, 2nd ed., Wiley - breakout pullback/throwback behaviour.",
         "Kaufman (2013) Trading Systems and Methods - breakout confirmation techniques.",
@@ -150,10 +150,10 @@ class BreakoutRetest(Strategy):
         "range_end": Param("13:00", "Before US data/NY open.", ()),
         "breakout_atr": Param(0.2, "Decisive close beyond level.", (0.1, 0.2, 0.4)),
         "retest_tol_atr": Param(0.25, "How close the retest must come.", (0.15, 0.25, 0.4)),
-        "retest_bars": Param(8, "Setup expiry (2h).", (6, 8, 12)),
+        "retest_bars": Param(24, "Setup expiry (2h of M5 bars).", (12, 24, 36)),
         "stop_atr": Param(0.5, "Below the retest structure.", (0.5, 0.75)),
         "reward_risk": Param(2.0, "Target multiple.", (1.5, 2.0, 2.5)),
-        "max_hold_bars": Param(32, "Safety cap.", ()),
+        "max_hold_bars": Param(96, "Safety cap (8h of M5 bars).", ()),
         "max_spread_atr": Param(0.2, "Cost guard.", ()),
     }
 
@@ -201,13 +201,13 @@ class BreakoutRetest(Strategy):
     def entry_signals(self, ctx):
         sigs = []
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "M15", 20):
+            if ctx.position(role) or not ctx.has(role, "M5", 20):
                 continue
-            r = ctx.last(role, "M15")
+            r = ctx.last(role, "M5")
             if r["retest_dir"] == 0 or r["ny_exit"]:
                 continue
             width = r["lvl_hi"] - r["lvl_lo"]
-            if not (1.5 * r["atr"] <= width <= 8 * r["atr"]):
+            if not (3 * r["atr"] <= width <= 16 * r["atr"]):
                 continue
             if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
                 continue
@@ -227,7 +227,7 @@ class BreakoutRetest(Strategy):
     def exit_signals(self, ctx):
         out = []
         for pos in ctx.positions:
-            r = ctx.last(pos.role, "M15")
+            r = ctx.last(pos.role, "M5")
             if r["ny_exit"]:
                 out.append(self.close_signal(ctx, pos, "day-trade time exit (16:00 New York)", {"close": r["close"]}))
         return out
@@ -237,16 +237,16 @@ class VolatilityCompressionBreakout(Strategy):
     strategy_id = "S06"
     name = "Volatility Compression Breakout"
     style = Style.DAY
-    timeframes = ("H1",)
-    primary_timeframe = "H1"
+    timeframes = ("M15",)
+    primary_timeframe = "M15"
     min_history_bars = 300
     magic_offset = 6
-    description = ("Detects H1 volatility compression (Bollinger Bands inside Keltner Channels for several bars) and "
+    description = ("Detects M15 volatility compression (Bollinger Bands inside Keltner Channels for several bars) and "
                    "trades the direction of the release beyond the compression range.")
     long_rules = "Squeeze lasted >= min_squeeze bars and has just released; close > highest high of the squeeze period."
     short_rules = "Same release; close < lowest low of the squeeze period."
     exit_rules = ("Stop stop_atr x ATR(20); target reward_risk x risk; strategy close when close crosses back through EMA20; "
-                  "max hold 24 bars; flatten Friday from 20:00 UTC (weekend gap risk).")
+                  "max hold 64 bars (16h); flatten Friday from 20:00 UTC (weekend gap risk).")
     invalidation_rules = "Close back through EMA20 against the position."
     filters = "Spread guard; no entries Friday after 18:00 UTC."
     citations = (
@@ -258,11 +258,11 @@ class VolatilityCompressionBreakout(Strategy):
     PARAMS = {
         "bb_k": Param(2.0, "Standard.", ()),
         "kc_k": Param(1.5, "Carter's setting.", (1.25, 1.5, 2.0)),
-        "min_squeeze": Param(6, "Bars of compression required.", (4, 6, 10)),
+        "min_squeeze": Param(12, "Bars of compression required (3h of M15).", (8, 12, 20)),
         "stop_atr": Param(1.5, "Stop.", (1.0, 1.5, 2.0)),
         "reward_risk": Param(2.0, "Target multiple.", (1.5, 2.0, 3.0)),
-        "max_hold_bars": Param(24, "One day.", (12, 24, 48)),
-        "max_spread_atr": Param(0.1, "Cost guard.", ()),
+        "max_hold_bars": Param(64, "16 hours of M15 bars.", (32, 64, 96)),
+        "max_spread_atr": Param(0.15, "Cost guard (M15 ranges are smaller than H1).", ()),
     }
 
     def prepare(self, frames):
@@ -295,9 +295,9 @@ class VolatilityCompressionBreakout(Strategy):
         if ctx.now.weekday() == 4 and ctx.now.hour >= 18:
             return sigs
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "H1", 30):
+            if ctx.position(role) or not ctx.has(role, "M15", 30):
                 continue
-            r = ctx.last(role, "H1")
+            r = ctx.last(role, "M15")
             if not r["released"] or pd.isna(r["atr"]):
                 continue
             if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
@@ -317,7 +317,7 @@ class VolatilityCompressionBreakout(Strategy):
     def exit_signals(self, ctx):
         out = []
         for pos in ctx.positions:
-            r = ctx.last(pos.role, "H1")
+            r = ctx.last(pos.role, "M15")
             vals = {"close": r["close"], "ema20": r["ema20"]}
             if ctx.now.weekday() == 4 and ctx.now.hour >= 20:
                 out.append(self.close_signal(ctx, pos, "flatten before weekend", vals))

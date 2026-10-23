@@ -114,15 +114,20 @@ def test_duplicate_prevention(armed):
     assert not r2.ok and r2.state == "DUPLICATE"
 
 
-def test_server_side_stop_attached_and_unprotected_closed(armed):
+def test_server_side_stop_attached_and_unprotected_closed(armed, sim):
     c = armed
     p, r = open_position(c)
     pos = [x for x in c.ro.positions() if x["ticket"] == r.position_ticket][0]
     assert pos["sl"] == pytest.approx(c.specs["GOLD"].round_price(p.sl))
     t = c.gw._b
     t.drop_sl_on_fill, t.fail_sltp = True, True
-    p2 = make_open_proposal(c, bot="S03", role="SILVER", volume=0.01, stop_dist=0.2, tp_dist=0.3)
-    audit, risk = approve(c, p2)
+    for _ in range(50):  # step past any auditor delay caused by the replayed market (not under test here)
+        p2 = make_open_proposal(c, bot="S03", role="SILVER", volume=0.01, stop_dist=0.2, tp_dist=0.3)
+        audit, risk = approve(c, p2)
+        if risk is not None:
+            break
+        sim[1].step()
+    assert risk is not None, audit.reasons
     r2 = c.executor.submit(p2, c.specs["SILVER"], audit.approval, risk.approval)
     assert r2.state == "UNPROTECTED_CLOSED"
     assert not [x for x in c.ro.positions() if x["ticket"] == r2.position_ticket]
@@ -298,7 +303,7 @@ def test_shadow_mode_records_decisions_without_orders(coord, sim):
     for b in BOT_IDS:
         coord.set_bot_status(b, "RUNNING")
     for _ in range(400):
-        replay.step(1)
+        replay.step()
         coord.cycle()
     assert coord.gw._b.sent_requests == []
     modes = {r["mode"] for r in coord.db.q("SELECT mode FROM signals_log")}

@@ -39,15 +39,14 @@ def generate(start: str = "2024-01-01", days: int = 260, seed: int = 7, tf_minut
     rs = 1.3 * drift + 1.5 * base_vol * season * z2 + 1.6 * j
     out = {}
     for name, r, p0, point, spr_base in (("GOLD", rg, gold0, 0.01, 22), ("SILVER", rs, silver0, 0.001, 25)):
-        close = p0 * np.exp(np.cumsum(r))
-        openp = np.concatenate([[p0], close[:-1]])
-        # weekend/daily-break gaps
+        # weekend/daily-break gaps: the gap lands between the previous close and this bar's open
         gap = np.zeros(n)
         ns = idx.as_unit("ns").asi8
         tgap = np.diff(ns, prepend=ns[0]) > tf_minutes * 60 * 1e9 * 1.5
         gap[tgap] = rng.normal(0, 0.002, tgap.sum())
-        openp = openp * np.exp(gap)
-        close = close * np.exp(np.cumsum(gap))
+        logc = np.log(p0) + np.cumsum(r + gap)
+        close = np.exp(logc)
+        openp = np.exp(logc - r)  # = previous close x exp(gap)
         wig = np.abs(rng.normal(0, base_vol * season, n)) * close
         high = np.maximum(openp, close) + wig
         low = np.minimum(openp, close) - np.abs(rng.normal(0, base_vol * season, n)) * close
@@ -55,4 +54,20 @@ def generate(start: str = "2024-01-01", days: int = 260, seed: int = 7, tf_minut
         tv = (rng.poisson(60 * season) + np.where(jump, 300, 0)).astype(int)
         out[name] = pd.DataFrame({"time": idx, "open": openp.round(5), "high": high.round(5), "low": low.round(5),
                                   "close": close.round(5), "tick_volume": tv, "spread": spread, "real_volume": 0})
+    return out
+
+
+_BASE_MINUTES = {"M1": 1, "M5": 5, "M15": 5, "M30": 5, "H1": 60, "H4": 60, "D1": 60}
+
+
+def frames_for(timeframes, days: int = 365, seed: int = 7) -> dict[tuple[str, str], pd.DataFrame]:
+    """SYNTHETIC frames for every requested timeframe, resampled from the finest base needed."""
+    from .bars import resample  # local import avoids a cycle
+    base_min = min(_BASE_MINUTES[tf] for tf in timeframes)
+    base_tf = {1: "M1", 5: "M5", 60: "H1"}[base_min]
+    raw = generate(days=days, seed=seed, tf_minutes=base_min)
+    out = {}
+    for role, df in raw.items():
+        for tf in set(timeframes) | {base_tf}:
+            out[(role, tf)] = df if tf == base_tf else resample(df, tf)
     return out

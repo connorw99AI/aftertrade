@@ -25,7 +25,7 @@ def _run(steps=350):
         for b in BOT_IDS:
             c.set_bot_status(b, "RUNNING")
         for _ in range(steps):
-            rp.step(1)
+            rp.step()
             c.cycle()
         trades = [(r["bot_id"], round(r["net"], 2)) for r in c.db.q("SELECT bot_id, net FROM trades ORDER BY rowid")]
         return c, t, trades

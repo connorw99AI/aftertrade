@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
+import { useState } from "react";
 import { Creature, CREATURES } from "@/components/Creature";
 import { usePopups } from "@/components/Shell";
-import { Any, money, pct } from "@/lib/api";
+import { Any, api, money, pct } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
 
 function moodOf(b: Any) {
@@ -11,8 +12,29 @@ function moodOf(b: Any) {
   return b.open_positions?.length ? "busy" : "idle";
 }
 
+function CardControls({ b, onDone }: { b: Any; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function act(action: "start" | "pause" | "stop") {
+    setBusy(true);
+    try { await api.post(`/api/bots/${b.bot_id}/${action}`, { reason: `overview ${action}` }); setErr(null); onDone(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+  const running = b.status === "RUNNING";
+  return (
+    <div className="card-controls">
+      {running
+        ? <button onClick={() => act("pause")} disabled={busy} aria-label={`Pause ${b.bot_id}`}>Pause</button>
+        : <button className="primary" onClick={() => act("start")} disabled={busy} aria-label={`Start ${b.bot_id}`}>Start</button>}
+      <button onClick={() => act("stop")} disabled={busy || b.status === "STOPPED"} aria-label={`Stop ${b.bot_id}`}>Stop</button>
+      {err && <span className="card-err" role="alert">{err}</span>}
+    </div>
+  );
+}
+
 export default function Overview() {
-  const { data: bots, error } = usePoll<Any[]>("/api/bots", 5000);
+  const { data: bots, error, reload } = usePoll<Any[]>("/api/bots", 5000);
   const { data: risk } = usePoll<Any>("/api/risk", 10000);
   const popups = usePopups();
   const snap = risk?.capital_snapshot;
@@ -36,22 +58,26 @@ export default function Overview() {
           const pop = popups.filter((p) => p.bot === b.bot_id).at(-1);
           const metal = b.roles.length > 1 ? "BOTH" : b.roles[0];
           return (
-            <Link key={b.bot_id} href={`/bot?id=${b.bot_id}`} className="habitat">
-              <div className="sky">
-                {pop && <span className={`coin ${pop.net >= 0 ? "gain" : "loss"}`}>{money(pop.net, true)}</span>}
-                {b.open_positions.length > 0 && <span className="pos-pip">{b.open_positions.length} open</span>}
-                <Creature bot={b.bot_id} size={96} mood={moodOf(b)} />
-              </div>
-              <div className={`ground ${metal}`} />
+            <article key={b.bot_id} className="habitat">
+              <Link href={`/bot?id=${b.bot_id}`} className="habitat-link" aria-label={`Open ${CREATURES[b.bot_id]?.name}`}>
+                <div className="sky">
+                  {pop && <span className={`coin ${pop.net >= 0 ? "gain" : "loss"}`}>{money(pop.net, true)}</span>}
+                  {b.open_positions.length > 0 && <span className="pos-pip">{b.open_positions.length} open</span>}
+                  <span className="tf-tag">{b.timeframe}</span>
+                  <Creature bot={b.bot_id} size={96} mood={moodOf(b)} />
+                </div>
+                <div className={`ground ${metal}`} />
+              </Link>
               <div className="info">
                 <div className="row"><span className="who">{CREATURES[b.bot_id]?.name}</span><span className={`badge ${b.status}`}>{b.status.replace("_", " ").toLowerCase()}</span></div>
-                <div className="what">{b.bot_id} {b.name}, {b.style.toLowerCase()}</div>
+                <div className="what">{b.bot_id} {b.name}, {b.style.toLowerCase()} on {b.timeframe}</div>
                 <div className="row"><span className="muted">Equity</span><span className="num">{b.book ? money(b.book.equity) : "not allocated"}</span></div>
                 <div className="row"><span className="muted">Closed P&amp;L</span><span className={`num ${b.closed_net_pnl >= 0 ? "gain" : "loss"}`}>{money(b.closed_net_pnl, true)}</span></div>
                 <div className="row"><span className="muted">Return</span><span className="num">{pct(b.return_pct)}</span></div>
                 <div className="row"><span className="muted">Trades</span><span className="num">{b.closed_trades}{b.provisional_trades ? ` (${b.provisional_trades} provisional)` : ""}</span></div>
+                <CardControls b={b} onDone={reload} />
               </div>
-            </Link>
+            </article>
           );
         })}
       </section>

@@ -6,11 +6,24 @@ Full rules, parameters and per-strategy citations: [STRATEGY_REFERENCE.md](STRAT
 
 ## Distribution and why
 
-| Style | Bots | Rationale |
-|---|---|---|
-| Scalping (M5) | S01 trend pullback, S02 Asian range reversion, S03 failed-breakout reversal | One trend-following, one mean-reverting and one reversal mechanism, so they do not all fail in the same regime. Kept to three because spread is a large share of a scalp target, and M5 OHLC cannot say which of stop or target was hit first inside a bar. |
-| Day trading (M15/H1) | S04 London opening-range breakout, S05 London-range breakout and retest, S06 volatility-compression breakout | All three are built around intraday liquidity events: the London open and the London/New York handover. Precious-metals volatility and spreads have a strong intraday cycle tied to market opens (Batten et al. 2017). Each uses a different trigger: first break, break plus retest, and compression release. |
-| Swing (H4/D1) | S07 regime-filtered RSI(2) reversion, S08 Donchian channel breakout, S09 time-series momentum, S10 gold/silver ratio reversion | Costs matter least relative to the move, bar data is most trustworthy, and the published evidence base (trend following, momentum, pairs) is strongest. Includes the only relative-value strategy, S10. |
+Timeframes were set by the operator: one bot on M1, four on M5, two on M15, and one each on H1, H4 and D1.
+
+| Bot | Timeframe | Style | Mechanism |
+|---|---|---|---|
+| S01 Trend Pullback Scalper | M1 | scalp | trend continuation |
+| S02 Asian Range Reversion | M5 | scalp | range mean reversion |
+| S03 Failed Breakout Reversal | M5 | scalp | failed-break reversal |
+| S04 London Opening Range Breakout | M5 | day | first break of the opening range |
+| S05 London-Range Breakout & Retest | M5 | day | break plus retest |
+| S06 Volatility Compression Breakout | M15 | day | compression release |
+| S10 Gold/Silver Ratio Reversion | M15 | day | intraday relative value (two-leg group) |
+| S09 Time-Series Momentum | H1 | swing | short-horizon momentum, evaluated daily |
+| S07 Regime-Filtered RSI(2) Reversion | H4 (D1 regime filter) | swing | pullback reversion with trend filter |
+| S08 Donchian Channel Breakout | D1 | swing | multiday channel breakout |
+
+**Cost warning for M1:** on the connected demo, gold's spread was about $0.43. That is often 25-40% of a one-minute range, so S01 keeps a spread guard (spread ≤ 30% of ATR) and a 2:1 target, and will skip many signals. M1 backtests without tick data are the least reliable results in this lab.
+
+The short-horizon versions of S09 (H1) and S10 (M15) are adaptations. The cited evidence for both is at monthly/daily horizons.
 
 They are deliberately not ten renamings of one idea. They differ in mechanism (trend, mean reversion, failed break, volatility regime, cross-sectional relative value), horizon and entry trigger.
 

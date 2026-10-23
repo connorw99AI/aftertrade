@@ -6,7 +6,7 @@ from metals_lab.domain import TIMEFRAME_MINUTES, Intent, PositionView, Style
 from metals_lab.strategies import STRATEGY_CLASSES, build, magic_for, strategy_for_magic
 from metals_lab.strategies.base import StrategyContext, contract_loss
 
-from conftest import scan_signals
+from conftest import frames_for_strategy, scan_signals
 
 INTRADAY = ["S01", "S02", "S03", "S04", "S05", "S06"]
 SWING = ["S07", "S08", "S09", "S10"]
@@ -20,7 +20,9 @@ SCAN_PARAMS = {"S02": {"max_spread_atr": 5.0}, "S01": {"max_spread_atr": 5.0}, "
 def test_ten_distinct_strategies_with_full_metadata():
     assert len(STRATEGY_CLASSES) == 10
     styles = [c.style for c in STRATEGY_CLASSES.values()]
-    assert styles.count(Style.SCALP) == 3 and styles.count(Style.DAY) == 3 and styles.count(Style.SWING) == 4
+    assert styles.count(Style.SCALP) == 3 and styles.count(Style.DAY) == 4 and styles.count(Style.SWING) == 3
+    tfs = [c.primary_timeframe for c in STRATEGY_CLASSES.values()]
+    assert {tf: tfs.count(tf) for tf in set(tfs)} == {"M1": 1, "M5": 4, "M15": 2, "H1": 1, "H4": 1, "D1": 1}
     names = {c.name for c in STRATEGY_CLASSES.values()}
     assert len(names) == 10
     for sid, cls in STRATEGY_CLASSES.items():
@@ -50,9 +52,9 @@ def test_unknown_parameter_rejected():
 
 
 @pytest.mark.parametrize("sid", INTRADAY + SWING)
-def test_long_and_short_entries(sid, intraday_frames, swing_frames, specs):
-    frames = intraday_frames if sid in INTRADAY else swing_frames
+def test_long_and_short_entries(sid, specs):
     s = build(sid, SCAN_PARAMS.get(sid, {}))
+    frames = frames_for_strategy(type(s))
     found = scan_signals(s, frames, specs, {Intent.OPEN_LONG, Intent.OPEN_SHORT})
     assert Intent.OPEN_LONG in found, f"{sid} produced no OPEN_LONG on synthetic data"
     assert Intent.OPEN_SHORT in found, f"{sid} produced no OPEN_SHORT on synthetic data"
@@ -67,10 +69,11 @@ def test_long_and_short_entries(sid, intraday_frames, swing_frames, specs):
         assert sig.symbol in text and intent.value in text
 
 
-def test_exit_intents_distinguish_close_long_and_cover_short(intraday_frames, specs):
+def test_exit_intents_distinguish_close_long_and_cover_short(specs):
     s = build("S01")
-    prepared = s.prepare({("GOLD", "M5"): intraday_frames[("GOLD", "M5")], ("SILVER", "M5"): intraday_frames[("SILVER", "M5")]})
-    T = prepared[("GOLD", "M5")]["time"].iloc[800] + pd.Timedelta(minutes=5)
+    fr0 = frames_for_strategy(type(s))
+    prepared = s.prepare({("GOLD", "M1"): fr0[("GOLD", "M1")], ("SILVER", "M1"): fr0[("SILVER", "M1")]})
+    T = prepared[("GOLD", "M1")]["time"].iloc[800] + pd.Timedelta(minutes=1)
     fr = {k: v.iloc[:801] for k, v in prepared.items()}
     long_pos = PositionView("k1", "GOLD", "XAUUSD", "LONG", 0.1, 1.0, T.to_pydatetime(), bars_held=99, max_hold_bars=12)
     short_pos = PositionView("k2", "SILVER", "XAGUSD", "SHORT", 0.1, 1.0, T.to_pydatetime(), bars_held=99, max_hold_bars=12)
@@ -83,9 +86,9 @@ def test_exit_intents_distinguish_close_long_and_cover_short(intraday_frames, sp
 
 
 @pytest.mark.parametrize("sid", INTRADAY + SWING)
-def test_no_lookahead_in_prepared_indicators(sid, intraday_frames, swing_frames):
-    frames = intraday_frames if sid in INTRADAY else swing_frames
+def test_no_lookahead_in_prepared_indicators(sid):
     s = build(sid)
+    frames = frames_for_strategy(type(s))
     keys = {(r, tf) for r in s.roles for tf in s.timeframes}
     full = s.prepare({k: frames[k] for k in keys})
     ptf_len = len(frames[(s.roles[0], s.primary_timeframe)])
@@ -123,9 +126,9 @@ def test_sizing_uses_own_equity_and_skips_min_lot(specs):
     assert small.skipped and "MIN_LOT_EXCEEDS_RISK_BUDGET" in small.skip_reason and small.volume == 0.0
 
 
-def test_pair_strategy_emits_two_leg_group(swing_frames, specs):
+def test_pair_strategy_emits_two_leg_group(specs):
     s = build("S10")
-    found = scan_signals(s, swing_frames, specs, {Intent.OPEN_LONG, Intent.OPEN_SHORT})
+    found = scan_signals(s, frames_for_strategy(type(s)), specs, {Intent.OPEN_LONG, Intent.OPEN_SHORT})
     assert found
     sig = next(iter(found.values()))
     assert sig.group_id and sig.group_id.startswith("S10-")

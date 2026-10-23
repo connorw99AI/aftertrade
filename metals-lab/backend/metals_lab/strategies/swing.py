@@ -167,30 +167,30 @@ class TimeSeriesMomentum(Strategy):
     strategy_id = "S09"
     name = "Time-Series Momentum"
     style = Style.SWING
-    timeframes = ("D1",)
-    primary_timeframe = "D1"
-    min_history_bars = 200
+    timeframes = ("H1",)
+    primary_timeframe = "H1"
+    min_history_bars = 400
     magic_offset = 9
     description = ("Each metal is held long or short according to the sign of its own volatility-scaled past return, "
-                   "re-evaluated weekly. Position size comes from the stop-based risk budget (a volatility scaling).")
-    long_rules = "On the first D1 bar of each week: lookback return / (daily vol x sqrt(lookback)) > entry_strength."
+                   "re-evaluated once per day on H1 bars (short-horizon adaptation). Position size comes from the stop-based risk budget (a volatility scaling).")
+    long_rules = "On the first H1 bar of each UTC day: lookback return / (daily vol x sqrt(lookback)) > entry_strength."
     short_rules = "Same, < -entry_strength."
-    exit_rules = "On weekly evaluation close if strength sign flips or |strength| < exit_strength; catastrophic server stop stop_atr x ATR(20)."
+    exit_rules = "On the daily evaluation close if strength sign flips or |strength| < exit_strength; catastrophic server stop stop_atr x ATR(20)."
     invalidation_rules = "Sign reversal of the trend measure."
-    filters = "Spread guard; weekly rebalance only (limits turnover)."
+    filters = "Spread guard; one evaluation per day (limits turnover)."
     citations = (
         "Moskowitz, T., Ooi, Y.H. & Pedersen, L.H. (2012) 'Time series momentum', J. Financial Economics 104(2):228-250 "
         "(58 futures incl. commodities; 1-12 month lookbacks).",
         "Kim, Tse & Wald (2016) 'Time series momentum and volatility scaling', J. Financial Markets 30 - critique: much of the "
         "effect comes from volatility scaling and weakens post-2009.",
     )
-    limitations = "Published results are portfolio-level across 58 markets; single-metal TSMOM is noisy. Weekly evaluation is a design choice."
+    limitations = "Published results are portfolio-level across 58 markets; single-metal TSMOM is noisy. The H1, ~5-day horizon is an untested adaptation of the monthly-horizon evidence."
     PARAMS = {
-        "lookback": Param(126, "~6 months, inside the 1-12m range studied.", (63, 126, 252)),
+        "lookback": Param(120, "120 H1 bars (~5 trading days); far shorter than the 1-12 month horizons studied.", (48, 120, 240)),
         "entry_strength": Param(0.5, "Require a meaningful trend.", (0.25, 0.5, 1.0)),
         "exit_strength": Param(0.0, "Exit on sign flip.", (0.0, 0.25)),
         "stop_atr": Param(3.0, "Catastrophic stop only.", (3.0, 4.0)),
-        "max_hold_bars": Param(400, "Safety cap.", ()),
+        "max_hold_bars": Param(480, "Safety cap (~4 weeks of H1 bars).", ()),
         "max_spread_atr": Param(0.05, "Cost guard.", ()),
     }
 
@@ -203,9 +203,8 @@ class TimeSeriesMomentum(Strategy):
             vol = ind.realized_vol(df["close"], 60) * np.sqrt(lb)
             df["strength"] = ret / vol
             df["ret_lb"] = ret
-            wk = df["time"].dt.isocalendar()
-            week_id = wk["year"].astype(int) * 100 + wk["week"].astype(int)
-            df["rebalance"] = week_id != week_id.shift(1)
+            day_id = df["time"].dt.floor("1D")
+            df["rebalance"] = day_id != day_id.shift(1)
             df["atr"] = ind.atr(df, 20)
             out[key] = df
         return out
@@ -213,9 +212,9 @@ class TimeSeriesMomentum(Strategy):
     def entry_signals(self, ctx):
         sigs = []
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "D1", self.p["lookback"] + 61):
+            if ctx.position(role) or not ctx.has(role, "H1", self.p["lookback"] + 61):
                 continue
-            r = ctx.last(role, "D1")
+            r = ctx.last(role, "H1")
             if not r["rebalance"] or pd.isna(r["strength"]):
                 continue
             if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
@@ -223,43 +222,43 @@ class TimeSeriesMomentum(Strategy):
             vals = {"close": r["close"], "lookback_return": r["ret_lb"], "strength": r["strength"], "atr": r["atr"]}
             sd = self.p["stop_atr"] * r["atr"]
             if r["strength"] > self.p["entry_strength"]:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "positive vol-scaled trend at weekly evaluation", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "positive vol-scaled trend at daily evaluation", vals,
                                         stop_price=r["close"] - sd, max_hold_bars=self.p["max_hold_bars"]))
             elif r["strength"] < -self.p["entry_strength"]:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "negative vol-scaled trend at weekly evaluation", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "negative vol-scaled trend at daily evaluation", vals,
                                         stop_price=r["close"] + sd, max_hold_bars=self.p["max_hold_bars"]))
         return sigs
 
     def exit_signals(self, ctx):
         out = []
         for pos in ctx.positions:
-            r = ctx.last(pos.role, "D1")
+            r = ctx.last(pos.role, "H1")
             if not r["rebalance"] or pd.isna(r["strength"]):
                 continue
             vals = {"strength": r["strength"]}
             if pos.side == "LONG" and r["strength"] <= self.p["exit_strength"]:
-                out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at weekly evaluation", vals))
+                out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at daily evaluation", vals))
             elif pos.side == "SHORT" and r["strength"] >= -self.p["exit_strength"]:
-                out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at weekly evaluation", vals))
+                out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at daily evaluation", vals))
         return out
 
 
 class GoldSilverRatioReversion(Strategy):
     strategy_id = "S10"
     name = "Gold/Silver Ratio Reversion"
-    style = Style.SWING
-    timeframes = ("D1",)
-    primary_timeframe = "D1"
+    style = Style.DAY
+    timeframes = ("M15",)
+    primary_timeframe = "M15"
     min_history_bars = 200
     magic_offset = 10
-    description = ("Relative-value research strategy on the log gold/silver ratio. When the ratio is stretched, buy the "
+    description = ("Intraday relative-value strategy on the log gold/silver ratio (M15). When the ratio is stretched, buy the "
                    "cheap metal and sell the rich one as one explicitly defined two-leg trade group; exit both legs together.")
     long_rules = "z(ln(Gold/Silver), lookback) > entry_z: OPEN_LONG silver + OPEN_SHORT gold (group)."
     short_rules = "z < -entry_z: OPEN_SHORT silver + OPEN_LONG gold (group)."
-    exit_rules = ("Close both legs when |z| < exit_z (reversion) or |z| > stop_z (divergence stop); max hold 40 days; "
-                  "each leg also carries a server stop at leg_stop_atr x ATR(20) so it is protected if the bot is offline. "
+    exit_rules = ("Close both legs when |z| < exit_z (reversion) or |z| > stop_z (divergence stop); max hold 96 bars (one day); "
+                  "each leg also carries a server stop at leg_stop_atr x ATR(20, M15) so it is protected if the bot is offline. "
                   "If one leg is closed (e.g. by its stop) the other leg is closed ('group broken').")
-    invalidation_rules = "Rolling 120-day return correlation < min_corr (relationship breakdown) blocks entries."
+    invalidation_rules = "Rolling 120-bar return correlation < min_corr (relationship breakdown) blocks entries."
     filters = "Both instruments must be tradable; spread guard on both legs."
     citations = (
         "Gatev, E., Goetzmann, W. & Rouwenhorst, K.G. (2006) 'Pairs Trading: Performance of a Relative-Value Arbitrage Rule', "
@@ -272,13 +271,13 @@ class GoldSilverRatioReversion(Strategy):
                    "for a small virtual portfolio, in which case the trade is skipped.")
     roles = ("GOLD", "SILVER")
     PARAMS = {
-        "lookback": Param(120, "~6 months of trading days.", (60, 120, 250)),
+        "lookback": Param(192, "192 M15 bars (~2 trading days) for the intraday mean.", (96, 192, 384)),
         "entry_z": Param(2.0, "Stretch threshold.", (1.5, 2.0, 2.5)),
         "exit_z": Param(0.5, "Reversion target.", (0.0, 0.5)),
         "stop_z": Param(3.5, "Divergence stop.", (3.0, 3.5, 4.0)),
         "min_corr": Param(0.5, "Relationship filter.", (0.3, 0.5)),
         "leg_stop_atr": Param(3.0, "Per-leg protective server stop.", (3.0, 4.0)),
-        "max_hold_bars": Param(40, "~2 months.", (20, 40, 60)),
+        "max_hold_bars": Param(96, "One day of M15 bars.", (48, 96, 192)),
     }
 
     def risk_metadata(self) -> dict:
@@ -289,7 +288,7 @@ class GoldSilverRatioReversion(Strategy):
 
     def prepare(self, frames):
         out = {k: v.copy() for k, v in frames.items()}
-        g, s = out.get(("GOLD", "D1")), out.get(("SILVER", "D1"))
+        g, s = out.get(("GOLD", "M15")), out.get(("SILVER", "M15"))
         for df in (g, s):
             if df is not None:
                 df["atr"] = ind.atr(df, 20)
@@ -305,13 +304,13 @@ class GoldSilverRatioReversion(Strategy):
         return out
 
     def entry_signals(self, ctx):
-        if ctx.positions or not ctx.has("GOLD", "D1", self.p["lookback"]) or not ctx.has("SILVER", "D1", 21):
+        if ctx.positions or not ctx.has("GOLD", "M15", self.p["lookback"]) or not ctx.has("SILVER", "M15", 21):
             return []
-        g, s = ctx.last("GOLD", "D1"), ctx.last("SILVER", "D1")
+        g, s = ctx.last("GOLD", "M15"), ctx.last("SILVER", "M15")
         if g["time"] != s["time"] or pd.isna(g["z"]) or pd.isna(g["corr"]) or g["corr"] < self.p["min_corr"]:
             return []
         vals = {"z": g["z"], "log_ratio": g["log_ratio"], "corr120": g["corr"], "gold": g["close"], "silver": s["close"]}
-        gid = f"S10-{ctx.now:%Y%m%d}"
+        gid = f"S10-{ctx.now:%Y%m%d%H%M}"
         ga, sa = self.p["leg_stop_atr"] * g["atr"], self.p["leg_stop_atr"] * s["atr"]
         mh = self.p["max_hold_bars"]
         if g["z"] > self.p["entry_z"]:
@@ -327,7 +326,7 @@ class GoldSilverRatioReversion(Strategy):
     def exit_signals(self, ctx):
         if not ctx.positions:
             return []
-        g = ctx.last("GOLD", "D1")
+        g = ctx.last("GOLD", "M15")
         vals = {"z": g["z"]}
         roles = {p.role for p in ctx.positions}
         if len(roles) < 2:

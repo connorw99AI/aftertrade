@@ -175,14 +175,8 @@ def _research_inputs(cfg, a):
     from .strategies import STRATEGY_CLASSES
     cls = STRATEGY_CLASSES[a.strategy]
     if a.synthetic:
-        base = "M5" if cls.primary_timeframe in ("M5", "M15") else "H1"
-        raw = synthetic.generate(days=a.days, tf_minutes=5 if base == "M5" else 60, seed=a.seed)
-        frames = {}
-        for role, df in raw.items():
-            frames[(role, base)] = df
-            for tf in ("M15", "H1", "H4", "D1"):
-                if tf != base:
-                    frames[(role, tf)] = B.resample(df, tf)
+        days = min(a.days, 90) if cls.primary_timeframe == "M1" else a.days
+        frames = synthetic.frames_for(cls.timeframes, days=days, seed=a.seed)
         syms = default_symbols()
         specs = {"GOLD": spec_from_info("GOLD", syms["XAUUSD"]), "SILVER": spec_from_info("SILVER", syms["XAGUSD"])}
         return frames, specs, {"synthetic": {"source": "SYNTHETIC", "seed": a.seed, "days": a.days}}, f"SYNTHETIC-{a.seed}-{a.days}"
@@ -268,7 +262,7 @@ def cmd_serve(cfg, a):
             while True:
                 try:
                     if replay:
-                        replay.step(1)
+                        replay.step()
                     c.cycle()
                     c.last_error = None
                 except Exception as e:
@@ -308,7 +302,7 @@ def main(argv=None) -> int:
     s.add_argument("--reason", default="")
     s.add_argument("--operator", default="cli")
     s = sub.add_parser("fetch-history")
-    s.add_argument("--tf", nargs="+", default=["M5", "M15", "H1", "H4", "D1"])
+    s.add_argument("--tf", nargs="+", default=["M1", "M5", "M15", "H1", "H4", "D1"])
     s.add_argument("--days", type=int, default=365)
     s.add_argument("--ticks", action="store_true", help="build bars from ticks (real per-tick spreads)")
     for name in ("backtest", "research"):

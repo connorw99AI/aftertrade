@@ -143,6 +143,7 @@ def create_app(state: State) -> FastAPI:
         risk_pct = state.cfg["risk"]["risk_per_trade"]
         return {
             "bot_id": bot, "name": cls.name, "style": cls.style.value, "roles": list(cls.roles),
+            "timeframe": cls.primary_timeframe,
             "symbols": [state.coord.specs[r].symbol for r in cls.roles if state.coord and r in state.coord.specs],
             "status": row["status"], "pause_reason": row["pause_reason"], "config_version": row["config_version"],
             "magic": magic_for(bot),
@@ -296,14 +297,8 @@ def create_app(state: State) -> FastAPI:
         try:
             cls = STRATEGY_CLASSES[body.strategy_id]
             if body.dataset == "synthetic":
-                raw = synthetic.generate(days=body.synthetic_days, tf_minutes=5 if cls.primary_timeframe in ("M5", "M15") else 60)
-                frames = {}
-                for role, df in raw.items():
-                    base_tf = "M5" if cls.primary_timeframe in ("M5", "M15") else "H1"
-                    frames[(role, base_tf)] = df
-                    for tf in ("M15", "H1", "H4", "D1"):
-                        if tf != base_tf:
-                            frames[(role, tf)] = B.resample(df, tf)
+                days = min(body.synthetic_days, 90) if cls.primary_timeframe == "M1" else body.synthetic_days
+                frames = synthetic.frames_for(cls.timeframes, days=days)
                 syms = default_symbols()
                 specs = {"GOLD": spec_from_info("GOLD", syms["XAUUSD"]), "SILVER": spec_from_info("SILVER", syms["XAGUSD"])}
                 meta = {"all": {"source": "SYNTHETIC"}}

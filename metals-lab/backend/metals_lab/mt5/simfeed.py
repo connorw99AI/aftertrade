@@ -12,7 +12,7 @@ from ..data import synthetic
 from . import constants as C
 from .sim import SimTerminal
 
-_TF = {"M5": C.TIMEFRAME_M5, "M15": C.TIMEFRAME_M15, "H1": C.TIMEFRAME_H1, "H4": C.TIMEFRAME_H4, "D1": C.TIMEFRAME_D1}
+_TF = {"M1": C.TIMEFRAME_M1, "M5": C.TIMEFRAME_M5, "M15": C.TIMEFRAME_M15, "H1": C.TIMEFRAME_H1, "H4": C.TIMEFRAME_H4, "D1": C.TIMEFRAME_D1}
 _DT = np.dtype([("time", "<i8"), ("open", "<f8"), ("high", "<f8"), ("low", "<f8"), ("close", "<f8"),
                 ("tick_volume", "<u8"), ("spread", "<i4"), ("real_volume", "<u8")])
 
@@ -31,12 +31,12 @@ def _to_rates(df: pd.DataFrame, offset_h: int) -> np.ndarray:
 class SimReplay:
     def __init__(self, sim: SimTerminal, days: int = 400, start_fraction: float = 0.6, seed: int = 11):
         self.sim = sim
-        raw = synthetic.generate(days=days, seed=seed)
+        raw = synthetic.generate(days=days, seed=seed, tf_minutes=1)
         self.m5 = {}
         names = {"GOLD": "XAUUSD", "SILVER": "XAGUSD"}
         for role, df in raw.items():
             sym = names[role]
-            frames = {"M5": df} | {tf: B.resample(df, tf) for tf in ("M15", "H1", "H4", "D1")}
+            frames = {"M1": df} | {tf: B.resample(df, tf) for tf in ("M5", "M15", "H1", "H4", "D1")}
             for tf, f in frames.items():
                 sim.rates[(sym, _TF[tf])] = _to_rates(f, sim.server_utc_offset_hours)
             self.m5[sym] = df.reset_index(drop=True)
@@ -46,13 +46,14 @@ class SimReplay:
     def _apply(self):
         for sym, df in self.m5.items():
             row = df.iloc[self.i]
-            self.sim.set_time((row["time"] + timedelta(minutes=5)).to_pydatetime())
+            self.sim.set_time((row["time"] + timedelta(minutes=1)).to_pydatetime())
         for sym, df in self.m5.items():
             row = df.iloc[self.i]
             sp = self.sim.symbols[sym]
             self.sim.set_quote(sym, float(row["close"]), float(row["close"]) + int(row["spread"]) * sp["point"])
 
-    def step(self, bars: int = 1):
+    def step(self, bars: int = 5):
+        """Advance the replay by `bars` one-minute bars (default: 5 minutes of market time)."""
         n = len(next(iter(self.m5.values())))
         self.i = min(n - 1, self.i + bars)
         self._apply()

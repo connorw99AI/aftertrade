@@ -12,17 +12,17 @@ class TrendPullbackScalper(Strategy):
     strategy_id = "S01"
     name = "Trend Pullback Scalper"
     style = Style.SCALP
-    timeframes = ("M5",)
-    primary_timeframe = "M5"
+    timeframes = ("M1",)
+    primary_timeframe = "M1"
     min_history_bars = 700
     magic_offset = 1
-    description = ("Trades short pullbacks to the 20-EMA in the direction of an established M5 trend "
+    description = ("Trades short pullbacks to the 20-EMA in the direction of an established M1 trend "
                    "(EMA50 vs EMA200 with positive slope), only during London/New York liquidity.")
     long_rules = ("Uptrend (EMA50 > EMA200 and EMA50 rising over 10 bars); previous bar's low touched/pierced EMA20 "
                   "with RSI(7) < pullback level; current bar closes back above EMA20, bullish body, RSI rising.")
     short_rules = "Mirror image: downtrend, rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20."
     exit_rules = ("Server-side stop at entry -/+ stop_atr x ATR(14); target at reward_risk x stop distance; "
-                  "close early if price closes through EMA50 against the trade; max hold 12 bars (1 hour).")
+                  "close early if price closes through EMA50 against the trade; max hold 30 bars (30 minutes).")
     invalidation_rules = "Close through EMA50 against the position invalidates the trend premise."
     filters = ("Hours 07:00-20:00 UTC; spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 "
                "to avoid dead and disorderly markets.")
@@ -32,7 +32,7 @@ class TrendPullbackScalper(Strategy):
         "Batten, Lucey, McGroarty, Peat, Urquhart (2017) 'Stylized facts of intraday precious metals', PLoS ONE 12(4) - "
         "liquidity/volatility concentrate in European/US hours; spreads tightest while Europe is open.",
     )
-    limitations = ("Generic trend-pullback logic, not a published metals-specific edge. On M5 OHLC the order of "
+    limitations = ("Generic trend-pullback logic, not a published metals-specific edge. On M1 OHLC the order of "
                    "stop/target hits inside a bar is unknown; costs are a large fraction of the target.")
     PARAMS = {
         "ema_fast": Param(20, "Pullback reference; common short EMA.", (15, 20, 30)),
@@ -41,9 +41,9 @@ class TrendPullbackScalper(Strategy):
         "rsi_n": Param(7, "Short RSI to measure pullback depth.", (5, 7)),
         "rsi_pull": Param(40, "Pullback must push RSI below this (long).", (35, 40, 45)),
         "stop_atr": Param(1.2, "Stop beyond normal M5 noise.", (1.0, 1.2, 1.5)),
-        "reward_risk": Param(1.5, "Target as multiple of stop distance.", (1.0, 1.5, 2.0)),
-        "max_hold_bars": Param(12, "Scalps that do not work quickly are closed.", (8, 12, 18)),
-        "max_spread_atr": Param(0.15, "Skip when spread consumes >15% of ATR.", (0.1, 0.15, 0.2)),
+        "reward_risk": Param(2.0, "Larger multiple so the target clears M1 costs.", (1.5, 2.0, 2.5)),
+        "max_hold_bars": Param(30, "Scalps that do not work quickly are closed (30 min).", (15, 30, 45)),
+        "max_spread_atr": Param(0.3, "M1 ranges are small: skip when spread exceeds 30% of ATR(14,M1).", (0.2, 0.3, 0.4)),
         "start_hour": Param(7, "UTC start of liquid hours.", ()),
         "end_hour": Param(20, "UTC end of liquid hours.", ()),
     }
@@ -66,9 +66,9 @@ class TrendPullbackScalper(Strategy):
     def entry_signals(self, ctx: StrategyContext):
         sigs = []
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "M5", 3):
+            if ctx.position(role) or not ctx.has(role, "M1", 3):
                 continue
-            r, pv = ctx.last(role, "M5"), ctx.last(role, "M5", 2)
+            r, pv = ctx.last(role, "M1"), ctx.last(role, "M1", 2)
             spec = ctx.specs[role]
             hour = ctx.now.hour
             if not (self.p["start_hour"] <= hour < self.p["end_hour"]):
@@ -97,7 +97,7 @@ class TrendPullbackScalper(Strategy):
     def exit_signals(self, ctx):
         out = []
         for pos in ctx.positions:
-            r = ctx.last(pos.role, "M5")
+            r = ctx.last(pos.role, "M1")
             if pos.side == "LONG" and r["close"] < r["ema_m"]:
                 out.append(self.close_signal(ctx, pos, "closed below EMA50: trend premise invalidated", {"close": r["close"], "ema50": r["ema_m"]}))
             elif pos.side == "SHORT" and r["close"] > r["ema_m"]:
@@ -210,7 +210,7 @@ class FailedBreakoutReversal(Strategy):
     long_rules = ("Low of the last two bars < prior N-bar low (excluding those two bars); current close back above that "
                   "low with a bullish body; breakout bar range < 2.5 ATR; ADX(14) < adx_max.")
     short_rules = "Mirror: high of last two bars > prior N-bar high, close back below it with bearish body."
-    exit_rules = "Stop beyond the failed-breakout extreme + 0.2 ATR; target reward_risk x risk; max hold 10 bars."
+    exit_rules = "Stop beyond the failed-breakout extreme + 0.2 ATR; target reward_risk x risk; max hold 10 bars (50 minutes)."
     invalidation_rules = "A new extreme beyond the breakout high/low (= the stop) invalidates the failure."
     filters = "07:00-20:00 UTC; skip expansion bars (>2.5 ATR, likely news); skip strong trends (ADX >= adx_max); spread guard."
     citations = (
@@ -222,8 +222,8 @@ class FailedBreakoutReversal(Strategy):
         "lookback": Param(20, "Prior range length (Turtle Soup uses 20).", (15, 20, 30)),
         "reward_risk": Param(1.5, "Target multiple.", (1.0, 1.5, 2.0)),
         "adx_max": Param(30, "Avoid fading strong trends.", (25, 30)),
-        "max_hold_bars": Param(10, "Reversal should work quickly.", (6, 10, 15)),
-        "max_spread_atr": Param(0.15, "Cost guard.", (0.15,)),
+        "max_hold_bars": Param(10, "Reversal should work quickly (50 min).", (6, 10, 15)),
+        "max_spread_atr": Param(0.15, "Cost guard: spread <= 15% of ATR(14,M5).", (0.15, 0.2)),
     }
 
     def prepare(self, frames):
