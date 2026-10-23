@@ -52,6 +52,8 @@ class RiskContext:
     account_margin_level: float
     gross_exposure_notional: float           # all bot-owned positions, account currency
     same_direction_notional: dict = field(default_factory=dict)   # {"LONG": x, "SHORT": y}
+    bot_gross_notional: float = 0.0          # this bot's own open positions, account currency
+    bot_same_direction_notional: dict = field(default_factory=dict)
     reconciliation_clean: bool = True
     blocking_alerts: list = field(default_factory=list)
     in_flight_symbols: set = field(default_factory=set)
@@ -88,6 +90,11 @@ class RiskEngine:
         if v is None:
             raise RuntimeError(f"order_calc_profit unavailable for {spec.symbol}")
         return abs(v)
+
+    def notional(self, spec: InstrumentSpec, volume: float, price: float) -> float:
+        """Position value in ACCOUNT currency: profit of a full-price move, from the terminal's order_calc_profit."""
+        v = self.gw.order_calc_profit(self.gw.const("ORDER_TYPE_BUY"), spec.symbol, volume, price, price * 2)
+        return abs(v) if v is not None else volume * spec.contract_size * price
 
     def est_cost_per_lot(self, spec: InstrumentSpec, tick: Optional[dict], commission_per_lot_side: float = 0.0) -> float:
         if not tick:
@@ -229,14 +236,19 @@ class RiskEngine:
                             reject("ACCOUNT_MARGIN_LIMIT")
                         if ctx.account_margin > 0 and ctx.account_margin_level < self.cfg["min_account_margin_level"]:
                             reject("ACCOUNT_MARGIN_LEVEL_LOW")
-                        notional = vol * spec.contract_size * entry  # profit currency; USD account assumed for the ratio
-                        gross = (ctx.gross_exposure_notional + notional) / ctx.account_equity
-                        m["gross_exposure_after"] = round(gross, 3)
-                        if gross > self.cfg["max_metals_gross_exposure"]:
-                            reject("ACCOUNT_GROSS_METALS_EXPOSURE")
+                    per_bot = self.cfg.get("exposure_scope", "account") == "per_bot"
+                    base_eq = eq if per_bot else ctx.account_equity
+                    if base_eq > 0:
+                        notional = self.notional(spec, vol, entry)
                         side = p.intent.position_side
-                        same = (ctx.same_direction_notional.get(side, 0.0) + notional) / ctx.account_equity
-                        m["same_direction_exposure_after"] = round(same, 3)
+                        held = ctx.bot_gross_notional if per_bot else ctx.gross_exposure_notional
+                        held_side = (ctx.bot_same_direction_notional if per_bot else ctx.same_direction_notional).get(side, 0.0)
+                        gross = (held + notional) / base_eq
+                        same = (held_side + notional) / base_eq
+                        m["exposure_scope"] = "per_bot" if per_bot else "account"
+                        m["gross_exposure_after"], m["same_direction_exposure_after"] = round(gross, 3), round(same, 3)
+                        if gross > self.cfg["max_metals_gross_exposure"]:
+                            reject("GROSS_METALS_EXPOSURE")
                         if same > self.cfg["max_same_direction_exposure"]:
                             reject("CORRELATED_METALS_EXPOSURE")
         return self._done(p, Decision.REJECTED if reasons else Decision.APPROVED, reasons, m, fp)

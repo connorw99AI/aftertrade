@@ -54,10 +54,12 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 
 ## A consequence you should know before arming
 
-The operator chose a 0.1 lot minimum and **no per-trade loss limit** (`risk.per_trade_limit_enabled: false`). In practice the 0.5% "risk per trade" is only a sizing target: most trades will be 0.1 lot and will risk more than it.
+The operator runs a £3,000 demo so each bot has £300, the amount the best bot would get live. Settings follow from that:
 
-- Gold at 0.1 lot: about $10 per $1 move. A $10 stop loses about $100.
-- Silver at 0.1 lot (5,000 oz contract): about $500 per $1 move. A $1 stop loses about $500, which is 5% of a $10k bot.
-- Only the daily-loss pause (2%) and the drawdown pause (10%) still limit losses, and they act after the loss. A single silver stop-out can trigger the daily pause by itself, and gaps and slippage can lose more than the stop.
+- **Sizing from risk, no fixed minimum** (`min_lot: 0`). Each trade risks at most 3% of the bot (`risk_per_trade: 0.03`, about £9), measured at the stop with the terminal's own contract figures. Silver lots are 5,000 oz against gold's 100 oz, so silver automatically gets fewer lots than gold for the same £ risk.
+- The broker minimum is 0.01 lot. When even 0.01 lot would risk more than £9, the trade is **skipped** (`MIN_LOT_EXCEEDS_RISK_BUDGET`). At 0.01 lot, gold costs about £0.75 per $1 move and silver about £37 per $1 move.
+- **Strategies with wide stops will rarely trade at £300.** On synthetic data, S07, S08 and S09 skip most of their signals, S04 skips most, and S10 (two legs, each with a wide stop) skipped every one. Live frequency will differ, but the direction is the same. That is an honest property of small accounts: those trades could not be afforded live either.
+- **Exposure caps are per bot** (`exposure_scope: per_bot`), as if each bot had its own £300 account, so one bot's trades do not use up another's limits. Position values are converted into account currency with `order_calc_profit`. The cap is 40× the bot's equity: 0.01 lot of gold is already roughly 10× a £300 bot, so a large gap against an open position can lose much more than the stop.
+- Daily-loss pause 5% (£15), drawdown pause 20% (£60).
 
-The risk engine still records the planned risk of every trade (`planned_risk`, `planned_risk_pct_of_bot`) in its decision log, so you can see what each trade put at stake. Set `per_trade_limit_enabled: true` to restore the cap.
+Choosing "the most profitable bot" from ten over a short period mostly selects luck. Before trusting a winner, look for at least 50-100 of its trades, still positive after costs, and run it through the research checks (walk-forward, deflated Sharpe, cost stress).

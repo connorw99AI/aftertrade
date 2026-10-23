@@ -65,15 +65,15 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 
 | Check | Default |
 |---|---|
-| Planned loss at stop (`order_calc_profit`) + estimated spread/commission ≤ risk per trade | **off** by operator choice (`per_trade_limit_enabled: false`); planned risk is still logged. 0.5% of bot equity when on |
-| Minimum trade size (sizing floor, not a check) | 0.1 lot (`min_lot`) |
+| Planned loss at stop (`order_calc_profit`) + estimated spread/commission ≤ risk per trade | 3% of bot equity (£9 on a £300 bot) |
+| Minimum trade size | broker minimum (0.01); `min_lot` can force a larger floor |
 | New trades per bot per UTC day (a two-leg group counts once; shadow approvals count too) | 5 |
-| Daily bot loss → entries blocked for the rest of the UTC day | 2% |
-| Bot drawdown from peak → bot set to PAUSED_RISK; operator must resume | 10% |
+| Daily bot loss → entries blocked for the rest of the UTC day | 5% |
+| Bot drawdown from peak → bot set to PAUSED_RISK; operator must resume | 20% |
 | Open positions per bot | 2 |
 | Bot margin (`order_calc_margin`) ≤ free capital, and total bot margin ≤ 50% of bot equity | |
 | Account margin used ≤ 50% of account equity; margin level ≥ 300% | account-wide |
-| Gross metals notional ≤ 3× account equity; same-direction gold+silver notional ≤ 2× | account-wide, correlated exposure |
+| Gross metals value ≤ 40× equity; same-direction gold+silver value ≤ 40× (account currency) | per bot by default (`exposure_scope: per_bot`), or account-wide |
 | Spread cap per instrument; stop and target outside the broker's stops/freeze level + buffer; stop on the correct side | |
 | Lot on the volume step and ≥ minimum | |
 | Kill switch, global pause, bot status, blocking alerts, unclean reconciliation, an order already in flight for this bot and symbol | |

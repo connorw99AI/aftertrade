@@ -20,19 +20,21 @@ DEFAULTS: dict[str, Any] = {
     "sessions": {},                     # optional explicit session windows per role (server time)
     "capital": {"bot_fraction": 0.10},
     "risk": {
-        "risk_per_trade": 0.005,            # default; a bot may override it with strategies.<id>.risk_per_trade
+        "risk_per_trade": 0.03,             # default; a bot may override it with strategies.<id>.risk_per_trade
         "max_risk_per_trade_cap": 0.03,     # hard ceiling for any per-bot override
-        "min_lot": 0.1,                     # every entry trades at least this many lots (0 = skip trades the budget can't afford)
-        "per_trade_limit_enabled": False,   # True rejects entries whose planned stop loss exceeds risk_per_trade x bot equity
+        "min_lot": 0.0,                     # >0: every entry trades at least this many lots; 0 = risk-sized, skip if below broker min
+        "per_trade_limit_enabled": True,    # reject entries whose planned stop loss exceeds risk_per_trade x bot equity
         "max_entries_per_bot_per_day": 5,   # new trades (a two-leg group counts once) per bot per UTC day; 0 = unlimited
-        "daily_loss_pause": 0.02,
-        "max_drawdown_pause": 0.10,
+        "daily_loss_pause": 0.05,
+        "max_drawdown_pause": 0.20,
         "max_positions_per_bot": 2,
         "max_bot_margin_fraction": 0.5,     # of the bot's own equity
         "min_account_margin_level": 300.0,  # percent; block entries below
         "max_account_margin_used": 0.5,     # fraction of account equity
-        "max_metals_gross_exposure": 3.0,   # gross notional / account equity, across all bots
-        "max_same_direction_exposure": 2.0, # long-gold+long-silver (or short) notional / equity
+        "exposure_scope": "per_bot",        # "per_bot": exposure caps use the bot's own positions and equity, as if it
+                                            # had its own account; "account": all bots' positions vs account equity
+        "max_metals_gross_exposure": 40.0,  # gross notional / equity (account currency)
+        "max_same_direction_exposure": 40.0,# long-gold+long-silver (or short) notional / equity
         "max_spread_points": {"GOLD": 80, "SILVER": 80},
         "stop_buffer_points": 5,
         "require_stop": True,

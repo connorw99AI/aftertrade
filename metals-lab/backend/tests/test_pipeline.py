@@ -325,6 +325,7 @@ def test_shadow_mode_sizes_on_would_be_allocation(coord):
 def test_per_bot_risk_override_and_cap(armed):
     from metals_lab.risk import risk_pct_for
     c = armed
+    c.cfg["risk"]["risk_per_trade"] = 0.005
     assert risk_pct_for(c.cfg, "S01") == 0.005
     c.cfg["strategies"]["S01"] = {"risk_per_trade": 0.02}
     assert risk_pct_for(c.cfg, "S01") == 0.02 and risk_pct_for(c.cfg, "S02") == 0.005
@@ -355,3 +356,19 @@ def test_daily_entry_cap(armed):
     assert "MAX_ENTRIES_PER_DAY" in r.reasons
     _, r2 = approve(c, make_open_proposal(c, bot="S02"))
     assert "MAX_ENTRIES_PER_DAY" not in r2.reasons
+
+
+def test_exposure_caps_are_per_bot_and_in_account_currency(armed):
+    c = armed
+    c.cfg["risk"]["per_trade_limit_enabled"] = False
+    p = make_open_proposal(c, volume=1.0, stop_dist=3.0)
+    _, r = approve(c, p)
+    spec = c.specs["GOLD"]
+    exp = c.risk.notional(spec, 1.0, r.metrics["entry_ref"]) / r.metrics["bot_equity"]
+    assert r.metrics["exposure_scope"] == "per_bot" and abs(r.metrics["gross_exposure_after"] - round(exp, 3)) < 1e-6
+    c.cfg["risk"]["max_metals_gross_exposure"] = exp * 0.9
+    _, r2 = approve(c, make_open_proposal(c, volume=1.0, stop_dist=3.0))
+    assert "GROSS_METALS_EXPOSURE" in r2.reasons
+    c.cfg["risk"]["exposure_scope"] = "account"  # the same trade is small against the whole account
+    _, r3 = approve(c, make_open_proposal(c, volume=1.0, stop_dist=3.0))
+    assert "GROSS_METALS_EXPOSURE" not in r3.reasons

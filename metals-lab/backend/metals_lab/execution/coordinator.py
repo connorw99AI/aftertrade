@@ -459,12 +459,16 @@ class Coordinator:
     def _risk_ctx(self, bot, acct, book, ds, pk, rep, spec, tick, owned=None) -> RiskContext:
         info = self.ro.account_info() or {}
         gross, same = 0.0, {"LONG": 0.0, "SHORT": 0.0}
+        bgross, bsame = 0.0, {"LONG": 0.0, "SHORT": 0.0}
         for r in self.db.q("SELECT * FROM positions WHERE status='OPEN'"):
             s = next((x for x in self.specs.values() if x.symbol == r["symbol"]), None)
             if s:
-                n = float(r["volume_open"] or 0) * s.contract_size * float(r["entry_price"] or 0)
+                n = self.risk.notional(s, float(r["volume_open"] or 0), float(r["entry_price"] or 0))
                 gross += n
                 same[r["side"]] += n
+                if r["bot_id"] == bot:
+                    bgross += n
+                    bsame[r["side"]] += n
         inflight = {r["symbol"] for r in self.db.q("SELECT symbol FROM intents WHERE bot_id=? AND state IN ('CREATED','SUBMITTING','UNKNOWN')", (bot,))}
         act = self.db.active_activation()
         return RiskContext(
@@ -475,6 +479,7 @@ class Coordinator:
             bot_open_positions=self.db.one("SELECT COUNT(*) n FROM positions WHERE bot_id=? AND status='OPEN'", (bot,))["n"],
             account_equity=float(info.get("equity") or 0), account_margin=float(info.get("margin") or 0),
             account_margin_level=float(info.get("margin_level") or 0), gross_exposure_notional=gross, same_direction_notional=same,
+            bot_gross_notional=bgross, bot_same_direction_notional=bsame,
             reconciliation_clean=rep.clean, blocking_alerts=self.db.blocking_alerts(), in_flight_symbols=inflight,
             tick=tick, spec=spec, owned_position=owned, entries_today=self.entries_today(bot))
 
