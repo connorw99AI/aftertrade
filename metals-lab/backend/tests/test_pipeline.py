@@ -308,3 +308,30 @@ def test_shadow_mode_records_decisions_without_orders(coord, sim):
     assert coord.gw._b.sent_requests == []
     modes = {r["mode"] for r in coord.db.q("SELECT mode FROM signals_log")}
     assert modes and modes <= {"SHADOW"}
+
+
+def test_shadow_mode_sizes_on_would_be_allocation(coord):
+    b = coord.bot_book("S08")
+    assert b.shadow and b.allocation == 10000.0  # 10% of the 100,000 simulated balance, not 0
+    coord.arm("pytest")
+    real = coord.bot_book("S08")
+    assert not real.shadow and real.allocation == 10000.0
+
+
+def test_per_bot_risk_override_and_cap(armed):
+    from metals_lab.risk import risk_pct_for
+    c = armed
+    assert risk_pct_for(c.cfg, "S01") == 0.005
+    c.cfg["strategies"]["S01"] = {"risk_per_trade": 0.02}
+    assert risk_pct_for(c.cfg, "S01") == 0.02 and risk_pct_for(c.cfg, "S02") == 0.005
+    c.cfg["strategies"]["S01"] = {"risk_per_trade": 0.5}
+    assert risk_pct_for(c.cfg, "S01") == 0.03  # hard cap
+    # a trade risking ~1.5% of the bot is rejected at 0.5% but approved with a 2% override
+    c.cfg["strategies"]["S01"] = {}
+    p = make_open_proposal(c, volume=0.5, stop_dist=3.0)
+    _, r = approve(c, p)
+    assert r is not None and "PLANNED_RISK_EXCEEDS_LIMIT" in r.reasons
+    c.cfg["strategies"]["S01"] = {"risk_per_trade": 0.02}
+    p2 = make_open_proposal(c, volume=0.5, stop_dist=3.0)
+    _, r2 = approve(c, p2)
+    assert r2 is not None and "PLANNED_RISK_EXCEEDS_LIMIT" not in r2.reasons

@@ -32,7 +32,7 @@ from ..instruments import ROLES, InstrumentSpec, discover
 from ..ledger import Ledger
 from ..mt5.gateway import TradingGateway, utc_now
 from ..mt5.guard import AccountCheck, AccountState, check_account, execution_blockers
-from ..risk import RiskContext, RiskEngine
+from ..risk import RiskContext, RiskEngine, risk_pct_for
 from ..sessions import ServerClock, calendar_from_config, calendar_from_mql5_export
 from ..store import Store, now_iso
 from ..strategies import STRATEGY_CLASSES, Strategy, build, magic_for, strategy_for_magic
@@ -347,6 +347,14 @@ class Coordinator:
         unreal = (rep.unrealized.get(bot, 0.0) if rep else 0.0)
         reserved = (rep.reserved_margin.get(bot, 0.0) if rep else
                     self.db.one("SELECT COALESCE(SUM(reserved_margin),0) s FROM positions WHERE bot_id=? AND status='OPEN'", (bot,))["s"])
+        acct = self.account
+        snap = self.ledger.snapshot(acct.fingerprint) if acct and acct.fingerprint else None
+        if snap is None and acct is not None and acct.balance:
+            # Not armed yet on this account: size shadow decisions on the allocation the bot WOULD receive,
+            # instead of a zero budget that would make every shadow entry look unaffordable.
+            from ..ledger import BotBook
+            return BotBook(bot, round(float(acct.balance) * self.cfg["capital"]["bot_fraction"], 2), 0.0, unreal, reserved, 0.0,
+                           shadow=True)
         return self.ledger.book(bot, unreal, reserved, 0.0)
 
     def _day_and_peak(self, bot: str, equity: float, now: datetime) -> tuple[float, float]:
@@ -522,7 +530,7 @@ class Coordinator:
                 s.ref_price = ticks[s.role]["ask"] if s.intent == Intent.OPEN_LONG else ticks[s.role]["bid"]
         commission = float(self.cfg.get("risk", {}).get("commission_per_lot_side_estimate", 0.0))
         tps = strat.calculate_target_positions(
-            entries, book.equity, self.specs, self.cfg["risk"]["risk_per_trade"], self.risk.loss_at_stop,
+            entries, book.equity, self.specs, risk_pct_for(self.cfg, bot), self.risk.loss_at_stop,
             lambda spec: self.risk.est_cost_per_lot(spec, ticks.get(spec.role), commission))
         approved: list[tuple] = []
         group = any(s.group_id for s in entries)

@@ -27,6 +27,14 @@ from ..mt5.guard import AccountCheck
 from ..store import Store
 
 
+def risk_pct_for(cfg: dict, bot_id: str) -> float:
+    """Planned risk per trade for one bot: its own override if set, else the default, never above the hard cap."""
+    default = float(cfg["risk"]["risk_per_trade"])
+    override = (cfg.get("strategies", {}).get(bot_id) or {}).get("risk_per_trade")
+    pct = float(override) if override is not None else default
+    return max(0.0, min(pct, float(cfg["risk"].get("max_risk_per_trade_cap", 0.03))))
+
+
 @dataclass
 class RiskContext:
     account: AccountCheck
@@ -66,6 +74,7 @@ class RiskDecision:
 class RiskEngine:
     def __init__(self, cfg: dict, store: Store, audit_authority: ApprovalAuthority, authority: ApprovalAuthority, gw_ro):
         self.cfg = cfg["risk"]
+        self.root_cfg = cfg
         self.db = store
         self.audit_auth = audit_authority
         self.auth = authority
@@ -192,7 +201,7 @@ class RiskEngine:
                     cost = self.est_cost_per_lot(spec, tick) * vol
                     planned = loss + cost
                     m["planned_risk"] = round(planned, 2)
-                    limit = eq * self.cfg["risk_per_trade"]
+                    limit = eq * risk_pct_for(self.root_cfg, p.bot_id)
                     m["risk_limit"] = round(limit, 2)
                     if planned > limit * 1.0001:
                         reject("PLANNED_RISK_EXCEEDS_LIMIT")

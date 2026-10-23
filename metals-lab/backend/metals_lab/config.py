@@ -20,7 +20,8 @@ DEFAULTS: dict[str, Any] = {
     "sessions": {},                     # optional explicit session windows per role (server time)
     "capital": {"bot_fraction": 0.10},
     "risk": {
-        "risk_per_trade": 0.005,
+        "risk_per_trade": 0.005,            # default; a bot may override it with strategies.<id>.risk_per_trade
+        "max_risk_per_trade_cap": 0.03,     # hard ceiling for any per-bot override
         "daily_loss_pause": 0.02,
         "max_drawdown_pause": 0.10,
         "max_positions_per_bot": 2,

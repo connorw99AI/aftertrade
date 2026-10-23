@@ -32,6 +32,7 @@ class BotBook:
     unrealized: float
     reserved_margin: float
     pending_reserved: float
+    shadow: bool = False  # True before the first arming: allocation is what the bot WOULD get
 
     @property
     def equity(self) -> float:
@@ -45,7 +46,7 @@ class BotBook:
         return {"allocation": round(self.allocation, 2), "realized": round(self.realized, 2),
                 "unrealized": round(self.unrealized, 2), "equity": round(self.equity, 2),
                 "reserved_margin": round(self.reserved_margin, 2), "pending_reserved": round(self.pending_reserved, 2),
-                "free_capital": round(self.free_capital, 2)}
+                "free_capital": round(self.free_capital, 2), "shadow": self.shadow}
 
 
 class Ledger:

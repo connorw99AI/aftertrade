@@ -178,7 +178,8 @@ def create_app(state: State) -> FastAPI:
         last_audit = db.one("SELECT * FROM audit_decisions WHERE bot_id=? ORDER BY id DESC LIMIT 1", (bot,))
         last_risk = db.one("SELECT * FROM risk_decisions WHERE bot_id=? ORDER BY id DESC LIMIT 1", (bot,))
         open_pos = db.q("SELECT * FROM positions WHERE bot_id=? AND status='OPEN'", (bot,))
-        risk_pct = state.cfg["risk"]["risk_per_trade"]
+        from ..risk import risk_pct_for
+        risk_pct = risk_pct_for(state.cfg, bot)
         return {
             "bot_id": bot, "name": cls.name, "style": cls.style.value, "roles": list(cls.roles),
             "timeframe": cls.primary_timeframe,
@@ -187,6 +188,7 @@ def create_app(state: State) -> FastAPI:
             "magic": magic_for(bot),
             "book": book.public() if book else None,
             "risk_budget_per_trade": round(book.equity * risk_pct, 2) if book else None,
+            "risk_pct": risk_pct,
             "open_positions": open_pos,
             "closed_trades": len(trades),
             "closed_net_pnl": round(sum(nets), 2),

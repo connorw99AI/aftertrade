@@ -71,7 +71,7 @@ export default function Overview() {
               <div className="info">
                 <div className="row"><span className="who">{CREATURES[b.bot_id]?.name}</span><span className={`badge ${b.status}`}>{b.status.replace("_", " ").toLowerCase()}</span></div>
                 <div className="what">{b.bot_id} {b.name}, {b.style.toLowerCase()} on {b.timeframe}</div>
-                <div className="row"><span className="muted">Equity</span><span className="num">{b.book ? money(b.book.equity) : "not allocated"}</span></div>
+                <div className="row"><span className="muted">Equity</span><span className="num">{b.book ? money(b.book.equity) : "not allocated"}{b.book?.shadow ? " (shadow)" : ""}</span></div>
                 <div className="row"><span className="muted">Closed P&amp;L</span><span className={`num ${b.closed_net_pnl >= 0 ? "gain" : "loss"}`}>{money(b.closed_net_pnl, true)}</span></div>
                 <div className="row"><span className="muted">Return</span><span className="num">{pct(b.return_pct)}</span></div>
                 <div className="row"><span className="muted">Trades</span><span className="num">{b.closed_trades}{b.provisional_trades ? ` (${b.provisional_trades} provisional)` : ""}</span></div>

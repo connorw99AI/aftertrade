@@ -100,6 +100,7 @@ function BotDetail({ id }: { id: string }) {
         </div>
       </div>
       <h2>Own money</h2>
+      {bk?.shadow && <p className="muted">Shadow mode: these are the amounts this bot would get when you arm (10% of the current balance). No money is assigned yet.</p>}
       {!bk || !bk.allocation ? <p className="empty">No allocation yet. Allocations are created on first arming.</p> : (
         <div className="metrics">
           <Metric k="Starting allocation" v={money(bk.allocation)} />
@@ -108,7 +109,7 @@ function BotDetail({ id }: { id: string }) {
           <Metric k="Unrealized" v={money(bk.unrealized, true)} />
           <Metric k="Reserved margin" v={money(bk.reserved_margin)} />
           <Metric k="Free capital" v={money(bk.free_capital)} />
-          <Metric k="Risk budget per trade" v={money(b.risk_budget_per_trade)} />
+          <Metric k={`Risk budget per trade (${(b.risk_pct * 100).toFixed(1)}%)`} v={money(b.risk_budget_per_trade)} />
           <Metric k="Return" v={pct(b.return_pct)} />
           <Metric k="Max drawdown (closed)" v={pct(b.max_drawdown_closed_pct)} />
           <Metric k="Closed trades" v={String(b.closed_trades)} />
