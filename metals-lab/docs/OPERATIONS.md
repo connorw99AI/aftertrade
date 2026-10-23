@@ -95,7 +95,7 @@ On the first activation for an account, the balance is snapshotted once and the 
 ## 5. Historical data and research
 
 ```
-metals-lab fetch-history --days 730 --tf M5 M15 H1 H4 D1        # Parquet cache + manifest + quality report
+metals-lab fetch-history --days 730 --tf M1 M5 M15 H1        # Parquet cache + manifest + quality report
 metals-lab fetch-history --days 30 --tf M1 --ticks              # bars built from ticks (real spreads); history depth varies by broker
 metals-lab backtest --strategy S08 --capital 1000
 metals-lab research --strategy S08 --trials 20                  # train/validation/test, walk-forward, sensitivity, cost stress, DSR

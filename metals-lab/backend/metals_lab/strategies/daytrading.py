@@ -47,10 +47,10 @@ class LondonOpeningRangeBreakout(Strategy):
         "tz": Param("Europe/London", "Session clock (DST-aware).", ()),
         "or_start": Param("08:00", "London open.", ()),
         "or_end": Param("09:00", "One-hour opening range.", ("08:30", "09:00")),
-        "entry_cutoff": Param("12:00", "No new entries after midday London.", ("11:00", "12:00", "13:00")),
+        "entry_cutoff": Param("14:00", "No new entries after early afternoon London.", ("12:00", "13:00", "14:00")),
         "exit_time": Param("16:30", "Flat before US afternoon.", ("15:00", "16:30")),
-        "buffer_atr": Param(0.2, "Close must clear the range by a small margin.", (0.0, 0.1, 0.25)),
-        "min_range_atr": Param(2.0, "Too-narrow ranges produce noise breaks (in M5 ATRs).", (1.5, 2.0, 3.0)),
+        "buffer_atr": Param(0.1, "Close must clear the range by a small margin.", (0.0, 0.1, 0.25)),
+        "min_range_atr": Param(1.0, "Too-narrow ranges produce noise breaks (in M5 ATRs).", (1.0, 1.5, 2.0)),
         "max_range_atr": Param(10.0, "Too-wide ranges leave little room (in M5 ATRs).", (8.0, 10.0, 12.0)),
         "wide_range_atr": Param(6.0, "Use midpoint stop for wide ranges (in M5 ATRs).", (6.0,)),
         "tp_range_mult": Param(1.5, "Target as multiple of the range.", (1.0, 1.5, 2.0)),
@@ -184,9 +184,9 @@ class BreakoutRetest(Strategy):
     PARAMS = {
         "range_start": Param("08:00", "London.", ()),
         "range_end": Param("13:00", "Before US data/NY open.", ()),
-        "breakout_atr": Param(0.2, "Decisive close beyond level.", (0.1, 0.2, 0.4)),
-        "retest_tol_atr": Param(0.25, "How close the retest must come.", (0.15, 0.25, 0.4)),
-        "retest_bars": Param(24, "Setup expiry (2h of M5 bars).", (12, 24, 36)),
+        "breakout_atr": Param(0.1, "Close beyond the level.", (0.05, 0.1, 0.2)),
+        "retest_tol_atr": Param(0.4, "How close the retest must come.", (0.25, 0.4, 0.6)),
+        "retest_bars": Param(36, "Setup expiry (3h of M5 bars).", (24, 36, 48)),
         "stop_atr": Param(0.5, "Below the retest structure.", (0.5, 0.75)),
         "reward_risk": Param(2.0, "Target multiple.", (1.5, 2.0, 2.5)),
         "max_hold_bars": Param(96, "Safety cap (8h of M5 bars).", ()),
@@ -328,8 +328,9 @@ class VolatilityCompressionBreakout(Strategy):
     magic_offset = 6
     description = ("Detects M15 volatility compression (Bollinger Bands inside Keltner Channels for several bars) and "
                    "trades the direction of the release beyond the compression range.")
-    long_rules = "Squeeze lasted >= min_squeeze bars and has just released; close > highest high of the squeeze period."
-    short_rules = "Same release; close < lowest low of the squeeze period."
+    long_rules = ("Squeeze lasted >= min_squeeze bars and released within the last release_window bars; "
+                  "close > highest high of the squeeze period.")
+    short_rules = "Same release window; close < lowest low of the squeeze period."
     exit_rules = ("Stop stop_atr x ATR(20); target reward_risk x risk; strategy close when close crosses back through EMA20; "
                   "max hold 64 bars (16h); flatten Friday from 20:00 UTC (weekend gap risk).")
     invalidation_rules = "Close back through EMA20 against the position."
@@ -343,10 +344,11 @@ class VolatilityCompressionBreakout(Strategy):
     PARAMS = {
         "bb_k": Param(2.0, "Standard.", ()),
         "kc_k": Param(1.5, "Carter's setting.", (1.25, 1.5, 2.0)),
-        "min_squeeze": Param(12, "Bars of compression required (3h of M15).", (8, 12, 20)),
+        "min_squeeze": Param(6, "Bars of compression required (1.5h of M15).", (4, 6, 12)),
         "stop_atr": Param(1.5, "Stop.", (1.0, 1.5, 2.0)),
         "reward_risk": Param(2.0, "Target multiple.", (1.5, 2.0, 3.0)),
         "max_hold_bars": Param(64, "16 hours of M15 bars.", (32, 64, 96)),
+        "release_window": Param(4, "Bars after the release in which a breakout still counts (1 hour).", (0, 2, 4, 8)),
         "max_spread_atr": Param(0.15, "Cost guard (M15 ranges are smaller than H1).", ()),
     }
 
@@ -370,7 +372,16 @@ class VolatilityCompressionBreakout(Strategy):
             for i in np.flatnonzero(rel):
                 k = pc[i]
                 hh[i], ll[i] = h[i - k:i].max(), l[i - k:i].min()
-            df["sq_high"], df["sq_low"] = hh, ll
+            # The release stays tradable for release_window bars, unless a new squeeze starts first.
+            idx = np.arange(len(df))
+            rel_at = pd.Series(np.where(rel, idx, np.nan)).ffill().to_numpy()
+            sqc = sq.astype(int).cumsum().to_numpy()
+            sqc_at_rel = pd.Series(np.where(rel, sqc, np.nan)).ffill().to_numpy()
+            live = (idx - rel_at <= self.p["release_window"]) & (sqc == sqc_at_rel)
+            df["release_live"] = live
+            df["sq_len"] = np.where(live, pd.Series(np.where(rel, pc, np.nan)).ffill().to_numpy(), np.nan)
+            df["sq_high"] = np.where(live, pd.Series(hh).ffill().to_numpy(), np.nan)
+            df["sq_low"] = np.where(live, pd.Series(ll).ffill().to_numpy(), np.nan)
             df["ema20"] = ind.ema(df["close"], 20)
             df["atr"] = ind.atr(df, 20)
             out[key] = df
@@ -384,7 +395,7 @@ class VolatilityCompressionBreakout(Strategy):
             if ctx.position(role) or not ctx.has(role, "M15", 30):
                 continue
             r = ctx.last(role, "M15")
-            if not r["released"] or pd.isna(r["atr"]):
+            if not r["release_live"] or pd.isna(r["atr"]):
                 continue
             if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
                 continue
@@ -426,7 +437,7 @@ class VolatilityCompressionBreakout(Strategy):
             spr = spread_price(r, ctx.specs[role])
             late_fri = ctx.now.weekday() == 4 and ctx.now.hour >= 18
             sq_now = int(r["sq_count"]) if not pd.isna(r["sq_count"]) else 0
-            sq_prev = int(pv["sq_count"]) if not pd.isna(pv["sq_count"]) else 0
+            sq_prev = int(r["sq_len"]) if not pd.isna(r["sq_len"]) else (int(pv["sq_count"]) if not pd.isna(pv["sq_count"]) else 0)
             out[role] = {
                 "price": float(r["close"]),
                 "levels": [x for x in (level("EMA20", r["ema20"]), level("Bollinger upper", r["bb_u"]), level("Bollinger lower", r["bb_l"]),
@@ -434,13 +445,14 @@ class VolatilityCompressionBreakout(Strategy):
                 "filters": [
                     chk("Not Friday after 18:00 UTC", not late_fri, ""),
                     chk(f"Squeeze lasted >= {self.p['min_squeeze']} bars", max(sq_now, sq_prev) >= self.p["min_squeeze"],
-                        f"currently squeezed for {sq_now} bars" if sq_now else f"previous squeeze {sq_prev} bars"),
-                    chk("Squeeze just released this bar", bool(r["released"]), "still compressed" if sq_now else ""),
+                        f"currently squeezed for {sq_now} bars" if sq_now else f"last squeeze {sq_prev} bars"),
+                    chk(f"Squeeze released within the last {self.p['release_window']} bars", bool(r["release_live"]),
+                        "still compressed" if sq_now else ""),
                     chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
                 ],
-                "long": [chk("Closed above the squeeze high", bool(r["released"]) and r["close"] > r["sq_high"],
+                "long": [chk("Closed above the squeeze high", bool(r["release_live"]) and r["close"] > r["sq_high"],
                              f"close {fmt(r['close'], d)} vs {fmt(r['sq_high'], d)}")],
-                "short": [chk("Closed below the squeeze low", bool(r["released"]) and r["close"] < r["sq_low"],
+                "short": [chk("Closed below the squeeze low", bool(r["release_live"]) and r["close"] < r["sq_low"],
                               f"close {fmt(r['close'], d)} vs {fmt(r['sq_low'], d)}")],
             }
         return out

@@ -157,3 +157,34 @@ def test_daily_loss_pause_blocks_new_entries(specs):
     s = OneShot({"at": 3, "stop": 5.0})
     res = Backtester(s, {("GOLD", "H1"): frame(rows)}, specs, c).run()
     assert res.diagnostics["daily_pauses"] >= 1
+
+
+def test_min_lot_floor_and_daily_entry_cap(specs):
+    rows = FLAT * 3
+    # stop $500 away: 0.01 lot risks $500 > the 0.5% budget ($50), so without a floor the trade is skipped
+    c = cfg(risk=RiskParams(risk_per_trade=0.005))
+    res = Backtester(OneShot({"at": 3, "stop": 500.0, "exit_at": 5}), {("GOLD", "H1"): frame(rows)}, specs, c).run()
+    assert len(res.trades) == 0 and res.diagnostics["skipped_min_lot"] == 1
+    c2 = cfg(risk=RiskParams(risk_per_trade=0.005, min_lot=0.1))
+    res2 = Backtester(OneShot({"at": 3, "stop": 500.0, "exit_at": 5}), {("GOLD", "H1"): frame(rows)}, specs, c2).run()
+    assert len(res2.trades) == 1 and abs(res2.trades.iloc[0]["volume"] - 0.1) < 1e-12
+
+
+class EveryBar(OneShot):
+    """Opens whenever flat and closes on the next bar."""
+    def entry_signals(self, ctx):
+        r = ctx.last("GOLD", "H1")
+        if ctx.position("GOLD"):
+            return []
+        return [self.signal(ctx, "GOLD", Intent.OPEN_LONG, "t", {}, stop_price=r["close"] - 5.0)]
+
+    def exit_signals(self, ctx):
+        return [self.close_signal(ctx, p, "exit", {}) for p in ctx.positions if p.bars_held >= 1]
+
+
+def test_daily_entry_cap_in_backtest(specs):
+    rows = FLAT * 4  # 16 hourly bars, 08:00-23:00 of one UTC day
+    uncapped = Backtester(EveryBar(), {("GOLD", "H1"): frame(rows)}, specs, cfg()).run()
+    capped = Backtester(EveryBar(), {("GOLD", "H1"): frame(rows)}, specs,
+                        cfg(risk=RiskParams(risk_per_trade=0.01, max_entries_per_day=3))).run()
+    assert len(uncapped.trades) > 3 and len(capped.trades) == 3 and capped.diagnostics["blocked_daily_entry_cap"] > 0

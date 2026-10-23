@@ -22,6 +22,9 @@ DEFAULTS: dict[str, Any] = {
     "risk": {
         "risk_per_trade": 0.005,            # default; a bot may override it with strategies.<id>.risk_per_trade
         "max_risk_per_trade_cap": 0.03,     # hard ceiling for any per-bot override
+        "min_lot": 0.1,                     # every entry trades at least this many lots (0 = skip trades the budget can't afford)
+        "per_trade_limit_enabled": False,   # True rejects entries whose planned stop loss exceeds risk_per_trade x bot equity
+        "max_entries_per_bot_per_day": 5,   # new trades (a two-leg group counts once) per bot per UTC day; 0 = unlimited
         "daily_loss_pause": 0.02,
         "max_drawdown_pause": 0.10,
         "max_positions_per_bot": 2,

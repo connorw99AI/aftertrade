@@ -13,7 +13,7 @@ from metals_lab.execution.coordinator import BOT_IDS, Coordinator
 from metals_lab.mt5 import constants as C
 from metals_lab.mt5.gateway import ReadOnlyGateway, TradingGateway
 from metals_lab.mt5.sim import SimAccount
-from metals_lab.store import Store
+from metals_lab.store import Store, now_iso
 from metals_lab.timeutil import utc_now
 
 from conftest import approve, make_open_proposal
@@ -287,9 +287,13 @@ def test_stale_quote_and_spread_blowout_delay_entries(armed):
 
 def test_risk_limits_and_stop_validation(armed):
     c = armed
+    c.cfg["risk"]["per_trade_limit_enabled"] = True
     big = make_open_proposal(c, volume=5.0, stop_dist=50.0)  # planned risk >> 0.5% of 10k
     _, r = approve(c, big)
     assert "PLANNED_RISK_EXCEEDS_LIMIT" in r.reasons
+    c.cfg["risk"]["per_trade_limit_enabled"] = False  # operator policy: no per-trade cap; the planned risk is still recorded
+    _, r0 = approve(c, make_open_proposal(c, volume=0.5, stop_dist=10.0))
+    assert "PLANNED_RISK_EXCEEDS_LIMIT" not in r0.reasons and r0.metrics["planned_risk"] > r0.metrics["risk_limit"]
     tight = make_open_proposal(c, stop_dist=0.05)             # inside broker stops level
     _, r2 = approve(c, tight)
     assert "STOP_INSIDE_BROKER_STOPS_LEVEL" in r2.reasons
@@ -327,6 +331,7 @@ def test_per_bot_risk_override_and_cap(armed):
     c.cfg["strategies"]["S01"] = {"risk_per_trade": 0.5}
     assert risk_pct_for(c.cfg, "S01") == 0.03  # hard cap
     # a trade risking ~1.5% of the bot is rejected at 0.5% but approved with a 2% override
+    c.cfg["risk"]["per_trade_limit_enabled"] = True
     c.cfg["strategies"]["S01"] = {}
     p = make_open_proposal(c, volume=0.5, stop_dist=3.0)
     _, r = approve(c, p)
@@ -335,3 +340,18 @@ def test_per_bot_risk_override_and_cap(armed):
     p2 = make_open_proposal(c, volume=0.5, stop_dist=3.0)
     _, r2 = approve(c, p2)
     assert r2 is not None and "PLANNED_RISK_EXCEEDS_LIMIT" not in r2.reasons
+
+
+def test_daily_entry_cap(armed):
+    from metals_lab.domain import Signal
+    c = armed
+    assert c.entries_today("S01") == 0
+    for i in range(5):  # five shadow-approved opens today (a two-leg group would count once)
+        sig = Signal("S01", utc_now() - timedelta(seconds=i), "GOLD", "XAUUSD", Intent.OPEN_LONG, f"t{i}", {})
+        c.db.x("INSERT INTO signals_log(ts,bot_id,mode,outcome,signal_json,explanation) VALUES(?,?,?,?,?,?)",
+               (now_iso(), "S01", "SHADOW", "SHADOW_APPROVED", json.dumps(sig.to_dict(), default=str), ""))
+    assert c.entries_today("S01") == 5 and c.entries_today("S02") == 0
+    _, r = approve(c, make_open_proposal(c))
+    assert "MAX_ENTRIES_PER_DAY" in r.reasons
+    _, r2 = approve(c, make_open_proposal(c, bot="S02"))
+    assert "MAX_ENTRIES_PER_DAY" not in r2.reasons

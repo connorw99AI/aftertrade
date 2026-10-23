@@ -6,7 +6,7 @@ Full rules, parameters and per-strategy citations: [STRATEGY_REFERENCE.md](STRAT
 
 ## Distribution and why
 
-Timeframes were set by the operator: one bot on M1, four on M5, two on M15, and one each on H1, H4 and D1.
+Timeframes were set by the operator: nothing slower than M15, only one bot on M1. That gives one bot on M1, four on M5 and five on M15. The former swing strategies (S07, S08, S09) now run intraday on M15, so there is no swing bot any more.
 
 | Bot | Timeframe | Style | Mechanism |
 |---|---|---|---|
@@ -17,24 +17,26 @@ Timeframes were set by the operator: one bot on M1, four on M5, two on M15, and 
 | S05 London-Range Breakout & Retest | M5 | day | break plus retest |
 | S06 Volatility Compression Breakout | M15 | day | compression release |
 | S10 Gold/Silver Ratio Reversion | M15 | day | intraday relative value (two-leg group) |
-| S09 Time-Series Momentum | H1 | swing | short-horizon momentum, evaluated daily |
-| S07 Regime-Filtered RSI(2) Reversion | H4 (D1 regime filter) | swing | pullback reversion with trend filter |
-| S08 Donchian Channel Breakout | D1 | swing | multiday channel breakout |
+| S07 Regime-Filtered RSI(2) Reversion | M15 (H1 regime filter) | day | pullback reversion with trend filter |
+| S08 Donchian Channel Breakout | M15 | day | 6-hour channel breakout |
+| S09 Time-Series Momentum | M15 | day | one-day momentum, evaluated hourly |
 
 **Cost warning for M1:** on the connected demo, gold's spread was about $0.43. That is often 25-40% of a one-minute range, so S01 keeps a spread guard (spread ≤ 30% of ATR) and a 2:1 target, and will skip many signals. M1 backtests without tick data are the least reliable results in this lab.
 
-The short-horizon versions of S09 (H1) and S10 (M15) are adaptations. The cited evidence for both is at monthly/daily horizons.
+S07, S08, S09 and S10 on M15 are adaptations. The cited evidence for all four is at daily or monthly horizons.
+
+**Trade frequency.** The operator target is about 5 trades per bot per day, and the risk engine caps each bot at 5 new trades per UTC day (`risk.max_entries_per_bot_per_day`; a two-leg S10 group counts once). Filters were loosened to trade more often. On synthetic data, S01, S03 and S07 reach roughly 3-5 a day and S08, S09 and S10 roughly 2-3. The session strategies (S02 Asian range, S04 and S05 London range, S06 squeeze) are built around one setup per session, so expect about 1 a day from each. Real-market frequency will differ from the synthetic figures. Trading more often is not evidence of edge: each extra trade pays the spread again.
 
 They are deliberately not ten renamings of one idea. They differ in mechanism (trend, mean reversion, failed break, volatility regime, cross-sectional relative value), horizon and entry trigger.
 
 ## Evidence base and how strong it is
 
-- **Trend following / time-series momentum (S08, S09).** Moskowitz, Ooi & Pedersen (2012, *JFE* 104:228-250) report time-series momentum in 58 futures markets, including commodities; Hurst, Ooi & Pedersen (2017) extend it over a century. Caveats: these are diversified *portfolio* results. Kim, Tse & Wald (2016) attribute much of the effect to volatility scaling and report weakness after 2009. With two correlated metals, expect long flat periods and very few trades.
+- **Trend following / time-series momentum (S08, S09).** Moskowitz, Ooi & Pedersen (2012, *JFE* 104:228-250) report time-series momentum in 58 futures markets, including commodities; Hurst, Ooi & Pedersen (2017) extend it over a century. Caveats: these are diversified *portfolio* results. Kim, Tse & Wald (2016) attribute much of the effect to volatility scaling and report weakness after 2009. With two correlated metals and M15 bars, this is a long way from the published evidence.
 - **Macro announcements (auditor; S05 timing).** Cai, Cheung & Wong (2001, *J. Futures Markets* 21(3):257-278): among 23 US releases, employment, GDP, CPI and personal income move gold volatility the most. This is the basis for the news blackout, not a source of edge.
 - **Intraday seasonality (S01-S06 time filters).** Batten, Lucey, McGroarty, Peat & Urquhart (2017, *PLoS ONE*): 5-minute data on gold, silver, platinum and palladium show intraday volatility and activity cycles linked to market opens and closes, with the tightest spreads during European hours.
 - **Opening-range breakout (S04).** Crabel (1990); Zarattini & Aziz (2023, SSRN) for equity-index ETFs. Transfer to 24-hour OTC metals is **untested**.
 - **Turtle Soup failed breakout (S03).** Connors & Raschke (1995) on daily bars; the M5 adaptation is a hypothesis.
-- **RSI(2) with a 200-day filter (S07).** Connors & Alvarez (2008) on US equities, mostly long-side. Using it on metals, on H4 bars and on the short side are all adaptations.
+- **RSI(2) with a 200-day filter (S07).** Connors & Alvarez (2008) on US equities, mostly long-side. Using it on metals, on M15 bars with an H1 regime filter, and on the short side are all adaptations.
 - **Squeeze (S06).** Bollinger (2001); Carter (2005). Compression predicts expansion better than it predicts direction.
 - **Gold/silver ratio (S10).** Gatev, Goetzmann & Rouwenhorst (2006) for the pairs methodology. Cointegration studies of gold and silver (TCD IIIS DP 55; MPRA 109830) give mixed findings. The ratio trended for years at a time (e.g. 2011-2020), so it can stop mean-reverting for long stretches.
 - **Multiple testing.** Bailey & López de Prado (2014, *JPM* 40(5)): Deflated Sharpe Ratio, implemented in `research/validation.py`.
@@ -46,10 +48,16 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 - Every exposure change is labelled `OPEN_LONG`, `CLOSE_LONG`, `OPEN_SHORT` or `COVER_SHORT`. A buy is never ambiguous.
 - Decisions use completed bars only. Orders fill at the next bar's open in backtests, and on the next live tick after the bar closes in live trading.
 - Each opening carries a protective stop that is sent to the server with the order.
-- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. If the minimum lot would exceed the budget, the trade is skipped, never upsized.
+- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. Operator policy is a **0.1 lot minimum** (`risk.min_lot`): when the budget allows more, the bot trades more; when it allows less, it still trades 0.1. With `min_lot: 0`, a trade whose broker minimum exceeds the budget is skipped instead.
 - S10 opens two legs as one trade group. Both legs must pass the auditor and risk checks; if one leg fails after the other has filled, the filled leg is closed. The money popup fires only when the whole group has closed.
 - Strategy rules are never rewritten automatically. Parameter changes are an operator action, allowed only while the bot is paused and flat, and each change is versioned and logged.
 
 ## A consequence you should know before arming
 
-At 0.5% risk per trade, a $1,000 virtual bot has a $5 risk budget. On a typical gold CFD (100 oz contract, 0.01 minimum lot) a $5 stop at the minimum lot already risks $5, so many day-trading and swing setups get **skipped** with `MIN_LOT_EXCEEDS_RISK_BUDGET`. I saw exactly this in the simulated run. Options: fund the demo account so each bot has more capital (a $100k demo gives $10k bots), accept fewer trades, or raise the risk per trade deliberately. I have not changed the 0.5% default.
+The operator chose a 0.1 lot minimum and **no per-trade loss limit** (`risk.per_trade_limit_enabled: false`). In practice the 0.5% "risk per trade" is only a sizing target: most trades will be 0.1 lot and will risk more than it.
+
+- Gold at 0.1 lot: about $10 per $1 move. A $10 stop loses about $100.
+- Silver at 0.1 lot (5,000 oz contract): about $500 per $1 move. A $1 stop loses about $500, which is 5% of a $10k bot.
+- Only the daily-loss pause (2%) and the drawdown pause (10%) still limit losses, and they act after the loss. A single silver stop-out can trigger the daily pause by itself, and gaps and slippage can lose more than the stop.
+
+The risk engine still records the planned risk of every trade (`planned_risk`, `planned_risk_pct_of_bot`) in its decision log, so you can see what each trade put at stake. Set `per_trade_limit_enabled: true` to restore the cap.

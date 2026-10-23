@@ -58,6 +58,7 @@ class RiskContext:
     tick: Optional[dict] = None
     spec: Optional[InstrumentSpec] = None
     owned_position: Optional[dict] = None
+    entries_today: int = 0                   # trades this bot opened (or shadow-approved) this UTC day
 
 
 @dataclass
@@ -163,6 +164,10 @@ class RiskEngine:
             reject("MAX_DRAWDOWN_LIMIT")
         if ctx.bot_open_positions >= self.cfg["max_positions_per_bot"]:
             reject("MAX_POSITIONS_PER_BOT")
+        cap = int(self.cfg.get("max_entries_per_bot_per_day", 0) or 0)
+        m["entries_today"] = ctx.entries_today
+        if cap and ctx.entries_today >= cap:
+            reject("MAX_ENTRIES_PER_DAY")
 
         # volume / lot step
         vol = spec.round_volume_down(p.volume)
@@ -203,7 +208,8 @@ class RiskEngine:
                     m["planned_risk"] = round(planned, 2)
                     limit = eq * risk_pct_for(self.root_cfg, p.bot_id)
                     m["risk_limit"] = round(limit, 2)
-                    if planned > limit * 1.0001:
+                    m["planned_risk_pct_of_bot"] = round(planned / eq, 5) if eq > 0 else None
+                    if self.cfg.get("per_trade_limit_enabled", True) and planned > limit * 1.0001:
                         reject("PLANNED_RISK_EXCEEDS_LIMIT")
             # margin reservation against the bot's own capital
             if vol > 0:

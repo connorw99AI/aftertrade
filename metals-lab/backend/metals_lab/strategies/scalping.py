@@ -156,9 +156,9 @@ class AsianRangeReversion(Strategy):
     primary_timeframe = "M5"
     min_history_bars = 400
     magic_offset = 2
-    description = ("Fades 2-sigma Bollinger excursions back to the mean during the quieter Asian session, "
+    description = ("Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter Asian session, "
                    "only when ADX and band width say the market is ranging.")
-    long_rules = "Hours 00:00-06:00 UTC; ADX(14) < adx_max; band-width percentile < 50; close below lower band(20,2) and RSI(5) < rsi_low."
+    long_rules = "Hours 00:00-06:00 UTC; ADX(14) < adx_max; band-width percentile < 50; close below lower band(20, bb_k) and RSI(5) < rsi_low."
     short_rules = "Same regime; close above upper band and RSI(5) > 100 - rsi_low."
     exit_rules = ("Exit at the 20-period mean (strategy close when close crosses SMA20; server TP at the mean at entry time); "
                   "stop stop_atr x ATR beyond entry; max hold 9 bars; flatten at flat_hour UTC before London opens.")
@@ -173,9 +173,9 @@ class AsianRangeReversion(Strategy):
                    "on news (e.g. Chinese data, geopolitical headlines). OHLC intrabar ordering unknown.")
     PARAMS = {
         "bb_n": Param(20, "Standard band length.", (20,)),
-        "bb_k": Param(2.0, "2 standard deviations.", (1.8, 2.0, 2.3)),
-        "rsi_low": Param(20, "Short-term oversold threshold.", (15, 20, 25)),
-        "adx_max": Param(20, "Only trade when trend strength is low.", (18, 20, 25)),
+        "bb_k": Param(1.8, "1.8 standard deviations (looser than 2.0 for more trades).", (1.5, 1.8, 2.0)),
+        "rsi_low": Param(30, "Short-term oversold threshold (loosened from 20).", (20, 25, 30)),
+        "adx_max": Param(25, "Only trade when trend strength is low.", (20, 25, 30)),
         "stop_atr": Param(1.0, "Tight stop; ranges that break tend to run.", (0.8, 1.0, 1.3)),
         "max_hold_bars": Param(9, "45 minutes.", (6, 9, 12)),
         "entry_start_hour": Param(0, "UTC.", ()),

@@ -37,11 +37,23 @@ class ExecutionModel:
 @dataclass
 class RiskParams:
     risk_per_trade: float = 0.005
+    min_lot: float = 0.0                      # >0: never trade below this volume (mirrors live risk.min_lot)
+    max_entries_per_day: int = 0              # 0 = unlimited (mirrors live risk.max_entries_per_bot_per_day)
     daily_loss_pause: float = 0.02
     max_drawdown_pause: float = 0.10
     max_open_positions: int = 2
     max_margin_fraction: float = 0.5          # of the bot's own equity
     drawdown_resume: str = "never"            # "never" mirrors live (operator must resume)
+
+    @classmethod
+    def from_live(cls, cfg: dict) -> "RiskParams":
+        """The live risk settings, so a backtest sizes and caps trades the way the running lab does."""
+        r = cfg.get("risk", {})
+        return cls(risk_per_trade=float(r.get("risk_per_trade", 0.005)), min_lot=float(r.get("min_lot", 0.0) or 0.0),
+                   max_entries_per_day=int(r.get("max_entries_per_bot_per_day", 0) or 0),
+                   daily_loss_pause=float(r.get("daily_loss_pause", 0.02)), max_drawdown_pause=float(r.get("max_drawdown_pause", 0.10)),
+                   max_open_positions=int(r.get("max_positions_per_bot", 2)),
+                   max_margin_fraction=float(r.get("max_bot_margin_fraction", 0.5)))
 
 
 @dataclass

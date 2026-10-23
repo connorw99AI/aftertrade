@@ -197,10 +197,10 @@ def _research_inputs(cfg, a):
 
 def cmd_backtest(cfg, a):
     from .backtest.engine import Backtester
-    from .backtest.models import BacktestConfig
+    from .backtest.models import BacktestConfig, RiskParams
     from .strategies import build
     frames, specs, meta, key = _research_inputs(cfg, a)
-    res = Backtester(build(a.strategy, json.loads(a.params)), frames, specs, BacktestConfig(initial_capital=a.capital),
+    res = Backtester(build(a.strategy, json.loads(a.params)), frames, specs, BacktestConfig(initial_capital=a.capital, risk=RiskParams.from_live(cfg)),
                      data_meta=meta).run()
     st = _store(cfg, False)
     st.x("INSERT INTO backtests(created_at,strategy_id,dataset_key,params_json,config_json,metrics_json,diagnostics_json,reliability_json) "
@@ -213,7 +213,7 @@ def cmd_backtest(cfg, a):
 
 
 def cmd_research(cfg, a):
-    from .backtest.models import BacktestConfig
+    from .backtest.models import BacktestConfig, RiskParams
     from .research.runner import HoldoutLocked, Research
     frames, specs, meta, key = _research_inputs(cfg, a)
     st = _store(cfg, False)
@@ -224,7 +224,7 @@ def cmd_research(cfg, a):
         if cur.rowcount == 0:
             raise HoldoutLocked(f"final holdout for {sid} on this dataset was already used; results would be contaminated")
 
-    r = Research(a.strategy, frames, specs, BacktestConfig(initial_capital=a.capital), meta, holdout_check)
+    r = Research(a.strategy, frames, specs, BacktestConfig(initial_capital=a.capital, risk=RiskParams.from_live(cfg)), meta, holdout_check)
     rep = r.full_study(max_trials=a.trials, wf_train_days=a.wf_train, wf_test_days=a.wf_test, touch_holdout=a.holdout)
     for t in rep["all_trials"]:
         st.x("INSERT INTO experiments(created_at,strategy_id,dataset_key,kind,params_json,period,metrics_json,status) VALUES(?,?,?,?,?,?,?,?)",
@@ -302,7 +302,7 @@ def main(argv=None) -> int:
     s.add_argument("--reason", default="")
     s.add_argument("--operator", default="cli")
     s = sub.add_parser("fetch-history")
-    s.add_argument("--tf", nargs="+", default=["M1", "M5", "M15", "H1", "H4", "D1"])
+    s.add_argument("--tf", nargs="+", default=["M1", "M5", "M15", "H1"])
     s.add_argument("--days", type=int, default=365)
     s.add_argument("--ticks", action="store_true", help="build bars from ticks (real per-tick spreads)")
     for name in ("backtest", "research"):

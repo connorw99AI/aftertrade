@@ -151,11 +151,12 @@ class Backtester:
         last_spread = {r: 0.0 for r in s.roles}
         diag = {"decisions": 0, "signals": 0, "rejected_random": 0, "partial_fills": 0, "rejected_margin": 0,
                 "rejected_stops": 0, "skipped_min_lot": 0, "skipped_no_stop": 0, "blocked_auditor": 0,
-                "blocked_risk_pause": 0, "blocked_max_positions": 0, "gap_fills": 0, "ambiguous_bars_tick_resolved": 0,
+                "blocked_risk_pause": 0, "blocked_max_positions": 0, "blocked_daily_entry_cap": 0, "gap_fills": 0, "ambiguous_bars_tick_resolved": 0,
                 "group_leg_failures": 0, "daily_pauses": 0, "drawdown_pause_at": None, "swap_mode_unsupported": []}
         decisions: list[dict] = []
         peak = cash
         day_key, day_start_eq, paused_today, dd_paused = None, cash, False, False
+        entries_day: set = set()
         roll_key_prev = None
         rh = cfg.costs.rollover_utc_hour
 
@@ -354,6 +355,7 @@ class Backtester:
             dk = t.floor("1D")
             if dk != day_key:
                 day_key, day_start_eq, paused_today = dk, eq, False
+                entries_day = set()
             if not paused_today and eq < day_start_eq * (1 - cfg.risk.daily_loss_pause):
                 paused_today = True
                 diag["daily_pauses"] += 1
@@ -391,13 +393,18 @@ class Backtester:
             if len(positions) + len([o for o in pending if o.signal.intent.is_opening]) + len(entries) > cfg.risk.max_open_positions:
                 diag["blocked_max_positions"] += len(entries)
                 continue
+            if cfg.risk.max_entries_per_day and len(entries_day) >= cfg.risk.max_entries_per_day:
+                diag["blocked_daily_entry_cap"] += len(entries)
+                self._rec(decisions, entries, "MAX_ENTRIES_PER_DAY")
+                continue
             if self.audit_fn:
                 verdicts = [self.audit_fn(x, T) for x in entries]
                 if any(v[0] != "APPROVED" for v in verdicts):
                     diag["blocked_auditor"] += len(entries)
                     self._rec(decisions, entries, "AUDITOR:" + ";".join(r for v in verdicts for r in v[1]))
                     continue
-            tps = s.calculate_target_positions(entries, eq, self.specs, cfg.risk.risk_per_trade, self._loss, self._cost_per_lot)
+            tps = s.calculate_target_positions(entries, eq, self.specs, cfg.risk.risk_per_trade, self._loss, self._cost_per_lot,
+                                               min_lot=cfg.risk.min_lot)
             if any(tp.skipped for tp in tps) and any(x.group_id for x in entries):
                 diag["skipped_min_lot"] += len(entries)  # trade groups are all-or-nothing
                 self._rec(decisions, entries, "GROUP_SKIPPED:" + ";".join(tp.skip_reason for tp in tps if tp.skipped))
@@ -408,6 +415,7 @@ class Backtester:
                     self._rec(decisions, [tp.signal], tp.skip_reason)
                     continue
                 pending.append(_Order(tp.signal, tp.volume, tp.planned_risk, T))
+                entries_day.add(tp.signal.group_id or tp.signal.signal_id)
                 self._rec(decisions, [tp.signal], "QUEUED")
 
         # close anything still open at the last bar close (marked)

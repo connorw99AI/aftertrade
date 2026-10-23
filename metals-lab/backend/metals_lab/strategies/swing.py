@@ -1,4 +1,4 @@
-"""Swing hypotheses (H4/D1), including the two-legged gold/silver relative-value strategy."""
+"""Former swing hypotheses, now run intraday on M15 (operator rule: nothing slower than M15), plus the gold/silver pair."""
 from __future__ import annotations
 
 import numpy as np
@@ -12,38 +12,39 @@ from .base import Param, Strategy, StrategyContext, chk, fmt, level, spread_pric
 class RegimeRSI2Reversion(Strategy):
     strategy_id = "S07"
     name = "Regime-Filtered RSI(2) Reversion"
-    style = Style.SWING
-    timeframes = ("H4", "D1")
-    primary_timeframe = "H4"
+    style = Style.DAY
+    timeframes = ("M15", "H1")
+    primary_timeframe = "M15"
     min_history_bars = 260
     magic_offset = 7
-    description = ("Buys sharp short-term pullbacks only when the daily regime is up (close > SMA200 D1), and sells "
-                   "short-term spikes only when the daily regime is down. Exits on reversion to a short mean.")
-    long_rules = "Last completed D1 close > D1 SMA(200) and H4 RSI(2) < rsi_entry."
-    short_rules = "Last completed D1 close < D1 SMA(200) and H4 RSI(2) > 100 - rsi_entry."
-    exit_rules = "Close long when H4 close > SMA(5); cover short when close < SMA(5); stop stop_atr x ATR(14,H4); max hold 30 bars (~5 days)."
-    invalidation_rules = "Daily regime flipping against the position closes it."
-    filters = "Spread guard; D1 ADX(14) < adx_max (very strong trends make counter-moves shallow and fast)."
+    description = ("Buys sharp M15 pullbacks only when the hourly regime is up (H1 close > H1 SMA200, about 8 trading days), and sells "
+                   "M15 spikes only when the hourly regime is down. Exits on reversion to a short mean.")
+    long_rules = "Last completed H1 close > H1 SMA(regime_sma) and M15 RSI(2) < rsi_entry."
+    short_rules = "Last completed H1 close < H1 SMA(regime_sma) and M15 RSI(2) > 100 - rsi_entry."
+    exit_rules = "Close long when M15 close > SMA(5); cover short when close < SMA(5); stop stop_atr x ATR(14,M15); max hold 32 bars (8 hours)."
+    invalidation_rules = "Hourly regime flipping against the position closes it."
+    filters = "Spread guard; H1 ADX(14) < adx_max (very strong trends make counter-moves shallow and fast)."
     citations = (
         "Connors, L. & Alvarez, C. (2008) Short Term Trading Strategies That Work, TradingMarkets - RSI(2) with 200-day "
-        "filter and 5-day MA exit (documented on US equities/indices; metals and H4 adaptation are untested hypotheses).",
+        "filter and 5-day MA exit (documented on US equities/indices; metals and the M15/H1 adaptation are untested hypotheses).",
     )
-    limitations = "Source evidence is equity-index long-side; short side and metals are lower-evidence. No fixed profit target."
+    limitations = ("Source evidence is daily equity-index long-side; the M15/H1 intraday version, the short side and metals are untested "
+                   "adaptations. Intraday costs are a much larger share of each move. No fixed profit target.")
     PARAMS = {
-        "rsi_entry": Param(10, "Connors' extreme threshold.", (5, 10, 15)),
+        "rsi_entry": Param(15, "Looser than Connors' 10 so it trades several times a day.", (10, 15, 20)),
         "sma_exit": Param(5, "Short mean for exit.", (3, 5, 8)),
-        "regime_sma": Param(200, "Classic regime filter.", (100, 200)),
+        "regime_sma": Param(200, "200 H1 bars, about 8 trading days.", (100, 200)),
         "stop_atr": Param(2.5, "Wide stop: reversion needs room.", (2.0, 2.5, 3.0)),
         "adx_max": Param(40, "Skip runaway trends.", (35, 40, 50)),
-        "max_hold_bars": Param(30, "About a week.", (20, 30)),
-        "max_spread_atr": Param(0.05, "Cost guard.", ()),
+        "max_hold_bars": Param(32, "8 hours of M15 bars.", (16, 32, 48)),
+        "max_spread_atr": Param(0.15, "Cost guard (M15 ranges are small next to the spread).", ()),
     }
 
     def prepare(self, frames):
         out = {}
         for (role, tf), df in frames.items():
             df = df.copy()
-            if tf == "H4":
+            if tf == "M15":
                 df["rsi2"] = ind.rsi(df["close"], 2)
                 df["sma_x"] = ind.sma(df["close"], self.p["sma_exit"])
                 df["atr"] = ind.atr(df, 14)
@@ -54,7 +55,7 @@ class RegimeRSI2Reversion(Strategy):
         return out
 
     def _regime(self, ctx, role):
-        d = ctx.last(role, "D1")
+        d = ctx.last(role, "H1")
         if pd.isna(d["sma_r"]):
             return 0, d
         return (1 if d["close"] > d["sma_r"] else -1), d
@@ -62,64 +63,64 @@ class RegimeRSI2Reversion(Strategy):
     def entry_signals(self, ctx):
         sigs = []
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "H4", 20) or not ctx.has(role, "D1", self.p["regime_sma"]):
+            if ctx.position(role) or not ctx.has(role, "M15", 20) or not ctx.has(role, "H1", self.p["regime_sma"]):
                 continue
             reg, d = self._regime(ctx, role)
-            r = ctx.last(role, "H4")
+            r = ctx.last(role, "M15")
             if reg == 0 or pd.isna(r["rsi2"]) or (not pd.isna(d["adx"]) and d["adx"] >= self.p["adx_max"]):
                 continue
             if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
                 continue
-            vals = {"close": r["close"], "rsi2": r["rsi2"], "sma5": r["sma_x"], "d1_close": d["close"], "d1_sma200": d["sma_r"],
-                    "d1_adx": d["adx"], "atr": r["atr"]}
+            vals = {"close": r["close"], "rsi2": r["rsi2"], "sma5": r["sma_x"], "h1_close": d["close"], "h1_sma": d["sma_r"],
+                    "h1_adx": d["adx"], "atr": r["atr"]}
             sd = self.p["stop_atr"] * r["atr"]
             if reg == 1 and r["rsi2"] < self.p["rsi_entry"]:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "daily uptrend + extreme H4 oversold", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "hourly uptrend + sharp M15 dip", vals,
                                         stop_price=r["close"] - sd, max_hold_bars=self.p["max_hold_bars"]))
             elif reg == -1 and r["rsi2"] > 100 - self.p["rsi_entry"]:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "daily downtrend + extreme H4 overbought", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "hourly downtrend + sharp M15 spike", vals,
                                         stop_price=r["close"] + sd, max_hold_bars=self.p["max_hold_bars"]))
         return sigs
 
     def exit_signals(self, ctx):
         out = []
         for pos in ctx.positions:
-            r = ctx.last(pos.role, "H4")
+            r = ctx.last(pos.role, "M15")
             reg, d = self._regime(ctx, pos.role)
             vals = {"close": r["close"], "sma5": r["sma_x"], "regime": reg}
             if pos.side == "LONG" and (r["close"] > r["sma_x"] or reg == -1):
-                out.append(self.close_signal(ctx, pos, "reverted above SMA5" if reg != -1 else "daily regime turned down", vals))
+                out.append(self.close_signal(ctx, pos, "reverted above SMA5" if reg != -1 else "hourly regime turned down", vals))
             elif pos.side == "SHORT" and (r["close"] < r["sma_x"] or reg == 1):
-                out.append(self.close_signal(ctx, pos, "reverted below SMA5" if reg != 1 else "daily regime turned up", vals))
+                out.append(self.close_signal(ctx, pos, "reverted below SMA5" if reg != 1 else "hourly regime turned up", vals))
         return out
 
 
     def diagnose(self, ctx):
         out = {}
         for role in self.roles:
-            if not ctx.has(role, "H4", 20) or not ctx.has(role, "D1", self.p["regime_sma"]):
-                out[role] = {"waiting": f"needs {self.p['regime_sma']} daily bars for the trend filter"}
+            if not ctx.has(role, "M15", 20) or not ctx.has(role, "H1", self.p["regime_sma"]):
+                out[role] = {"waiting": f"needs {self.p['regime_sma']} hourly bars for the trend filter"}
                 continue
-            r = ctx.last(role, "H4")
+            r = ctx.last(role, "M15")
             reg, dd = self._regime(ctx, role)
             d = ctx.specs[role].digits
             spr = spread_price(r, ctx.specs[role])
             e = self.p["rsi_entry"]
             out[role] = {
                 "price": float(r["close"]),
-                "levels": [x for x in (level("SMA5 (exit)", r["sma_x"]), level(f"Daily SMA{self.p['regime_sma']}", dd["sma_r"])) if x],
+                "levels": [x for x in (level("SMA5 (exit)", r["sma_x"]), level(f"Hourly SMA{self.p['regime_sma']}", dd["sma_r"])) if x],
                 "filters": [
-                    chk(f"Daily trend not runaway (ADX < {self.p['adx_max']})", pd.isna(dd["adx"]) or dd["adx"] < self.p["adx_max"],
-                        f"daily ADX {fmt(dd['adx'], 1)}"),
+                    chk(f"Hourly trend not runaway (ADX < {self.p['adx_max']})", pd.isna(dd["adx"]) or dd["adx"] < self.p["adx_max"],
+                        f"hourly ADX {fmt(dd['adx'], 1)}"),
                     chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
                 ],
                 "long": [
-                    chk("Daily uptrend (close above SMA200)", reg == 1, f"daily close {fmt(dd['close'], d)} vs {fmt(dd['sma_r'], d)}"),
-                    chk(f"H4 RSI(2) below {e} (sharp dip)", r["rsi2"] < e, f"RSI(2) {fmt(r['rsi2'], 1)}"),
+                    chk("Hourly uptrend (close above SMA)", reg == 1, f"hourly close {fmt(dd['close'], d)} vs {fmt(dd['sma_r'], d)}"),
+                    chk(f"M15 RSI(2) below {e} (sharp dip)", r["rsi2"] < e, f"RSI(2) {fmt(r['rsi2'], 1)}"),
                 ],
                 "short": [
-                    chk("Daily downtrend (close below SMA200)", reg == -1, f"daily close {fmt(dd['close'], d)} vs {fmt(dd['sma_r'], d)}"),
-                    chk(f"H4 RSI(2) above {100 - e} (sharp spike)", r["rsi2"] > 100 - e, f"RSI(2) {fmt(r['rsi2'], 1)}"),
+                    chk("Hourly downtrend (close below SMA)", reg == -1, f"hourly close {fmt(dd['close'], d)} vs {fmt(dd['sma_r'], d)}"),
+                    chk(f"M15 RSI(2) above {100 - e} (sharp spike)", r["rsi2"] > 100 - e, f"RSI(2) {fmt(r['rsi2'], 1)}"),
                 ],
             }
         return out
@@ -128,15 +129,16 @@ class RegimeRSI2Reversion(Strategy):
 class DonchianChannelBreakout(Strategy):
     strategy_id = "S08"
     name = "Donchian Channel Breakout"
-    style = Style.SWING
-    timeframes = ("D1",)
-    primary_timeframe = "D1"
+    style = Style.DAY
+    timeframes = ("M15",)
+    primary_timeframe = "M15"
     min_history_bars = 120
     magic_offset = 8
-    description = "Turtle-style multiday channel breakout: enter on a close beyond the prior 55-day extreme, exit on the 20-day opposite extreme."
-    long_rules = "D1 close > highest high of the previous entry_n days."
-    short_rules = "D1 close < lowest low of the previous entry_n days."
-    exit_rules = "Close long on close < lowest low of previous exit_n days (cover short mirror). Server stop at stop_n x N (ATR 20). No fixed target."
+    description = ("Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-bar extreme (8 hours by default), "
+                   "exit on the exit_n-bar opposite extreme.")
+    long_rules = "M15 close > highest high of the previous entry_n bars."
+    short_rules = "M15 close < lowest low of the previous entry_n bars."
+    exit_rules = "Close long on close < lowest low of previous exit_n bars (cover short mirror). Server stop at stop_n x N (ATR 20). Max hold 96 bars (one day). No fixed target."
     invalidation_rules = "The 2N stop."
     filters = "Spread guard. No pyramiding (simplification of original Turtle rules)."
     citations = (
@@ -144,14 +146,14 @@ class DonchianChannelBreakout(Strategy):
         "Donchian, R. (1960s) channel rules as summarised in Kaufman (2013) Trading Systems and Methods.",
         "Hurst, Ooi & Pedersen (2017) 'A Century of Evidence on Trend-Following Investing', J. Portfolio Management 44(1).",
     )
-    limitations = ("Trend-following evidence is for diversified futures portfolios; a 2-instrument version has long flat "
-                   "or losing stretches and few trades, so statistical confidence will be low.")
+    limitations = ("Trend-following evidence is for daily bars on diversified futures portfolios. This M15 version is an untested "
+                   "intraday adaptation: many more false breakouts, and costs are a much larger share of each move.")
     PARAMS = {
-        "entry_n": Param(55, "Turtle System 2 entry.", (20, 40, 55)),
-        "exit_n": Param(20, "Turtle System 2 exit.", (10, 20)),
+        "entry_n": Param(24, "24 M15 bars = 6 hours (Turtle System 2 used 55 days).", (16, 24, 32)),
+        "exit_n": Param(12, "12 M15 bars = 3 hours.", (8, 12, 16)),
         "stop_n": Param(2.0, "2N stop.", (2.0, 3.0)),
-        "max_hold_bars": Param(250, "About one year (safety cap).", ()),
-        "max_spread_atr": Param(0.05, "Cost guard.", ()),
+        "max_hold_bars": Param(96, "One day of M15 bars (safety cap).", (48, 96)),
+        "max_spread_atr": Param(0.15, "Cost guard (M15 ranges are small next to the spread).", ()),
     }
 
     def prepare(self, frames):
@@ -167,30 +169,30 @@ class DonchianChannelBreakout(Strategy):
     def entry_signals(self, ctx):
         sigs = []
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "D1", self.p["entry_n"] + 2):
+            if ctx.position(role) or not ctx.has(role, "M15", self.p["entry_n"] + 2):
                 continue
-            r = ctx.last(role, "D1")
+            r = ctx.last(role, "M15")
             if pd.isna(r["hi_e"]) or pd.isna(r["atr"]) or spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
                 continue
             vals = {"close": r["close"], "upper": r["hi_e"], "lower": r["lo_e"], "N_atr20": r["atr"]}
             sd = self.p["stop_n"] * r["atr"]
             if r["close"] > r["hi_e"]:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, f"close above {self.p['entry_n']}-day high", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, f"close above {self.p['entry_n']}-bar high", vals,
                                         stop_price=r["close"] - sd, max_hold_bars=self.p["max_hold_bars"]))
             elif r["close"] < r["lo_e"]:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, f"close below {self.p['entry_n']}-day low", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, f"close below {self.p['entry_n']}-bar low", vals,
                                         stop_price=r["close"] + sd, max_hold_bars=self.p["max_hold_bars"]))
         return sigs
 
     def exit_signals(self, ctx):
         out = []
         for pos in ctx.positions:
-            r = ctx.last(pos.role, "D1")
+            r = ctx.last(pos.role, "M15")
             vals = {"close": r["close"], "exit_low": r["lo_x"], "exit_high": r["hi_x"]}
             if pos.side == "LONG" and r["close"] < r["lo_x"]:
-                out.append(self.close_signal(ctx, pos, f"close below {self.p['exit_n']}-day low", vals))
+                out.append(self.close_signal(ctx, pos, f"close below {self.p['exit_n']}-bar low", vals))
             elif pos.side == "SHORT" and r["close"] > r["hi_x"]:
-                out.append(self.close_signal(ctx, pos, f"close above {self.p['exit_n']}-day high", vals))
+                out.append(self.close_signal(ctx, pos, f"close above {self.p['exit_n']}-bar high", vals))
         return out
 
 
@@ -199,7 +201,7 @@ class DonchianChannelBreakout(Strategy):
         tf = self.primary_timeframe
         for role in self.roles:
             if not ctx.has(role, tf, self.p["entry_n"] + 2):
-                out[role] = {"waiting": f"needs {self.p['entry_n'] + 2} daily bars"}
+                out[role] = {"waiting": f"needs {self.p['entry_n'] + 2} M15 bars"}
                 continue
             r = ctx.last(role, tf)
             d = ctx.specs[role].digits
@@ -207,12 +209,12 @@ class DonchianChannelBreakout(Strategy):
             n, x = self.p["entry_n"], self.p["exit_n"]
             out[role] = {
                 "price": float(r["close"]),
-                "levels": [v for v in (level(f"{n}-day high (long entry)", r["hi_e"]), level(f"{n}-day low (short entry)", r["lo_e"]),
-                                       level(f"{x}-day low (long exit)", r["lo_x"]), level(f"{x}-day high (short exit)", r["hi_x"])) if v],
+                "levels": [v for v in (level(f"{n}-bar high (long entry)", r["hi_e"]), level(f"{n}-bar low (short entry)", r["lo_e"]),
+                                       level(f"{x}-bar low (long exit)", r["lo_x"]), level(f"{x}-bar high (short exit)", r["hi_x"])) if v],
                 "filters": [chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}")],
-                "long": [chk(f"Daily close above the {n}-day high", r["close"] > r["hi_e"],
+                "long": [chk(f"M15 close above the {n}-bar high", r["close"] > r["hi_e"],
                              f"close {fmt(r['close'], d)} vs {fmt(r['hi_e'], d)} ({fmt(r['hi_e'] - r['close'], d)} away)")],
-                "short": [chk(f"Daily close below the {n}-day low", r["close"] < r["lo_e"],
+                "short": [chk(f"M15 close below the {n}-bar low", r["close"] < r["lo_e"],
                               f"close {fmt(r['close'], d)} vs {fmt(r['lo_e'], d)} ({fmt(r['close'] - r['lo_e'], d)} away)")],
             }
         return out
@@ -221,32 +223,33 @@ class DonchianChannelBreakout(Strategy):
 class TimeSeriesMomentum(Strategy):
     strategy_id = "S09"
     name = "Time-Series Momentum"
-    style = Style.SWING
-    timeframes = ("H1",)
-    primary_timeframe = "H1"
-    min_history_bars = 400
+    style = Style.DAY
+    timeframes = ("M15",)
+    primary_timeframe = "M15"
+    min_history_bars = 200
     magic_offset = 9
-    description = ("Each metal is held long or short according to the sign of its own volatility-scaled past return, "
-                   "re-evaluated once per day on H1 bars (short-horizon adaptation). Position size comes from the stop-based risk budget (a volatility scaling).")
-    long_rules = "On the first H1 bar of each UTC day: lookback return / (daily vol x sqrt(lookback)) > entry_strength."
+    description = ("Each metal is held long or short according to the sign of its own volatility-scaled past return over the last "
+                   "lookback M15 bars, re-evaluated on the first M15 bar of every hour (short-horizon adaptation).")
+    long_rules = "On the first M15 bar of each hour: lookback return / (bar vol x sqrt(lookback)) > entry_strength."
     short_rules = "Same, < -entry_strength."
-    exit_rules = "On the daily evaluation close if strength sign flips or |strength| < exit_strength; catastrophic server stop stop_atr x ATR(20)."
+    exit_rules = "At an hourly evaluation, close if strength fades to exit_strength or flips; server stop stop_atr x ATR(20); max hold 48 bars (12 hours)."
     invalidation_rules = "Sign reversal of the trend measure."
-    filters = "Spread guard; one evaluation per day (limits turnover)."
+    filters = "Spread guard; one evaluation per hour (limits turnover)."
     citations = (
         "Moskowitz, T., Ooi, Y.H. & Pedersen, L.H. (2012) 'Time series momentum', J. Financial Economics 104(2):228-250 "
         "(58 futures incl. commodities; 1-12 month lookbacks).",
         "Kim, Tse & Wald (2016) 'Time series momentum and volatility scaling', J. Financial Markets 30 - critique: much of the "
         "effect comes from volatility scaling and weakens post-2009.",
     )
-    limitations = "Published results are portfolio-level across 58 markets; single-metal TSMOM is noisy. The H1, ~5-day horizon is an untested adaptation of the monthly-horizon evidence."
+    limitations = ("Published results are portfolio-level across 58 markets at 1-12 month horizons. Single-metal momentum over one day "
+                   "of M15 bars is an untested adaptation and mostly measures intraday noise.")
     PARAMS = {
-        "lookback": Param(120, "120 H1 bars (~5 trading days); far shorter than the 1-12 month horizons studied.", (48, 120, 240)),
-        "entry_strength": Param(0.5, "Require a meaningful trend.", (0.25, 0.5, 1.0)),
+        "lookback": Param(96, "96 M15 bars (one trading day); far shorter than the 1-12 month horizons studied.", (48, 96, 192)),
+        "entry_strength": Param(0.3, "Require some trend (loosened from 0.5).", (0.2, 0.3, 0.5)),
         "exit_strength": Param(0.0, "Exit on sign flip.", (0.0, 0.25)),
-        "stop_atr": Param(3.0, "Catastrophic stop only.", (3.0, 4.0)),
-        "max_hold_bars": Param(480, "Safety cap (~4 weeks of H1 bars).", ()),
-        "max_spread_atr": Param(0.05, "Cost guard.", ()),
+        "stop_atr": Param(3.0, "Wide stop: momentum needs room.", (2.0, 3.0, 4.0)),
+        "max_hold_bars": Param(48, "12 hours of M15 bars.", (24, 48, 96)),
+        "max_spread_atr": Param(0.15, "Cost guard (M15 ranges are small next to the spread).", ()),
     }
 
     def prepare(self, frames):
@@ -258,8 +261,8 @@ class TimeSeriesMomentum(Strategy):
             vol = ind.realized_vol(df["close"], 60) * np.sqrt(lb)
             df["strength"] = ret / vol
             df["ret_lb"] = ret
-            day_id = df["time"].dt.floor("1D")
-            df["rebalance"] = day_id != day_id.shift(1)
+            hour_id = df["time"].dt.floor("1h")
+            df["rebalance"] = hour_id != hour_id.shift(1)
             df["atr"] = ind.atr(df, 20)
             out[key] = df
         return out
@@ -267,9 +270,9 @@ class TimeSeriesMomentum(Strategy):
     def entry_signals(self, ctx):
         sigs = []
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "H1", self.p["lookback"] + 61):
+            if ctx.position(role) or not ctx.has(role, "M15", self.p["lookback"] + 61):
                 continue
-            r = ctx.last(role, "H1")
+            r = ctx.last(role, "M15")
             if not r["rebalance"] or pd.isna(r["strength"]):
                 continue
             if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
@@ -277,24 +280,24 @@ class TimeSeriesMomentum(Strategy):
             vals = {"close": r["close"], "lookback_return": r["ret_lb"], "strength": r["strength"], "atr": r["atr"]}
             sd = self.p["stop_atr"] * r["atr"]
             if r["strength"] > self.p["entry_strength"]:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "positive vol-scaled trend at daily evaluation", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "positive vol-scaled trend at hourly evaluation", vals,
                                         stop_price=r["close"] - sd, max_hold_bars=self.p["max_hold_bars"]))
             elif r["strength"] < -self.p["entry_strength"]:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "negative vol-scaled trend at daily evaluation", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "negative vol-scaled trend at hourly evaluation", vals,
                                         stop_price=r["close"] + sd, max_hold_bars=self.p["max_hold_bars"]))
         return sigs
 
     def exit_signals(self, ctx):
         out = []
         for pos in ctx.positions:
-            r = ctx.last(pos.role, "H1")
+            r = ctx.last(pos.role, "M15")
             if not r["rebalance"] or pd.isna(r["strength"]):
                 continue
             vals = {"strength": r["strength"]}
             if pos.side == "LONG" and r["strength"] <= self.p["exit_strength"]:
-                out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at daily evaluation", vals))
+                out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at hourly evaluation", vals))
             elif pos.side == "SHORT" and r["strength"] >= -self.p["exit_strength"]:
-                out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at daily evaluation", vals))
+                out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at hourly evaluation", vals))
         return out
 
 
@@ -303,7 +306,7 @@ class TimeSeriesMomentum(Strategy):
         tf = self.primary_timeframe
         for role in self.roles:
             if not ctx.has(role, tf, self.p["lookback"] + 61):
-                out[role] = {"waiting": f"needs {self.p['lookback'] + 61} hourly bars"}
+                out[role] = {"waiting": f"needs {self.p['lookback'] + 61} M15 bars"}
                 continue
             r = ctx.last(role, tf)
             d = ctx.specs[role].digits
@@ -313,8 +316,8 @@ class TimeSeriesMomentum(Strategy):
                 "price": float(r["close"]),
                 "levels": [],
                 "filters": [
-                    chk("Daily evaluation bar (first H1 bar of the UTC day)", bool(r["rebalance"]),
-                        "evaluates once a day; waiting for the next day's first bar" if not r["rebalance"] else ""),
+                    chk("Hourly evaluation bar (first M15 bar of the hour)", bool(r["rebalance"]),
+                        "evaluates once an hour; waiting for the next hour's first bar" if not r["rebalance"] else ""),
                     chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
                 ],
                 "long": [chk(f"Trend strength above +{th}", r["strength"] > th,
@@ -352,8 +355,8 @@ class GoldSilverRatioReversion(Strategy):
                    "for a small virtual portfolio, in which case the trade is skipped.")
     roles = ("GOLD", "SILVER")
     PARAMS = {
-        "lookback": Param(192, "192 M15 bars (~2 trading days) for the intraday mean.", (96, 192, 384)),
-        "entry_z": Param(2.0, "Stretch threshold.", (1.5, 2.0, 2.5)),
+        "lookback": Param(96, "96 M15 bars (one trading day) for the intraday mean.", (64, 96, 192)),
+        "entry_z": Param(1.5, "Stretch threshold (loosened from 2.0).", (1.25, 1.5, 2.0)),
         "exit_z": Param(0.5, "Reversion target.", (0.0, 0.5)),
         "stop_z": Param(3.5, "Divergence stop.", (3.0, 3.5, 4.0)),
         "min_corr": Param(0.5, "Relationship filter.", (0.3, 0.5)),

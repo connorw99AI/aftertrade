@@ -20,9 +20,10 @@ SCAN_PARAMS = {"S02": {"max_spread_atr": 5.0}, "S01": {"max_spread_atr": 5.0}, "
 def test_ten_distinct_strategies_with_full_metadata():
     assert len(STRATEGY_CLASSES) == 10
     styles = [c.style for c in STRATEGY_CLASSES.values()]
-    assert styles.count(Style.SCALP) == 3 and styles.count(Style.DAY) == 4 and styles.count(Style.SWING) == 3
+    assert styles.count(Style.SCALP) == 3 and styles.count(Style.DAY) == 7
     tfs = [c.primary_timeframe for c in STRATEGY_CLASSES.values()]
-    assert {tf: tfs.count(tf) for tf in set(tfs)} == {"M1": 1, "M5": 4, "M15": 2, "H1": 1, "H4": 1, "D1": 1}
+    # operator rule: nothing trades slower than M15, and only one bot trades M1
+    assert {tf: tfs.count(tf) for tf in set(tfs)} == {"M1": 1, "M5": 4, "M15": 5}
     names = {c.name for c in STRATEGY_CLASSES.values()}
     assert len(names) == 10
     for sid, cls in STRATEGY_CLASSES.items():
@@ -124,6 +125,11 @@ def test_sizing_uses_own_equity_and_skips_min_lot(specs):
     small = s.calculate_target_positions([sig], 1000.0, specs, 0.005, loss, lambda spec: 0.0)[0]
     # 0.01 lot x 100 oz x $10 = $10 > $5 budget -> skip, never upsize
     assert small.skipped and "MIN_LOT_EXCEEDS_RISK_BUDGET" in small.skip_reason and small.volume == 0.0
+    # operator minimum lot: trade 0.1 even though it risks more than the budget; larger risk-sized volumes stay larger
+    floor = s.calculate_target_positions([sig], 1000.0, specs, 0.005, loss, lambda spec: 0.0, min_lot=0.1)[0]
+    assert not floor.skipped and floor.volume == 0.1 and abs(floor.planned_risk - 100.0) < 1e-9
+    rich = s.calculate_target_positions([sig], 500000.0, specs, 0.005, loss, lambda spec: 0.0, min_lot=0.1)[0]
+    assert rich.volume == 2.5
 
 
 def test_pair_strategy_emits_two_leg_group(specs):

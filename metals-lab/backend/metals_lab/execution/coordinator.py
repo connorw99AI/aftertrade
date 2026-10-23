@@ -476,7 +476,21 @@ class Coordinator:
             account_equity=float(info.get("equity") or 0), account_margin=float(info.get("margin") or 0),
             account_margin_level=float(info.get("margin_level") or 0), gross_exposure_notional=gross, same_direction_notional=same,
             reconciliation_clean=rep.clean, blocking_alerts=self.db.blocking_alerts(), in_flight_symbols=inflight,
-            tick=tick, spec=spec, owned_position=owned)
+            tick=tick, spec=spec, owned_position=owned, entries_today=self.entries_today(bot))
+
+    def entries_today(self, bot: str) -> int:
+        """Trades this bot started this UTC day: live intents that reached the terminal, plus shadow approvals.
+        The legs of a trade group count as one trade."""
+        day = utc_now().strftime("%Y-%m-%d") + "%"
+        keys = {r["k"] for r in self.db.q(
+            "SELECT COALESCE(group_id, intent_id) k FROM intents WHERE bot_id=? AND intent LIKE 'OPEN%' "
+            "AND state NOT IN ('REJECTED','CANCELLED') AND created_at LIKE ?", (bot, day))}
+        for r in self.db.q("SELECT signal_json FROM signals_log WHERE bot_id=? AND mode='SHADOW' AND outcome='SHADOW_APPROVED' "
+                           "AND ts LIKE ?", (bot, day)):
+            sig = json.loads(r["signal_json"])
+            if str(sig.get("intent", "")).startswith("OPEN"):
+                keys.add(sig.get("group_id") or sig.get("signal_id"))
+        return len(keys)
 
     def _log_decisions(self, bot, p: Proposal, audit, risk, mode, outcome, strat):
         s = p.signal
@@ -531,7 +545,8 @@ class Coordinator:
         commission = float(self.cfg.get("risk", {}).get("commission_per_lot_side_estimate", 0.0))
         tps = strat.calculate_target_positions(
             entries, book.equity, self.specs, risk_pct_for(self.cfg, bot), self.risk.loss_at_stop,
-            lambda spec: self.risk.est_cost_per_lot(spec, ticks.get(spec.role), commission))
+            lambda spec: self.risk.est_cost_per_lot(spec, ticks.get(spec.role), commission),
+            min_lot=float(self.cfg["risk"].get("min_lot", 0.0) or 0.0))
         approved: list[tuple] = []
         group = any(s.group_id for s in entries)
         for tp in tps:

@@ -145,12 +145,14 @@ class Strategy(ABC):
 
     # ---------------------------------------------------------------- sizing
     def calculate_target_positions(self, signals: list[Signal], equity: float, specs: dict[str, InstrumentSpec],
-                                   risk_pct: float, loss_fn: LossFn, cost_per_lot: Callable[[InstrumentSpec], float]
-                                   ) -> list[TargetPosition]:
+                                   risk_pct: float, loss_fn: LossFn, cost_per_lot: Callable[[InstrumentSpec], float],
+                                   min_lot: float = 0.0) -> list[TargetPosition]:
         """Risk-based sizing from the bot's own equity only.
 
         volume = floor_to_step(risk_budget / (stop loss per lot + est. round-trip cost per lot))
-        Trades whose minimum lot would exceed the budget are skipped, never upsized.
+        With ``min_lot`` > 0 the volume is never below that floor (operator policy: trade at least
+        min_lot even when it risks more than the budget). With ``min_lot`` == 0, trades whose
+        broker minimum lot would exceed the budget are skipped, never upsized.
         """
         out: list[TargetPosition] = []
         legs_per_group: dict[str, int] = {}
@@ -169,6 +171,8 @@ class Strategy(ABC):
             loss_1 = loss_fn(spec, s.intent.position_side, s.ref_price, s.stop_price, 1.0) + cost_per_lot(spec)
             raw = budget / loss_1 if loss_1 > 0 else 0.0
             vol = spec.round_volume_down(raw)
+            if min_lot > 0:
+                vol = max(vol, spec.round_volume_down(max(min_lot, spec.volume_min)))
             if vol <= 0:
                 min_risk = loss_1 * spec.volume_min
                 out.append(TargetPosition(s, 0.0, min_risk, budget, True,

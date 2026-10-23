@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ..backtest.engine import Backtester
-from ..backtest.models import BacktestConfig, CostModel
+from ..backtest.models import BacktestConfig, CostModel, RiskParams
 from ..data import bars as B
 from ..data import synthetic
 from ..data.store import DatasetStore
@@ -189,6 +189,10 @@ def create_app(state: State) -> FastAPI:
             "book": book.public() if book else None,
             "risk_budget_per_trade": round(book.equity * risk_pct, 2) if book else None,
             "risk_pct": risk_pct,
+            "min_lot": float(state.cfg["risk"].get("min_lot", 0.0) or 0.0),
+            "per_trade_limit_enabled": bool(state.cfg["risk"].get("per_trade_limit_enabled", True)),
+            "entries_today": state.coord.entries_today(bot) if state.coord else None,
+            "max_entries_per_day": int(state.cfg["risk"].get("max_entries_per_bot_per_day", 0) or 0),
             "open_positions": open_pos,
             "closed_trades": len(trades),
             "closed_net_pnl": round(sum(nets), 2),
@@ -357,7 +361,7 @@ def create_app(state: State) -> FastAPI:
                 from ..instruments import InstrumentSpec
                 specs = {r: InstrumentSpec(**{k: v for k, v in p["spec_snapshot"].items() if k in InstrumentSpec.__dataclass_fields__})
                          for r, p in specs_src.items()}
-            cfg = BacktestConfig(initial_capital=body.initial_capital,
+            cfg = BacktestConfig(initial_capital=body.initial_capital, risk=RiskParams.from_live(state.cfg),
                                  costs=CostModel(commission_per_lot_side=body.commission_per_lot_side,
                                                  spread_multiplier=body.spread_multiplier, slippage_multiplier=body.slippage_multiplier))
             res = Backtester(build(body.strategy_id, body.params), frames, specs, cfg, data_meta=meta).run()

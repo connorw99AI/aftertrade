@@ -22,7 +22,10 @@ capital:
   bot_fraction: 0.10             # each of 10 bots gets 10% of the starting balance snapshot
 
 risk:
-  risk_per_trade: 0.005
+  risk_per_trade: 0.005            # sizing target per trade (fraction of the bot's equity)
+  min_lot: 0.1                     # never trade below this; trades above it when the target allows
+  per_trade_limit_enabled: false   # true = reject trades whose stop loss exceeds risk_per_trade
+  max_entries_per_bot_per_day: 5   # new trades per bot per UTC day (a two-leg group counts once); 0 = no cap
   daily_loss_pause: 0.02
   max_drawdown_pause: 0.10
   max_positions_per_bot: 2

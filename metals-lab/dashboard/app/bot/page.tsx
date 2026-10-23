@@ -109,12 +109,15 @@ function BotDetail({ id }: { id: string }) {
           <Metric k="Unrealized" v={money(bk.unrealized, true)} />
           <Metric k="Reserved margin" v={money(bk.reserved_margin)} />
           <Metric k="Free capital" v={money(bk.free_capital)} />
-          <Metric k={`Risk budget per trade (${(b.risk_pct * 100).toFixed(1)}%)`} v={money(b.risk_budget_per_trade)} />
+          <Metric k={`Sizing target (${(b.risk_pct * 100).toFixed(1)}%)`} v={money(b.risk_budget_per_trade)} />
+          {b.min_lot > 0 && <Metric k="Minimum trade size" v={`${b.min_lot} lot`} />}
+          {b.max_entries_per_day > 0 && <Metric k="Trades today (UTC)" v={`${b.entries_today ?? 0} / ${b.max_entries_per_day}`} />}
           <Metric k="Return" v={pct(b.return_pct)} />
           <Metric k="Max drawdown (closed)" v={pct(b.max_drawdown_closed_pct)} />
           <Metric k="Closed trades" v={String(b.closed_trades)} />
         </div>)}
       {b.sample_size_note && <p className="muted">{b.sample_size_note}</p>}
+      {b.min_lot > 0 && !b.per_trade_limit_enabled && <p className="muted">Every trade is at least {b.min_lot} lot and there is no per-trade loss cap: a single stop-out can lose more than the sizing target. Only the daily-loss and drawdown pauses limit losses.</p>}
 
       <h2>What it sees now</h2>
       {b.thinking ? (

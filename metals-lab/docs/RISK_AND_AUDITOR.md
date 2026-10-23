@@ -65,7 +65,9 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 
 | Check | Default |
 |---|---|
-| Planned loss at stop (`order_calc_profit`) + estimated spread/commission ≤ risk per trade | 0.5% of bot equity |
+| Planned loss at stop (`order_calc_profit`) + estimated spread/commission ≤ risk per trade | **off** by operator choice (`per_trade_limit_enabled: false`); planned risk is still logged. 0.5% of bot equity when on |
+| Minimum trade size (sizing floor, not a check) | 0.1 lot (`min_lot`) |
+| New trades per bot per UTC day (a two-leg group counts once; shadow approvals count too) | 5 |
 | Daily bot loss → entries blocked for the rest of the UTC day | 2% |
 | Bot drawdown from peak → bot set to PAUSED_RISK; operator must resume | 10% |
 | Open positions per bot | 2 |
