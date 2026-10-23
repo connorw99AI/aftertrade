@@ -434,7 +434,11 @@ class Backtester:
                                               "bars_held", "ambiguous_exit", "r_multiple"])
         equity = pd.Series(eq_v, index=pd.DatetimeIndex(eq_t), name="equity")
         mets = M.summarize(trades_df, equity, cfg.initial_capital)
+        mets["stopped_by_drawdown_at"] = diag["drawdown_pause_at"]
         rel = self._reliability(mets)
+        if diag["drawdown_pause_at"]:
+            rel.insert(0, f"DRAWDOWN_PAUSE: stopped opening trades on {diag['drawdown_pause_at'][:10]} after a "
+                          f"{cfg.risk.max_drawdown_pause:.0%} fall from its peak; live, the bot would wait for a manual restart")
         assumptions = {"config": cfg.describe(), "price_model": "BID bars; ask=bid+spread; next-bar-open fills",
                        "intrabar": "stop assumed before target when both touched (unless tick-resolved)",
                        "margin": "notional/leverage approximation; live uses order_calc_margin",

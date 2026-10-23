@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import threading
-import traceback
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Optional
@@ -21,16 +19,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from ..backtest.engine import Backtester
-from ..backtest.models import BacktestConfig, CostModel, RiskParams
 from ..data import bars as B
-from ..data import synthetic
 from ..data.store import DatasetStore
 from ..execution.coordinator import BOT_IDS, Coordinator
-from ..instruments import spec_from_info
 from ..jsonutil import dumps as jdumps
 from ..mt5.guard import check_account
-from ..mt5.sim import default_symbols
 from ..store import Store, now_iso
 from ..strategies import STRATEGY_CLASSES, build, magic_for
 
@@ -61,17 +54,6 @@ class ParamsBody(BaseModel):
 class AlertBody(BaseModel):
     message: str = Field(min_length=3)
     operator: str = "dashboard"
-
-
-class BacktestBody(BaseModel):
-    strategy_id: str
-    params: dict[str, Any] = {}
-    dataset: str = "synthetic"         # "synthetic" or "mt5" (latest cached MT5 datasets)
-    initial_capital: float = 1000.0
-    spread_multiplier: float = 1.0
-    slippage_multiplier: float = 1.0
-    commission_per_lot_side: float = 3.5
-    synthetic_days: int = 180
 
 
 def create_app(state: State) -> FastAPI:
@@ -338,81 +320,6 @@ def create_app(state: State) -> FastAPI:
     def datasets():
         return state.datasets.manifests()
 
-    def _run_backtest(job_id: int, body: BacktestBody):
-        try:
-            cls = STRATEGY_CLASSES[body.strategy_id]
-            if body.dataset == "synthetic":
-                days = min(body.synthetic_days, 90) if cls.primary_timeframe == "M1" else body.synthetic_days
-                frames = synthetic.frames_for(cls.timeframes, days=days)
-                syms = default_symbols()
-                specs = {"GOLD": spec_from_info("GOLD", syms["XAUUSD"]), "SILVER": spec_from_info("SILVER", syms["XAGUSD"])}
-                meta = {"all": {"source": "SYNTHETIC"}}
-            else:
-                frames, meta = {}, {}
-                for r in cls.roles:
-                    for tf in cls.timeframes:
-                        v = state.datasets.latest("MT5_TERMINAL", r, tf)
-                        if v is None:
-                            raise RuntimeError(f"no cached MT5 dataset for {r} {tf}; run 'metals-lab fetch-history'")
-                        df, m = state.datasets.load(v)
-                        frames[(r, tf)] = df
-                        meta[v] = m["provenance"]
-                specs_src = {r: m for r, m in ((r, next(v for k, v in meta.items() if v["role"] == r)) for r in cls.roles)}
-                from ..instruments import InstrumentSpec
-                specs = {r: InstrumentSpec(**{k: v for k, v in p["spec_snapshot"].items() if k in InstrumentSpec.__dataclass_fields__})
-                         for r, p in specs_src.items()}
-            cfg = BacktestConfig(initial_capital=body.initial_capital, risk=RiskParams.from_live(state.cfg),
-                                 costs=CostModel(commission_per_lot_side=body.commission_per_lot_side,
-                                                 spread_multiplier=body.spread_multiplier, slippage_multiplier=body.slippage_multiplier))
-            res = Backtester(build(body.strategy_id, body.params), frames, specs, cfg, data_meta=meta).run()
-            trades = res.trades.copy()
-            for c in ("entry_time", "exit_time"):
-                if c in trades:
-                    trades[c] = trades[c].astype(str)
-            eq = res.equity.resample("1D").last().dropna() if len(res.equity) else res.equity
-            db.x("UPDATE backtests SET metrics_json=?, diagnostics_json=?, reliability_json=?, trades_json=?, equity_json=?, config_json=? WHERE id=?",
-                 (jdumps(res.metrics), jdumps(res.diagnostics), jdumps(res.reliability),
-                  jdumps(json.loads(trades.to_json(orient="records", default_handler=str))),
-                  jdumps([[str(t), round(float(v), 2)] for t, v in eq.items()]),
-                  jdumps(res.assumptions), job_id))
-            state.jobs[job_id] = "DONE"
-        except Exception as e:
-            db.x("UPDATE backtests SET diagnostics_json=? WHERE id=?", (json.dumps({"error": str(e), "trace": traceback.format_exc()[-2000:]}), job_id))
-            state.jobs[job_id] = "FAILED"
-
-    @app.post("/api/backtests", dependencies=[Depends(auth)])
-    def start_backtest(body: BacktestBody):
-        if body.strategy_id not in STRATEGY_CLASSES:
-            raise HTTPException(404)
-        cur = db.x("INSERT INTO backtests(created_at,strategy_id,dataset_key,params_json) VALUES(?,?,?,?)",
-                   (now_iso(), body.strategy_id, body.dataset, json.dumps(body.params)))
-        jid = cur.lastrowid
-        state.jobs[jid] = "RUNNING"
-        threading.Thread(target=_run_backtest, args=(jid, body), daemon=True).start()
-        return {"id": jid, "status": "RUNNING"}
-
-    @app.get("/api/backtests")
-    def list_backtests():
-        rows = db.q("SELECT id, created_at, strategy_id, dataset_key, params_json, metrics_json, reliability_json, diagnostics_json "
-                    "FROM backtests ORDER BY id DESC LIMIT 100")
-        for r in rows:
-            r["status"] = state.jobs.get(r["id"], "DONE" if r["metrics_json"] else ("FAILED" if r["diagnostics_json"] else "UNKNOWN"))
-            for k in ("params_json", "metrics_json", "reliability_json", "diagnostics_json"):
-                r[k.replace("_json", "")] = json.loads(r.pop(k) or "null")
-        return rows
-
-    @app.get("/api/backtests/{bid}")
-    def get_backtest(bid: int):
-        r = db.one("SELECT * FROM backtests WHERE id=?", (bid,))
-        if not r:
-            raise HTTPException(404)
-        for k in list(r):
-            if k.endswith("_json"):
-                r[k.replace("_json", "")] = json.loads(r.pop(k) or "null")
-        r["status"] = state.jobs.get(bid, "DONE" if r.get("metrics") else "FAILED")
-        r["label"] = "HISTORICAL REPLAY - not forward demo activity"
-        return r
-
     @app.get("/api/research/experiments")
     def experiments(limit: int = 200):
         rows = db.q("SELECT id, created_at, strategy_id, dataset_key, kind, params_json, period, metrics_json, status, notes "
@@ -447,8 +354,9 @@ def create_app(state: State) -> FastAPI:
                         "forward_demo": {"closed_trades": len(fwd), "net": round(sum(t["net"] for t in fwd), 2)}})
         return out
 
-    from . import monitor
+    from . import lab, monitor
     monitor.register(app, state, auth)
+    lab.register(app, state, auth)
 
     # ----------------------------------------------------------------- static
     dist = Path(os.environ.get("METALS_LAB_DASHBOARD_DIR", Path(__file__).resolve().parents[3] / "dashboard" / "out"))

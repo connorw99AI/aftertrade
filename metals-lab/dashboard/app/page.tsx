@@ -1,86 +1,72 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
-import { Creature, CREATURES } from "@/components/Creature";
-import { usePopups } from "@/components/Shell";
-import { Any, api, money, pct } from "@/lib/api";
-import { usePoll } from "@/lib/usePoll";
+import { BotControls, StatusBadge, VerdictPill } from "@/components/Bits";
+import { Creature, CREATURES, Mood } from "@/components/Creature";
+import { useSummary } from "@/components/Shell";
+import { Any, money } from "@/lib/api";
 
-function moodOf(b: Any) {
-  if (b.status === "PAUSED_RISK") return "hurt";
-  if (b.status !== "RUNNING") return "asleep";
-  return b.open_positions?.length ? "busy" : "idle";
+function mood(b: Any): Mood {
+  if (b.status === "STOPPED" || b.status === "PAUSED") return "asleep";
+  if (b.status === "PAUSED_RISK" || b.stopped_for_day === "daily loss stop") return "hurt";
+  if (b.open_positions.length) return "busy";
+  if (b.today_pnl > 0) return "happy";
+  return "idle";
 }
 
-function CardControls({ b, onDone }: { b: Any; onDone: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  async function act(action: "start" | "pause" | "stop") {
-    setBusy(true);
-    try { await api.post(`/api/bots/${b.bot_id}/${action}`, { reason: `overview ${action}` }); setErr(null); onDone(); }
-    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
-  }
-  const running = b.status === "RUNNING";
+function BotCard({ b }: { b: Any }) {
+  const inTrade = b.open_positions.length > 0;
+  const roles = Object.keys(b.verdicts || {});
+  const tone = b.stopped_for_day ? "card-stopped" : inTrade ? "card-trade" : b.status !== "RUNNING" ? "card-idle" : "";
   return (
-    <div className="card-controls">
-      {running
-        ? <button onClick={() => act("pause")} disabled={busy} aria-label={`Pause ${b.bot_id}`}>Pause</button>
-        : <button className="primary" onClick={() => act("start")} disabled={busy} aria-label={`Start ${b.bot_id}`}>Start</button>}
-      <button onClick={() => act("stop")} disabled={busy || b.status === "STOPPED"} aria-label={`Stop ${b.bot_id}`}>Stop</button>
-      {err && <span className="card-err" role="alert">{err}</span>}
-    </div>
+    <Link href={`/bot?id=${b.bot_id}`} className={`botcard ${tone}`}>
+      <div className="botcard-top">
+        <span className="tf-tag">{b.timeframe}</span>
+        <StatusBadge status={b.status} />
+      </div>
+      <div className="botcard-art"><Creature bot={b.bot_id} size={132} mood={mood(b)} /></div>
+      <div className="botcard-name">
+        <b>{CREATURES[b.bot_id]?.name}</b>
+        <span className="muted">{b.bot_id} · {b.name}</span>
+      </div>
+      {b.stopped_for_day && <div className="daystop">Stopped for today: {b.stopped_for_day}</div>}
+      <div className="botcard-verdicts">
+        {roles.length === 0 && <span className="muted small">Waiting for the first bar…</span>}
+        {roles.map((r) => (
+          <div key={r} className="vrow"><span className={`metal metal-${r}`}>{r === "GOLD" ? "Gold" : "Silver"}</span><VerdictPill verdict={b.verdicts[r]?.verdict} /></div>
+        ))}
+      </div>
+      {inTrade && (
+        <ul className="botcard-trades">
+          {b.open_positions.map((p: Any) => (
+            <li key={p.position_key}>{p.side === "LONG" ? "▲" : "▼"} {p.side.toLowerCase()} {p.volume_open} {p.symbol} @ {Number(p.entry_price).toFixed(p.symbol.startsWith("XAG") ? 3 : 2)}</li>
+          ))}
+          <li className={b.unrealized >= 0 ? "gain" : "loss"}>Open P&amp;L {money(b.unrealized, true)}</li>
+        </ul>
+      )}
+      <div className="botcard-stats">
+        <div><span>Equity</span><b className="num">{money(b.equity)}</b></div>
+        <div><span>Today</span><b className={`num ${b.today_pnl >= 0 ? "gain" : "loss"}`}>{money(b.today_pnl, true)}</b></div>
+        <div><span>Trades today</span><b className="num">{b.entries_today}{b.max_entries_per_day ? ` / ${b.max_entries_per_day}` : ""}</b></div>
+      </div>
+      <BotControls bot={b.bot_id} status={b.status} hasOpen={inTrade} />
+    </Link>
   );
 }
 
 export default function Overview() {
-  const { data: bots, error, reload } = usePoll<Any[]>("/api/bots", 5000);
-  const { data: risk } = usePoll<Any>("/api/risk", 10000);
-  const popups = usePopups();
-  const snap = risk?.capital_snapshot;
+  const sum = useSummary();
+  if (!sum) return <p className="empty">Loading…</p>;
+  const shadow = sum.bots.some((b: Any) => b.shadow);
   return (
     <>
-      <div className="hero">
-        <div>
-          <h1>Ten bots, two metals, one demo account</h1>
-          <p className="muted">
-            Each creature trades its own virtual slice of the demo account.
-            {snap ? ` Starting balance ${money(snap.starting_balance)} ${snap.currency ?? ""}, ${Math.round(snap.bot_fraction * 100)}% per bot.`
-              : " Allocations are created when you arm the system for the first time."}
-            {" "}Everything here is forward activity on the connected terminal; historical replays live under Backtest & replay.
-          </p>
-        </div>
+      <div className="page-head">
+        <h1>Overview</h1>
+        <p className="muted">Click a creature for its full view: live checklist, trades, review and settings.
+          {shadow ? " Shadow mode: amounts are what each bot would get once you arm." : ""}</p>
       </div>
-      {error && <div className="warn danger">Backend unreachable: {error}. Start it with scripts\windows\start.bat or metals-lab serve.</div>}
-      {!bots && !error && <p className="empty">Waking the creatures…</p>}
-      <section className="terrarium" aria-label="Bots">
-        {bots?.map((b) => {
-          const pop = popups.filter((p) => p.bot === b.bot_id).at(-1);
-          const metal = b.roles.length > 1 ? "BOTH" : b.roles[0];
-          return (
-            <article key={b.bot_id} className="habitat">
-              <Link href={`/bot?id=${b.bot_id}`} className="habitat-link" aria-label={`Open ${CREATURES[b.bot_id]?.name}`}>
-                <div className="sky">
-                  {pop && <span className={`coin ${pop.net >= 0 ? "gain" : "loss"}`}>{money(pop.net, true)}</span>}
-                  {b.open_positions.length > 0 && <span className="pos-pip">{b.open_positions.length} open</span>}
-                  <span className="tf-tag">{b.timeframe}</span>
-                  <Creature bot={b.bot_id} size={96} mood={moodOf(b)} />
-                </div>
-                <div className={`ground ${metal}`} />
-              </Link>
-              <div className="info">
-                <div className="row"><span className="who">{CREATURES[b.bot_id]?.name}</span><span className={`badge ${b.status}`}>{b.status.replace("_", " ").toLowerCase()}</span></div>
-                <div className="what">{b.bot_id} {b.name}, {b.style.toLowerCase()} on {b.timeframe}</div>
-                <div className="row"><span className="muted">Equity</span><span className="num">{b.book ? money(b.book.equity) : "not allocated"}{b.book?.shadow ? " (shadow)" : ""}</span></div>
-                <div className="row"><span className="muted">Closed P&amp;L</span><span className={`num ${b.closed_net_pnl >= 0 ? "gain" : "loss"}`}>{money(b.closed_net_pnl, true)}</span></div>
-                <div className="row"><span className="muted">Return</span><span className="num">{pct(b.return_pct)}</span></div>
-                <div className="row"><span className="muted">Trades</span><span className="num">{b.closed_trades}{b.provisional_trades ? ` (${b.provisional_trades} provisional)` : ""}</span></div>
-                <CardControls b={b} onDone={reload} />
-              </div>
-            </article>
-          );
-        })}
-      </section>
+      <div className="botgrid">
+        {sum.bots.map((b: Any) => <BotCard key={b.bot_id} b={b} />)}
+      </div>
     </>
   );
 }

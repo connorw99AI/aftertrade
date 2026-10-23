@@ -154,7 +154,8 @@ def cmd_fetch(cfg, a):
         print("connected account is not a verified demo account; refusing")
         return 2
     ds = DatasetStore(Path(cfg["storage"]["cache_dir"]))
-    end = datetime.now(timezone.utc)
+    from .timeutil import utc_now
+    end = utc_now()
     start = end - timedelta(days=a.days)
     for role, spec in c.specs.items():
         for tf in a.tf:
@@ -199,8 +200,12 @@ def cmd_backtest(cfg, a):
     from .backtest.engine import Backtester
     from .backtest.models import BacktestConfig, RiskParams
     from .strategies import build
+    from .api.lab import fx_from_spec
+    from .backtest.models import CostModel
     frames, specs, meta, key = _research_inputs(cfg, a)
-    res = Backtester(build(a.strategy, json.loads(a.params)), frames, specs, BacktestConfig(initial_capital=a.capital, risk=RiskParams.from_live(cfg)),
+    fx = 1.0 if a.synthetic else fx_from_spec(next(iter(specs.values())))
+    res = Backtester(build(a.strategy, json.loads(a.params)), frames, specs,
+                     BacktestConfig(initial_capital=a.capital, risk=RiskParams.from_live(cfg), costs=CostModel(fx_to_account=fx)),
                      data_meta=meta).run()
     st = _store(cfg, False)
     st.x("INSERT INTO backtests(created_at,strategy_id,dataset_key,params_json,config_json,metrics_json,diagnostics_json,reliability_json) "

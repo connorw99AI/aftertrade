@@ -75,6 +75,20 @@ This starts the API and live loop on `http://127.0.0.1:8765` and opens the dashb
 - Until you arm, the loop runs in **shadow mode**: signals, auditor and risk decisions are recorded, and no orders are sent.
 - Start, pause and stop bots from the dashboard or with `metals-lab bot S04 start`. Only RUNNING bots trade once armed.
 
+### Dashboard pages
+
+| Page | What it is for |
+|---|---|
+| Overview | All ten bots as creature cards: status, what each sees on gold and silver now, open trade, today's P&L, trades today, start/pause/stop. Click a creature for its own page. |
+| Bot page | Tabs: Live (checklist, money, open trades, last decision), Trades, Review (the auditor's assessment of its trade outcomes, with suggestions you can test on history and then apply), Rules & settings. |
+| Live | Gold and silver charts updated from a live price stream (about once a second) plus every bot's verdict and how close it is to an entry. Bots decide in the backend on completed candles; the page only displays. |
+| Positions | Every open trade with live P&L, distance to stop and target, and whether the stop/target in MT5 match what the bot set. Close one trade, all of one bot's trades, or everything (each close goes through the auditor and risk checks). |
+| Activity | Open alerts, per-bot counts of entry signals and where they stopped (sizing, auditor, risk, filled) with the main reasons, and the decision feed. |
+| History | All closed trades with filters, result in money and in R, exit reason; CSV download. |
+| Compare | Equity curves of all bots, the live-candidate ranking, latest backtest next to demo results. |
+| Backtest | Download price history from MT5, run one bot or all ten with your live risk settings, results in account currency, clear old results. |
+| System | Risk settings and kill switch, auditor rules, MT5 connection, research records. |
+
 ## 4. Manual demo activation (the only way to enable trading)
 
 ```
@@ -93,6 +107,8 @@ On the first activation for an account, the balance is snapshotted once and the 
 - Allocation changes (audited, funded only from unallocated money): `metals-lab allocate --bot S03 --delta -200 --reason "..." --operator "..."`.
 
 ## 5. Historical data and research
+
+The Backtest page does the common steps from the dashboard: **Download history from MT5** (M1, M5, M15, H1 for both metals), **Run all 10 bots**, **Clear old results**. Backtests run in a separate process, so the dashboard and the trading loop stay responsive while they run. A year of M1 data makes the M1 bot's backtest take a few minutes. The command line does the same and more:
 
 ```
 metals-lab fetch-history --days 730 --tf M1 M5 M15 H1        # Parquet cache + manifest + quality report

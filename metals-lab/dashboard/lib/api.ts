@@ -64,3 +64,30 @@ export function when(iso: string | null | undefined): string {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any;
+
+export function operatorName(): string {
+  try {
+    return window.localStorage.getItem("metals-lab-operator") || "";
+  } catch {
+    return "";
+  }
+}
+
+/** Ask for confirmation and the operator's name (remembered) before an action that changes trading. */
+export function confirmAction(question: string): string | null {
+  if (!window.confirm(question)) return null;
+  let name = operatorName();
+  if (!name) {
+    name = (window.prompt("Your name for the audit log") || "").trim();
+    if (!name) return null;
+    try { window.localStorage.setItem("metals-lab-operator", name); } catch { /* not persisted */ }
+  }
+  return name;
+}
+
+export function minutes(m: number | null | undefined): string {
+  if (m === null || m === undefined) return "–";
+  if (m < 60) return `${Math.round(m)}m`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h}h ${Math.round(m % 60)}m` : `${Math.floor(h / 24)}d ${h % 24}h`;
+}

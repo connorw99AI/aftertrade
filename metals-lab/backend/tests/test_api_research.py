@@ -64,7 +64,7 @@ def test_token_required_when_configured(armed, cfg, monkeypatch):
 
 
 def test_backtest_endpoint_labels_replay(client):
-    r = client.post("/api/backtests", json={"strategy_id": "S08", "synthetic_days": 400}).json()
+    r = client.post("/api/backtests", json={"strategy_id": "S08", "dataset": "synthetic", "synthetic_days": 400}).json()
     import time
     for _ in range(200):
         b = client.get(f"/api/backtests/{r['id']}").json()

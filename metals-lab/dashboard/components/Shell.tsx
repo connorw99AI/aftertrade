@@ -9,37 +9,52 @@ import { CREATURES, Creature } from "./Creature";
 type Popup = { id: number; bot: string; net: number; provisional: boolean; legs: number };
 const PopupCtx = createContext<Popup[]>([]);
 export const usePopups = () => useContext(PopupCtx);
+const SummaryCtx = createContext<Any>(null);
+/** The /api/summary poll shared by every page (account strip, bots, alerts). */
+export const useSummary = () => useContext(SummaryCtx);
 
-const NAV = [
-  ["/", "Overview"], ["/charts", "Charts"], ["/bot", "Bots"], ["/replay", "Backtest & replay"], ["/compare", "Ranking"],
-  ["/research", "Research"], ["/auditor", "Auditor"], ["/risk", "Risk centre"], ["/settings", "MT5 connection"],
+const NAV: [string, string][] = [
+  ["/", "Overview"], ["/live", "Live"], ["/positions", "Positions"], ["/activity", "Activity"], ["/history", "History"],
+  ["/compare", "Compare"], ["/backtest", "Backtest"], ["/system", "System"],
 ];
 
-function SafetyStrip({ s }: { s: Any }) {
-  if (!s) return <div className="strip strip-unknown" role="status">Connecting to the lab backend…</div>;
+function SafetyChip({ s, sum }: { s: Any; sum: Any }) {
+  if (!s) return <span className="chip chip-unknown">Connecting…</span>;
   const acct = s.account || {};
-  const demo = acct.state === "DEMO";
-  let tone = "strip-shadow", headline = "Shadow mode: decisions are recorded, no orders are sent";
-  if (s.kill) { tone = "strip-danger"; headline = "Kill switch active: entries blocked, positions closing"; }
-  else if (!demo) { tone = "strip-danger"; headline = `Execution blocked: account is ${acct.state ?? "unknown"}`; }
-  else if (s.armed) { tone = "strip-armed"; headline = "Armed on a verified demo account: bots trade automatically"; }
+  if (s.kill) return <Link href="/system" className="chip chip-danger">Kill switch active</Link>;
+  if (acct.state !== "DEMO") return <Link href="/system" className="chip chip-danger">Blocked: account {acct.state ?? "unknown"}</Link>;
   return (
-    <div className={`strip ${tone}`} role="status">
-      <strong>{headline}</strong>
-      <span className="strip-meta">
-        {s.terminal_kind === "SIMULATED" && <em className="sim-tag">Simulated terminal, not MT5</em>}
-        <span>{acct.server ?? "no server"}</span>
-        <span>{acct.margin_mode ?? ""}</span>
-        {s.global_pause && <span>All bots paused</span>}
-        {s.alerts?.length > 0 && <Link href="/risk">{s.alerts.length} open alert{s.alerts.length > 1 ? "s" : ""}</Link>}
-      </span>
+    <span className={`chip ${s.armed ? "chip-armed" : "chip-shadow"}`} title={`${acct.server ?? ""} ${acct.margin_mode ?? ""}`}>
+      {s.armed ? "Armed, demo" : "Shadow mode"}{s.terminal_kind === "SIMULATED" ? " (simulated)" : ""}{sum?.global_pause ? ", all paused" : ""}
+    </span>
+  );
+}
+
+function AccountStrip({ sum, status }: { sum: Any; status: Any }) {
+  const a = sum?.account || {};
+  const cur = a.currency ? ` ${a.currency}` : "";
+  const c = sum?.counts || {};
+  const alerts: Any[] = sum?.alerts ?? [];
+  return (
+    <div className="acct" role="status">
+      <div className="acct-cell"><span>Equity</span><b className="num">{money(a.equity)}{cur}</b></div>
+      <div className="acct-cell"><span>Balance</span><b className="num">{money(a.balance)}</b></div>
+      <div className="acct-cell"><span>Today</span><b className={`num ${(sum?.today_pnl ?? 0) >= 0 ? "gain" : "loss"}`}>{money(sum?.today_pnl, true)}</b></div>
+      <div className="acct-cell"><span>Open trades</span><b className="num">{sum?.open_trades ?? "–"}</b></div>
+      <div className="acct-cell"><span>Bots</span><b className="num">{c.RUNNING ?? 0} running · {(c.PAUSED ?? 0) + (c.PAUSED_RISK ?? 0)} paused · {c.STOPPED ?? 0} stopped</b></div>
+      {sum?.stopped_for_day > 0 && <div className="acct-cell"><span>Stopped for today</span><b className="num">{sum.stopped_for_day}</b></div>}
+      <div className="acct-cell grow">
+        {alerts.length > 0 && <Link href="/activity" className="alert-pill">{alerts.length} alert{alerts.length > 1 ? "s" : ""}</Link>}
+        <SafetyChip s={status} sum={sum} />
+      </div>
     </div>
   );
 }
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
-  const { data: status } = usePoll<Any>("/api/status", 4000);
+  const { data: status } = usePoll<Any>("/api/status", 5000);
+  const { data: summary } = usePoll<Any>("/api/summary", 3000);
   const [popups, setPopups] = useState<Popup[]>([]);
   const last = useRef<number | null>(null);
 
@@ -62,7 +77,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             setTimeout(() => !stop && setPopups((ps) => ps.filter((x) => x.id !== p.id)), 6500);
           }
         }
-      } catch { /* backend offline; the safety strip shows it */ }
+      } catch { /* backend offline; the safety chip shows it */ }
     }
     tick();
     const id = setInterval(tick, 3000);
@@ -70,30 +85,32 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <PopupCtx.Provider value={popups}>
-      <div className="app">
-        <header className="top">
-          <Link href="/" className="brand"><Creature bot="S10" size={28} label="" /> <span>Metals creature lab</span></Link>
-          <nav aria-label="Sections">
-            {NAV.map(([href, label]) => (
-              <Link key={href} href={href} className={(href === "/" ? path === "/" : path?.startsWith(href)) ? "on" : ""}>{label}</Link>
-            ))}
-          </nav>
-        </header>
-        <SafetyStrip s={status} />
-        <main>{children}</main>
-        <div className="toasts" aria-live="polite">
-          {popups.map((p) => (
-            <div key={p.id} className={`toast ${p.net >= 0 ? "gain" : "loss"}`}>
-              <Creature bot={p.bot} size={36} />
-              <div>
-                <b>{CREATURES[p.bot]?.name ?? p.bot} closed a {p.legs > 1 ? `${p.legs}-leg trade` : "trade"}</b>
-                <span className="num">{money(p.net, true)} net of costs{p.provisional ? " (provisional)" : ""}</span>
+    <SummaryCtx.Provider value={summary}>
+      <PopupCtx.Provider value={popups}>
+        <div className="app">
+          <header className="top">
+            <Link href="/" className="brand"><Creature bot="S10" size={30} label="" /> <span>Metals creature lab</span></Link>
+            <nav aria-label="Sections">
+              {NAV.map(([href, label]) => (
+                <Link key={href} href={href} className={(href === "/" ? path === "/" || path?.startsWith("/bot") : path?.startsWith(href)) ? "on" : ""}>{label}</Link>
+              ))}
+            </nav>
+          </header>
+          <AccountStrip sum={summary} status={status} />
+          <main>{children}</main>
+          <div className="toasts" aria-live="polite">
+            {popups.map((p) => (
+              <div key={p.id} className={`toast ${p.net >= 0 ? "gain" : "loss"}`}>
+                <Creature bot={p.bot} size={40} mood={p.net >= 0 ? "happy" : "hurt"} />
+                <div>
+                  <b>{CREATURES[p.bot]?.name ?? p.bot} closed a {p.legs > 1 ? `${p.legs}-leg trade` : "trade"}</b>
+                  <span className="num">{money(p.net, true)} net of costs{p.provisional ? " (provisional)" : ""}</span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-    </PopupCtx.Provider>
+      </PopupCtx.Provider>
+    </SummaryCtx.Provider>
   );
 }

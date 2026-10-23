@@ -78,8 +78,10 @@ def register(app: FastAPI, state, auth) -> None:
                 stopped_for_day = "daily profit stop"
             th = thinking.get(b) or {}
             verdicts = {role: {"verdict": r.get("verdict"), "summary": r.get("summary")} for role, r in (th.get("roles") or {}).items()}
-            opens = db.q("SELECT position_key, symbol, side, volume_open, entry_price, sl, tp, opened_at FROM positions "
+            opens = db.q("SELECT position_key, symbol, role, side, volume_open, entry_price, sl, tp, opened_at FROM positions "
                          "WHERE bot_id=? AND status='OPEN'", (b,))
+            for o in opens:  # the checklist is per completed bar; an open trade is known immediately
+                verdicts[o["role"]] = {"verdict": f"IN_TRADE_{o['side']}", "summary": f"in a {o['side'].lower()} trade"}
             bots.append({
                 "bot_id": b, "name": cls.name, "timeframe": cls.primary_timeframe, "style": cls.style.value,
                 "status": row["status"], "pause_reason": row["pause_reason"],
