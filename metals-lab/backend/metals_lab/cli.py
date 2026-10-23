@@ -248,6 +248,17 @@ def cmd_research(cfg, a):
     return 0
 
 
+def cmd_export_backtests(cfg, a):
+    from .report import build_report
+    md, data = build_report(_store(cfg, a.sim), cfg)
+    out = Path(a.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(md, encoding="utf-8")
+    out.with_suffix(".json").write_text(jdumps(data), encoding="utf-8")
+    print(f"wrote {out} and {out.with_suffix('.json')} (no account identifiers inside)")
+    return 0
+
+
 def cmd_serve(cfg, a):
     import uvicorn
     from .api.app import State, create_app
@@ -324,6 +335,8 @@ def main(argv=None) -> int:
             s.add_argument("--wf-test", type=int, default=30)
             s.add_argument("--holdout", action="store_true", help="evaluate the final holdout ONCE")
             s.add_argument("--out", default=None)
+    s = sub.add_parser("export-backtests", help="write the latest backtest per bot + trade review to a shareable file")
+    s.add_argument("--out", default="reports/backtest_review.md")
     s = sub.add_parser("serve")
     s.add_argument("--no-loop", action="store_true")
     s.add_argument("--sim-speed", type=float, default=1.0, help="seconds per simulated 5-minute bar")
@@ -331,7 +344,7 @@ def main(argv=None) -> int:
     cfg = config_mod.load(a.config)
     fn = {"check": cmd_check, "arm": cmd_arm, "disarm": cmd_disarm, "kill": cmd_kill, "clear-kill": cmd_clear_kill,
           "allocate": cmd_allocate, "bot": cmd_bot, "fetch-history": cmd_fetch, "backtest": cmd_backtest,
-          "research": cmd_research, "serve": cmd_serve}[a.cmd]
+          "research": cmd_research, "serve": cmd_serve, "export-backtests": cmd_export_backtests}[a.cmd]
     return fn(cfg, a)
 
 

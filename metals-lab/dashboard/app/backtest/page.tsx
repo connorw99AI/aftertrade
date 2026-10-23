@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Creature, CREATURES } from "@/components/Creature";
 import { EquityChart } from "@/components/EquityChart";
-import { Any, api, money, when } from "@/lib/api";
+import { Any, api, apiBase, money, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
 
 const IDS = Object.keys(CREATURES);
@@ -86,6 +86,7 @@ export default function Backtest() {
         <button className="primary">Run this bot</button>
         <button type="button" onClick={() => run(true)}>Run all 10 bots</button>
         <button type="button" className="btn-stop" disabled={running || !runs?.length} onClick={clear}>Clear old results</button>
+        <a className="button-link" href={`${apiBase()}/api/backtests/report.md`}>Export for review</a>
       </form>
       {err && <div className="warn danger">{err}</div>}
       <div className="bt-layout">

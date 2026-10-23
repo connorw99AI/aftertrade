@@ -324,6 +324,14 @@ def register(app: FastAPI, state, auth) -> None:
         return {"baseline_id": jobs[0][0], "candidate_id": jobs[1][0], "change": body.change,
                 "note": "same data, same settings; only the change differs. Results on data the suggestion was derived from are optimistic."}
 
+    @app.get("/api/backtests/report.md")
+    def backtest_report():
+        from fastapi.responses import Response
+        from ..report import build_report
+        md, _ = build_report(db, state.cfg)
+        return Response(md, media_type="text/markdown",
+                        headers={"Content-Disposition": "attachment; filename=backtest_review.md"})
+
     @app.get("/api/backtests")
     def list_backtests():
         rows = db.q("SELECT id, created_at, strategy_id, dataset_key, params_json, metrics_json, reliability_json, diagnostics_json "

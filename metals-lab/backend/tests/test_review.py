@@ -81,3 +81,16 @@ def test_review_and_test_change_via_api(armed, cfg, tmp_path, monkeypatch):
         time.sleep(0.1)
     assert rows[t["candidate_id"]]["params"]["stop_atr"] == 1.5 and rows[t["baseline_id"]]["params"]["stop_atr"] == 1.2
     assert client.post("/api/review/S01/test", json={"change": {"nope": 1}}).status_code == 400
+
+
+def test_export_report_has_runs_and_no_identifiers(armed, cfg):
+    import json as _json
+    from metals_lab.report import build_report
+    trades = _trades(20)
+    armed.db.x("INSERT INTO backtests(created_at,strategy_id,dataset_key,params_json,metrics_json,reliability_json,trades_json) "
+               "VALUES(?,?,?,?,?,?,?)", ("2026-01-01", "S01", "GOLD-M1-20250101-20251231-abc|GOLD-M5-20250101-20251231-def", "{}",
+                                         _json.dumps({"n_trades": 20, "net_pnl": 100.0, "total_return": 0.1, "max_drawdown": -0.05,
+                                                      "profit_factor": 2.0, "win_rate": 0.5}), "[]", _json.dumps(trades)))
+    md, data = build_report(armed.db, cfg)
+    assert "2025-01-01 to 2025-12-31" in md and data["bots"]["S01"]["review"]["stats"]["n"] == 20
+    assert "fingerprint" not in md.lower() and data["bots"]["S02"] is None
