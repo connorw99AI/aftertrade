@@ -51,8 +51,33 @@ def _coordinator(cfg, sim):
 def cmd_check(cfg, a):
     c, _ = _coordinator(cfg, a.sim)
     acct = check_account(c.ro)
-    out = {"terminal": "SIMULATED" if a.sim else "MT5", "account": acct.public(), "instruments": c.discovery,
-           "clock": c.clock.source, "sessions": {r: cal.source for r, cal in c.sessions.items()} or "UNKNOWN (no export/config)",
+    disc = dict(c.discovery or {})
+    cands = disc.pop("candidates", [])
+    equities = [x["symbol"] for x in cands if x["kind"] == "EXCHANGE_STOCK"]
+    disc["other_metal_contracts_rejected"] = {x["symbol"]: "; ".join(x["reasons"]) for x in cands
+                                              if not x["accepted"] and x["kind"] != "EXCHANGE_STOCK"}
+    disc["stocks_and_etfs_rejected"] = f"{len(equities)} symbols (e.g. {', '.join(equities[:6])})" if equities else 0
+    # What a 1.00 price move on 1 lot is worth in the ACCOUNT currency, straight from the terminal.
+    values = {}
+    for role, spec in c.specs.items():
+        tk = c.ro.symbol_info_tick(spec.symbol)
+        if tk:
+            v = c.ro.order_calc_profit(c.ro.const("ORDER_TYPE_BUY"), spec.symbol, 1.0, tk["ask"], tk["ask"] + 1.0)
+            m = c.ro.order_calc_margin(c.ro.const("ORDER_TYPE_BUY"), spec.symbol, spec.volume_min, tk["ask"])
+            values[role] = {"symbol": spec.symbol, "spread_points": round((tk["ask"] - tk["bid"]) / spec.point),
+                            f"profit_per_1.00_move_per_lot_{acct.currency}": v,
+                            f"margin_for_min_lot_{acct.currency}": m}
+    off = None
+    for spec in c.specs.values():
+        tk = c.ro.symbol_info_tick(spec.symbol)
+        if tk:
+            from .sessions import ServerClock
+            from .timeutil import utc_now
+            off = ServerClock.measure_offset_hours(int(tk["time"]), utc_now())
+            break
+    out = {"terminal": "SIMULATED" if a.sim else "MT5", "account": acct.public(), "instruments": disc,
+           "value_check": values, "clock": c.clock.source, "measured_server_offset_hours": off,
+           "sessions": {r: cal.source for r, cal in c.sessions.items()} or "UNKNOWN (no export/config)",
            "execution_blockers_if_armed": c.preflight(), "armed": c.is_armed(),
            "note": "read-only check: no orders were sent"}
     print(json.dumps(out, indent=2, default=str))
