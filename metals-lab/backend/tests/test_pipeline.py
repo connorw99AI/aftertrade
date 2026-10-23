@@ -391,3 +391,7 @@ def test_no_total_loss_pause_when_disabled(armed):
     assert not c.cfg["risk"]["max_drawdown_pause"]
     _, r = approve(c, make_open_proposal(c))
     assert "MAX_DRAWDOWN_LIMIT" not in r.reasons
+
+
+def test_default_min_lot_is_per_metal(cfg):
+    assert cfg["risk"]["min_lot"] == {"GOLD": 0.04, "SILVER": 0.02}

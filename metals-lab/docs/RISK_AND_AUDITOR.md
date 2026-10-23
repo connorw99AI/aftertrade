@@ -66,7 +66,7 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 | Check | Default |
 |---|---|
 | Planned loss at stop (`order_calc_profit`) + estimated spread/commission ≤ risk per trade | **off** (`per_trade_limit_enabled: false`); planned risk is logged. 3% when on |
-| Minimum trade size (sizing floor) | 0.04 lot (`min_lot`, can be per metal) |
+| Minimum trade size (sizing floor) | gold 0.04 lot, silver 0.02 lot (`min_lot`) |
 | New trades per bot per UTC day (a two-leg group counts once; shadow approvals count too) | 5 |
 | Daily bot loss → entries blocked for the rest of the UTC day | 15% |
 | Daily bot gain → entries blocked for the rest of the UTC day (open trades still managed) | 20% |
