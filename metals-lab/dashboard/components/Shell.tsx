@@ -11,7 +11,7 @@ const PopupCtx = createContext<Popup[]>([]);
 export const usePopups = () => useContext(PopupCtx);
 
 const NAV = [
-  ["/", "Overview"], ["/charts", "Charts"], ["/bot", "Bots"], ["/replay", "Backtest & replay"], ["/compare", "Compare"],
+  ["/", "Overview"], ["/charts", "Charts"], ["/bot", "Bots"], ["/replay", "Backtest & replay"], ["/compare", "Ranking"],
   ["/research", "Research"], ["/auditor", "Auditor"], ["/risk", "Risk centre"], ["/settings", "MT5 connection"],
 ];
 

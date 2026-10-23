@@ -363,7 +363,7 @@ class Backtester:
                 paused_today = True
                 diag["daily_profit_stops"] += 1
             peak = max(peak, eq)
-            if not dd_paused and eq < peak * (1 - cfg.risk.max_drawdown_pause):
+            if not dd_paused and cfg.risk.max_drawdown_pause and eq < peak * (1 - cfg.risk.max_drawdown_pause):
                 dd_paused = True
                 diag["drawdown_pause_at"] = str(t)
             # 3) decision at bar close
@@ -376,7 +376,7 @@ class Backtester:
                 continue
             pviews = [PositionView(p.key, p.role, self.specs[p.role].symbol, p.side, p.volume, p.entry, p.opened_at.to_pydatetime(),
                                    p.bars_held, p.sl, p.tp, p.max_hold, p.group_id) for p in positions.values()]
-            ctx = StrategyContext(T.to_pydatetime(), frames, pviews, self.specs)
+            ctx = StrategyContext(T.to_pydatetime(), frames, pviews, self.specs, weekend_flat_from=cfg.risk.weekend_flat_from)
             diag["decisions"] += 1
             sigs = s.generate_signals(ctx)
             if not sigs:

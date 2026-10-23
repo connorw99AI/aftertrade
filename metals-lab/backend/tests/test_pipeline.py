@@ -384,3 +384,10 @@ def test_daily_profit_stop(armed):
     c.cfg["risk"]["daily_profit_stop"] = 0
     _, r2 = approve(c, make_open_proposal(c), day_start=up)
     assert "DAILY_PROFIT_TARGET_REACHED" not in r2.reasons
+
+
+def test_no_total_loss_pause_when_disabled(armed):
+    c = armed
+    assert not c.cfg["risk"]["max_drawdown_pause"]
+    _, r = approve(c, make_open_proposal(c))
+    assert "MAX_DRAWDOWN_LIMIT" not in r.reasons

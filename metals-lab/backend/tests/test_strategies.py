@@ -175,3 +175,33 @@ def test_thinking_checklist_agrees_with_real_entries(sid, specs):
         if entries_seen >= 4 and no_entry_seen > 50:
             break
     assert entries_seen > 0 and no_entry_seen > 0
+
+
+def test_weekend_flat_closes_everything_and_blocks_entries(specs):
+    from datetime import datetime, timezone
+    from metals_lab.strategies.base import in_weekend_flat
+    assert not in_weekend_flat(datetime(2026, 10, 23, 19, 59, tzinfo=timezone.utc), "20:00")   # Friday before cutoff
+    assert in_weekend_flat(datetime(2026, 10, 23, 20, 0, tzinfo=timezone.utc), "20:00")
+    assert in_weekend_flat(datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc), "20:00")        # Saturday
+    assert not in_weekend_flat(datetime(2026, 10, 25, 22, 0, tzinfo=timezone.utc), "20:00")    # Sunday reopen
+    assert not in_weekend_flat(datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc), None)
+    s = build("S06")
+    frames = frames_for_strategy(type(s))
+    prepared = s.prepare({k: v for k, v in frames.items() if k[1] in s.timeframes})
+    fri = datetime(2026, 10, 23, 20, 15, tzinfo=timezone.utc)
+    pos = PositionView("S06-GOLD-1", "GOLD", "XAUUSD", "LONG", 0.04, 2000.0, fri, 3, None, None, 64, None)
+    ctx = StrategyContext(fri, prepared, [pos], specs, weekend_flat_from="20:00")
+    sigs = s.generate_signals(ctx)
+    assert [x.intent for x in sigs] == [Intent.CLOSE_LONG] and sigs[0].position_key == "S06-GOLD-1"
+    assert s.generate_signals(StrategyContext(fri, prepared, [], specs, weekend_flat_from="20:00")) == []
+
+
+def test_min_lot_per_metal(specs):
+    from metals_lab.domain import Signal
+    from datetime import datetime, timezone
+    s = build("S08")
+    loss = lambda spec, side, e, st, v: contract_loss(spec, side, e, st, v)  # noqa: E731
+    g = Signal("S08", datetime(2025, 1, 1, tzinfo=timezone.utc), "GOLD", "XAUUSD", Intent.OPEN_LONG, "t", {}, stop_price=1990.0, ref_price=2000.0)
+    v = Signal("S08", datetime(2025, 1, 1, tzinfo=timezone.utc), "SILVER", "XAGUSD", Intent.OPEN_LONG, "t", {}, stop_price=24.5, ref_price=25.0)
+    tg, tv = s.calculate_target_positions([g, v], 300.0, specs, 0.03, loss, lambda spec: 0.0, min_lot={"GOLD": 0.04, "SILVER": 0.01})
+    assert tg.volume == 0.04 and tv.volume == 0.01 and not tg.skipped and not tv.skipped

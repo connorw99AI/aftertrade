@@ -418,7 +418,8 @@ class Coordinator:
         snap = self.ledger.snapshot(acct.fingerprint) if acct.fingerprint else None
         book = self.bot_book(bot, rep)
         ds, pk = self._day_and_peak(bot, book.equity, now) if snap else (book.equity, book.equity)
-        if snap and pk and (book.equity - pk) / pk <= -self.cfg["risk"]["max_drawdown_pause"] and status == "RUNNING":
+        ddp = float(self.cfg["risk"].get("max_drawdown_pause") or 0)
+        if ddp > 0 and snap and pk and (book.equity - pk) / pk <= -ddp and status == "RUNNING":
             self.db.x("UPDATE bots SET status='PAUSED_RISK', pause_reason='max drawdown reached' WHERE bot_id=?", (bot,))
             self.db.event("BOT_PAUSED", bot, {"reason": "max drawdown"})
             status = "PAUSED_RISK"
@@ -436,7 +437,8 @@ class Coordinator:
         if reassess_due:
             self.db.x("DELETE FROM control WHERE key=?", (f"reassess:{bot}",))
         prepared = strat.prepare(frames)
-        ctx = StrategyContext(now, prepared, self._positions_view(bot, strat, prepared), self.specs)
+        ctx = StrategyContext(now, prepared, self._positions_view(bot, strat, prepared), self.specs,
+                              weekend_flat_from=self.cfg["risk"].get("weekend_flat_from"))
         sigs = strat.generate_signals(ctx)
         if status != "RUNNING":
             sigs = [s for s in sigs if s.intent.is_risk_reducing]  # paused: manage exits only
@@ -551,7 +553,7 @@ class Coordinator:
         tps = strat.calculate_target_positions(
             entries, book.equity, self.specs, risk_pct_for(self.cfg, bot), self.risk.loss_at_stop,
             lambda spec: self.risk.est_cost_per_lot(spec, ticks.get(spec.role), commission),
-            min_lot=float(self.cfg["risk"].get("min_lot", 0.0) or 0.0))
+            min_lot=self.cfg["risk"].get("min_lot", 0.0) or 0.0)
         approved: list[tuple] = []
         group = any(s.group_id for s in entries)
         for tp in tps:

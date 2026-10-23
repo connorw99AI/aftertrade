@@ -189,7 +189,7 @@ def create_app(state: State) -> FastAPI:
             "book": book.public() if book else None,
             "risk_budget_per_trade": round(book.equity * risk_pct, 2) if book else None,
             "risk_pct": risk_pct,
-            "min_lot": float(state.cfg["risk"].get("min_lot", 0.0) or 0.0),
+            "min_lot": state.cfg["risk"].get("min_lot", 0.0) or 0.0,
             "per_trade_limit_enabled": bool(state.cfg["risk"].get("per_trade_limit_enabled", True)),
             "entries_today": state.coord.entries_today(bot) if state.coord else None,
             "max_entries_per_day": int(state.cfg["risk"].get("max_entries_per_bot_per_day", 0) or 0),
@@ -421,6 +421,18 @@ def create_app(state: State) -> FastAPI:
             r["params"] = json.loads(r.pop("params_json") or "null")
             r["metrics"] = json.loads(r.pop("metrics_json") or "null")
         return {"experiments": rows, "holdout_usage": db.q("SELECT * FROM holdout_usage")}
+
+    @app.get("/api/ranking")
+    def ranking():
+        from ..ranking import rank
+        per = {}
+        for b in BOT_IDS:
+            book = state.coord.bot_book(b) if state.coord else None
+            per[b] = {"name": STRATEGY_CLASSES[b].name, "allocation": book.allocation if book else 0.0,
+                      "nets": [t["net"] for t in db.q("SELECT net FROM trades WHERE bot_id=? ORDER BY exit_time", (b,))]}
+        n = int(state.cfg.get("selection", {}).get("min_trades", 50))
+        return {"min_trades": n, "rule": f"at least {n} closed trades, profitable after costs, then smallest max drawdown",
+                "rows": rank(per, n)}
 
     @app.get("/api/compare")
     def compare():

@@ -169,7 +169,7 @@ class RiskEngine:
             reject("DAILY_LOSS_LIMIT")
         if self.cfg.get("daily_profit_stop") and daily >= self.cfg["daily_profit_stop"]:
             reject("DAILY_PROFIT_TARGET_REACHED")
-        if dd <= -self.cfg["max_drawdown_pause"]:
+        if self.cfg.get("max_drawdown_pause") and dd <= -self.cfg["max_drawdown_pause"]:
             reject("MAX_DRAWDOWN_LIMIT")
         if ctx.bot_open_positions >= self.cfg["max_positions_per_bot"]:
             reject("MAX_POSITIONS_PER_BOT")

@@ -32,6 +32,15 @@ class Param:
     grid: tuple = ()
 
 
+def in_weekend_flat(now: datetime, friday_from: Optional[str]) -> bool:
+    """Friday from ``friday_from`` (UTC) until Sunday 22:00 UTC, when metals reopen."""
+    if not friday_from:
+        return False
+    h, m = (int(x) for x in friday_from.split(":"))
+    wd = now.weekday()
+    return (wd == 4 and (now.hour, now.minute) >= (h, m)) or wd == 5 or (wd == 6 and now.hour < 22)
+
+
 @dataclass
 class StrategyContext:
     now: datetime
@@ -39,6 +48,7 @@ class StrategyContext:
     positions: list[PositionView]
     specs: dict[str, InstrumentSpec]
     quotes: dict[str, dict] = field(default_factory=dict)
+    weekend_flat_from: Optional[str] = None       # "HH:MM" UTC on Friday: close everything, no entries until Sunday 22:00 UTC
 
     def frame(self, role: str, tf: str) -> pd.DataFrame:
         return self.frames[(role, tf)]
@@ -114,6 +124,13 @@ class Strategy(ABC):
         return []
 
     def generate_signals(self, ctx: StrategyContext) -> list[Signal]:
+        if in_weekend_flat(ctx.now, ctx.weekend_flat_from):
+            exits = self.exit_signals(ctx) if ctx.positions else []
+            done = {s.position_key for s in exits}
+            for pos in ctx.positions:
+                if pos.key not in done:
+                    exits.append(self.close_signal(ctx, pos, "flat for the weekend", {}))
+            return exits
         exits = self.exit_signals(ctx)
         exits = exits + self._time_exits(ctx, already={s.position_key for s in exits})
         if exits:
@@ -146,11 +163,11 @@ class Strategy(ABC):
     # ---------------------------------------------------------------- sizing
     def calculate_target_positions(self, signals: list[Signal], equity: float, specs: dict[str, InstrumentSpec],
                                    risk_pct: float, loss_fn: LossFn, cost_per_lot: Callable[[InstrumentSpec], float],
-                                   min_lot: float = 0.0) -> list[TargetPosition]:
+                                   min_lot: float | dict = 0.0) -> list[TargetPosition]:
         """Risk-based sizing from the bot's own equity only.
 
         volume = floor_to_step(risk_budget / (stop loss per lot + est. round-trip cost per lot))
-        With ``min_lot`` > 0 the volume is never below that floor (operator policy: trade at least
+        ``min_lot`` is a number or {role: lots}. When > 0 the volume is never below that floor (operator policy: trade at least
         min_lot even when it risks more than the budget). With ``min_lot`` == 0, trades whose
         broker minimum lot would exceed the budget are skipped, never upsized.
         """
@@ -171,8 +188,9 @@ class Strategy(ABC):
             loss_1 = loss_fn(spec, s.intent.position_side, s.ref_price, s.stop_price, 1.0) + cost_per_lot(spec)
             raw = budget / loss_1 if loss_1 > 0 else 0.0
             vol = spec.round_volume_down(raw)
-            if min_lot > 0:
-                vol = max(vol, spec.round_volume_down(max(min_lot, spec.volume_min)))
+            floor = float(min_lot.get(s.role, 0.0) if isinstance(min_lot, dict) else min_lot or 0.0)
+            if floor > 0:
+                vol = max(vol, spec.round_volume_down(max(floor, spec.volume_min)))
             if vol <= 0:
                 min_risk = loss_1 * spec.volume_min
                 out.append(TargetPosition(s, 0.0, min_risk, budget, True,

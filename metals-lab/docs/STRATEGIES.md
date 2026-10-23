@@ -54,12 +54,14 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 
 ## A consequence you should know before arming
 
-The operator runs a £3,000 demo so each bot has £300, the amount the best bot would get live. Settings follow from that:
+The operator runs a £3,000 demo so each bot has £300, the amount the best bot would get live. Operator choices:
 
-- **Sizing from risk, no fixed minimum** (`min_lot: 0`). Each trade risks at most 3% of the bot (`risk_per_trade: 0.03`, about £9), measured at the stop with the terminal's own contract figures. Silver lots are 5,000 oz against gold's 100 oz, so silver automatically gets fewer lots than gold for the same £ risk.
-- The broker minimum is 0.01 lot. When even 0.01 lot would risk more than £9, the trade is **skipped** (`MIN_LOT_EXCEEDS_RISK_BUDGET`). At 0.01 lot, gold costs about £0.75 per $1 move and silver about £37 per $1 move.
-- **Strategies with wide stops will rarely trade at £300.** On synthetic data, S07, S08 and S09 skip most of their signals, S04 skips most, and S10 (two legs, each with a wide stop) skipped every one. Live frequency will differ, but the direction is the same. That is an honest property of small accounts: those trades could not be afforded live either.
-- **Exposure caps are per bot** (`exposure_scope: per_bot`), as if each bot had its own £300 account, so one bot's trades do not use up another's limits. Position values are converted into account currency with `order_calc_profit`. The cap is 40× the bot's equity: 0.01 lot of gold is already roughly 10× a £300 bot, so a large gap against an open position can lose much more than the stop.
-- Daily stops: no new entries for the rest of the UTC day after losing 15% (£45) or gaining 20% (£60). Drawdown pause 20% (£60) from the peak, which the operator must resume.
+- **Minimum 0.04 lot per trade** (`min_lot: 0.04`), even when that risks more than 3% of the bot. A bot trades more than 0.04 only when 3% of its equity allows it, which at £300 is rare. There is **no per-trade loss limit** (`per_trade_limit_enabled: false`). `min_lot` can be set per metal, e.g. `{GOLD: 0.04, SILVER: 0.01}`.
+- What 0.04 lot means (from the terminal's own figures, GBP account): gold about **£3 per $1 move**; silver about **£149 per $1 move**. Examples: a $5 gold stop loses about £15 (5% of £300); a $15 gold stop about £45 (15%). A 20-cent silver stop loses about £30 (10%); a 50-cent silver stop about £75 (25%).
+- Leverage (1:500) sets the margin, not the loss. Margin for 0.04 lot gold is lots × 100 oz × price ÷ 500, a few tens of pounds, so margin rarely limits these trades. The loss at the stop is the same at any leverage.
+- **Daily stops**: no new entries for the rest of the UTC day after losing 15% (£45) or gaining 20% (£60). Trades already open keep running, so a day can end worse than -15%.
+- **No total-loss pause** (`max_drawdown_pause: 0`). A bot can lose its whole allocation over several days.
+- **Flat for the weekend** (`weekend_flat_from: "20:00"`): from Friday 20:00 UTC every bot closes its positions and opens nothing until Sunday 22:00 UTC. Overnight holds on weekdays are allowed.
+- Exposure caps are per bot (`exposure_scope: per_bot`) at 200× equity; they only stop extreme stacking.
 
-Choosing "the most profitable bot" from ten over a short period mostly selects luck. Before trusting a winner, look for at least 50-100 of its trades, still positive after costs, and run it through the research checks (walk-forward, deflated Sharpe, cost stress).
+**Choosing a live candidate** (Ranking page): a bot is eligible after at least 50 closed demo trades and a profit after costs; eligible bots are ranked by smallest maximum drawdown, then net profit. Picking the best of ten still favours luck, so treat the top rank as a shortlist and check it with the research tools (walk-forward, deflated Sharpe, cost stress) before risking money.
