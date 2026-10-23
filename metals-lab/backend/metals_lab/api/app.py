@@ -120,6 +120,37 @@ def create_app(state: State) -> FastAPI:
         return {"discovery": c.discovery if c else None,
                 "sessions": {r: cal.public() for r, cal in (c.sessions.items() if c else [])}}
 
+    # ------------------------------------------------------------------- charts
+    @app.get("/api/chart")
+    def chart(role: str = "GOLD", tf: str = "M15", bars: int = 150):
+        """Read-only candles for one metal plus every bot's open positions on it.
+
+        The last candle is the forming bar (marked ``forming``)."""
+        from ..data.history import TF_CONST, fetch_recent
+        c = coord()
+        role, tf = role.upper(), tf.upper()
+        if role not in c.specs:
+            raise HTTPException(404, f"{role} not resolved in the terminal")
+        if tf not in TF_CONST:
+            raise HTTPException(400, f"timeframe must be one of {sorted(TF_CONST)}")
+        spec = c.specs[role]
+        n = max(20, min(int(bars), 500))
+        with c._lock:  # serialise terminal access with the trading loop
+            try:
+                df = fetch_recent(c.ro, c.clock, spec, tf, n)
+            except ValueError as e:
+                raise HTTPException(503, f"server clock not set: {e}")
+            tick = c.ro.symbol_info_tick(spec.symbol)
+        candles = [{"t": r.time.isoformat(), "o": r.open, "h": r.high, "l": r.low, "c": r.close}
+                   for r in df.itertuples(index=False)]
+        if candles:
+            candles[-1]["forming"] = True
+        positions = [{"bot_id": p["bot_id"], "side": p["side"], "volume": p["volume_open"], "entry": p["entry_price"],
+                      "sl": p["sl"], "tp": p["tp"], "opened_at": p["opened_at"]}
+                     for p in db.q("SELECT * FROM positions WHERE status='OPEN' AND symbol=?", (spec.symbol,))]
+        return {"role": role, "symbol": spec.symbol, "timeframe": tf, "digits": spec.digits, "candles": candles,
+                "bid": tick["bid"] if tick else None, "ask": tick["ask"] if tick else None, "positions": positions}
+
     # -------------------------------------------------------------------- bots
     def bot_summary(bot: str) -> dict:
         cls = STRATEGY_CLASSES[bot]

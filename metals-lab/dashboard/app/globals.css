@@ -117,3 +117,29 @@ svg.chart { width: 100%; height: 180px; background: var(--ink-deep); border-radi
 .card-controls { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .card-controls button { padding: 5px 12px; font-size: .88rem; }
 .card-err { color: var(--loss); font-size: .8rem; width: 100%; }
+
+/* charts */
+.charts { display: grid; gap: 16px; }
+.chart-panel h2 { margin: 0; }
+.chart-gold { border-top: 4px solid var(--gold); }
+.chart-silver { border-top: 4px solid var(--silver); }
+.chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.quote { margin: 4px 0 0; color: var(--muted); font-size: .9rem; }
+.tf-switch { display: flex; gap: 4px; flex-wrap: wrap; }
+.tf-switch button { padding: 4px 9px; font-size: .82rem; }
+.tf-switch button.on { background: var(--gold); color: var(--ink-deep); border-color: var(--gold); font-weight: 700; }
+svg.candles { width: 100%; height: auto; display: block; background: var(--ink-deep); border-radius: 8px; }
+svg.candles .grid { stroke: var(--line); stroke-width: .5; }
+svg.candles .axis { fill: var(--muted); font-size: 11px; font-family: var(--body); }
+svg.candles .up .wick, svg.candles .up .body { stroke: var(--gain); fill: var(--gain); }
+svg.candles .down .wick, svg.candles .down .body { stroke: var(--loss); fill: var(--loss); }
+svg.candles .wick { stroke-width: 1; }
+svg.candles .forming { opacity: .45; }
+svg.candles .lvl line { stroke-width: 1.2; }
+svg.candles .lvl text { font-size: 10.5px; font-family: var(--body); }
+svg.candles .lvl-entry line { stroke: var(--text); stroke-dasharray: 5 4; } svg.candles .lvl-entry text { fill: var(--text); }
+svg.candles .lvl-sl line { stroke: var(--loss); } svg.candles .lvl-sl text { fill: var(--loss); }
+svg.candles .lvl-tp line { stroke: var(--gain); } svg.candles .lvl-tp text { fill: var(--gain); }
+svg.candles .lvl-bid line { stroke: var(--gold); stroke-dasharray: 2 3; }
+svg.candles .lvl-bid rect { fill: var(--gold); } svg.candles .lvl-bid text { fill: var(--ink-deep); font-weight: 700; font-size: 11px; }
+.chart-pos { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: .9rem; }

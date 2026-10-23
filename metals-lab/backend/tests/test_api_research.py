@@ -154,3 +154,21 @@ def test_event_filter_comparison_reports_opportunity_cost(swing_frames, specs):
         assert k in out
     assert out["unfiltered"]["n_trades"] > 0
     assert out["blocked_trades"] >= 0 and out["opportunity_cost"] >= 0 and out["avoided_losses"] >= 0
+
+
+def test_chart_endpoint_returns_separate_metals_and_positions(client, armed):
+    from conftest import approve, make_open_proposal
+    p = make_open_proposal(armed)
+    audit, risk = approve(armed, p)
+    if risk is not None and risk.approval is not None:
+        armed.executor.submit(p, armed.specs["GOLD"], audit.approval, risk.approval)
+    g = client.get("/api/chart?role=GOLD&tf=M15&bars=60").json()
+    s = client.get("/api/chart?role=SILVER&tf=H1&bars=60").json()
+    assert g["symbol"] == "XAUUSD" and s["symbol"] == "XAGUSD"
+    assert len(g["candles"]) >= 20 and g["candles"][-1]["forming"] is True
+    assert all(c["l"] <= min(c["o"], c["c"]) and c["h"] >= max(c["o"], c["c"]) for c in g["candles"])
+    assert g["bid"] is not None and s["positions"] == []
+    if risk is not None and risk.approval is not None:
+        assert g["positions"] and g["positions"][0]["bot_id"] == "S01"
+    assert client.get("/api/chart?role=GOLD&tf=W9").status_code == 400
+    assert client.get("/api/chart?role=PLATINUM").status_code == 404
