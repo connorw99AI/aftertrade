@@ -120,6 +120,13 @@ def create_app(state: State) -> FastAPI:
         return {"discovery": c.discovery if c else None,
                 "sessions": {r: cal.public() for r, cal in (c.sessions.items() if c else [])}}
 
+    # ----------------------------------------------------------------- thinking
+    @app.get("/api/thinking")
+    def thinking():
+        """Each bot's latest entry checklist (what it sees on its last completed bar)."""
+        c = state.coord
+        return c.thinking() if c else {}
+
     # ------------------------------------------------------------------- charts
     @app.get("/api/chart")
     def chart(role: str = "GOLD", tf: str = "M15", bars: int = 150):
@@ -202,6 +209,7 @@ def create_app(state: State) -> FastAPI:
         d = bot_summary(bot)
         row = db.one("SELECT params_json FROM bots WHERE bot_id=?", (bot,))
         d["strategy"] = build(bot, json.loads(row["params_json"] or "{}")).describe()
+        d["thinking"] = state.coord.thinking().get(bot) if state.coord else None
         return d
 
     @app.get("/api/bots/{bot}/trades")

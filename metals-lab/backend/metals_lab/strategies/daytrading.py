@@ -6,7 +6,7 @@ import pandas as pd
 
 from .. import indicators as ind
 from ..domain import Intent, Style
-from .base import Param, Strategy, StrategyContext, spread_price
+from .base import Param, Strategy, StrategyContext, chk, fmt, level, spread_price
 
 
 def _local_minutes(df: pd.DataFrame, tz: str) -> tuple[pd.Series, pd.Series]:
@@ -80,6 +80,8 @@ class LondonOpeningRangeBreakout(Strategy):
             brk = (up | dn)
             first = brk & (brk.astype(int).groupby(df["ldate"]).cumsum() == 1)
             df["orb_dir"] = np.where(first & up, 1, np.where(first & dn, -1, 0))
+            df["in_window"] = window
+            df["brk_before"] = (brk.astype(int).groupby(df["ldate"]).cumsum() - brk.astype(int)) > 0
             df["time_exit"] = mins >= ex
             out[key] = df
         return out
@@ -118,6 +120,40 @@ class LondonOpeningRangeBreakout(Strategy):
             r = ctx.last(pos.role, "M5")
             if r["time_exit"] or r["ldate"] != pd.Timestamp(pos.opened_at).tz_convert(self.p["tz"]).date():
                 out.append(self.close_signal(ctx, pos, f"day-trade time exit ({self.p['exit_time']} London)", {"close": r["close"]}))
+        return out
+
+
+    def diagnose(self, ctx):
+        out = {}
+        tf = self.primary_timeframe
+        for role in self.roles:
+            if not ctx.has(role, tf, 20):
+                out[role] = {"waiting": "not enough bars yet"}
+                continue
+            r = ctx.last(role, tf)
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            done = not pd.isna(r["or_high"])
+            width = (r["or_high"] - r["or_low"]) if done else float("nan")
+            buf = self.p["buffer_atr"] * r["atr"]
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [x for x in (level("Opening range high", r["or_high"]), level("Opening range low", r["or_low"])) if x],
+                "filters": [
+                    chk(f"Opening range complete ({self.p['or_start']}-{self.p['or_end']} London)", done,
+                        "range not built yet today" if not done else f"{fmt(r['or_low'], d)} - {fmt(r['or_high'], d)}"),
+                    chk(f"Before entry cut-off ({self.p['entry_cutoff']} London)", bool(r["in_window"]), ""),
+                    chk("No breakout taken yet today", not bool(r["brk_before"]), ""),
+                    chk(f"Range width {self.p['min_range_atr']}-{self.p['max_range_atr']} ATR",
+                        done and self.p["min_range_atr"] * r["atr"] <= width <= self.p["max_range_atr"] * r["atr"],
+                        f"width {fmt(width, d)} = {fmt(width / r['atr'] if r['atr'] else float('nan'), 1)} ATR"),
+                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                ],
+                "long": [chk("Closed above range high + buffer", done and r["close"] > r["or_high"] + buf,
+                             f"close {fmt(r['close'], d)} vs {fmt(r['or_high'] + buf, d)}")],
+                "short": [chk("Closed below range low - buffer", done and r["close"] < r["or_low"] - buf,
+                              f"close {fmt(r['close'], d)} vs {fmt(r['or_low'] - buf, d)}")],
+            }
         return out
 
 
@@ -174,6 +210,8 @@ class BreakoutRetest(Strategy):
             # Sequential state machine (causal: only past bars of the same day).
             n = len(df)
             sig = np.zeros(n, dtype=int)
+            up_since = np.full(n, np.nan)
+            dn_since = np.full(n, np.nan)
             hi, lo, c, o, lw, hg, atr = (df[k].to_numpy() for k in ("lvl_hi", "lvl_lo", "close", "open", "low", "high", "atr"))
             dates = df["ldate"].to_numpy()
             cur_date, up_at, dn_at, used_up, used_dn = None, -1, -1, False, False
@@ -184,10 +222,16 @@ class BreakoutRetest(Strategy):
                     continue
                 if up_at < 0 and c[i] > hi[i] + self.p["breakout_atr"] * atr[i]:
                     up_at = i
+                    up_since[i] = 0
                     continue
                 if dn_at < 0 and c[i] < lo[i] - self.p["breakout_atr"] * atr[i]:
                     dn_at = i
+                    dn_since[i] = 0
                     continue
+                if up_at >= 0 and not used_up:
+                    up_since[i] = i - up_at
+                if dn_at >= 0 and not used_dn:
+                    dn_since[i] = i - dn_at
                 if up_at >= 0 and not used_up and i - up_at <= self.p["retest_bars"]:
                     if lw[i] <= hi[i] + self.p["retest_tol_atr"] * atr[i] and c[i] > hi[i] and c[i] > o[i]:
                         sig[i], used_up = 1, True
@@ -195,6 +239,7 @@ class BreakoutRetest(Strategy):
                     if hg[i] >= lo[i] - self.p["retest_tol_atr"] * atr[i] and c[i] < lo[i] and c[i] < o[i]:
                         sig[i], used_dn = -1, True
             df["retest_dir"] = sig
+            df["up_since"], df["dn_since"] = up_since, dn_since
             out[key] = df
         return out
 
@@ -230,6 +275,46 @@ class BreakoutRetest(Strategy):
             r = ctx.last(pos.role, "M5")
             if r["ny_exit"]:
                 out.append(self.close_signal(ctx, pos, "day-trade time exit (16:00 New York)", {"close": r["close"]}))
+        return out
+
+
+    def diagnose(self, ctx):
+        out = {}
+        tf = self.primary_timeframe
+        for role in self.roles:
+            if not ctx.has(role, tf, 20):
+                out[role] = {"waiting": "not enough bars yet"}
+                continue
+            r = ctx.last(role, tf)
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            done = not pd.isna(r["lvl_hi"])
+            width = (r["lvl_hi"] - r["lvl_lo"]) if done else float("nan")
+            rb = self.p["retest_bars"]
+            up, dn = r["up_since"], r["dn_since"]
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [x for x in (level("London range high", r["lvl_hi"]), level("London range low", r["lvl_lo"])) if x],
+                "filters": [
+                    chk(f"London range complete ({self.p['range_start']}-{self.p['range_end']})", done, ""),
+                    chk("Before 16:00 New York", not bool(r["ny_exit"]), ""),
+                    chk("Range width 3-16 ATR", done and 3 * r["atr"] <= width <= 16 * r["atr"],
+                        f"{fmt(width / r['atr'] if r['atr'] else float('nan'), 1)} ATR"),
+                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                ],
+                "long": [
+                    chk("Decisive break above range high", not pd.isna(up), "not yet" if pd.isna(up) else f"{int(up)} bars ago"),
+                    chk(f"Retest window still open (<= {rb} bars)", not pd.isna(up) and up <= rb, ""),
+                    chk("Retest touched the level and closed back above (bullish)", r["retest_dir"] == 1,
+                        f"low {fmt(r['low'], d)}, close {fmt(r['close'], d)}"),
+                ],
+                "short": [
+                    chk("Decisive break below range low", not pd.isna(dn), "not yet" if pd.isna(dn) else f"{int(dn)} bars ago"),
+                    chk(f"Retest window still open (<= {rb} bars)", not pd.isna(dn) and dn <= rb, ""),
+                    chk("Retest touched the level and closed back below (bearish)", r["retest_dir"] == -1,
+                        f"high {fmt(r['high'], d)}, close {fmt(r['close'], d)}"),
+                ],
+            }
         return out
 
 
@@ -271,6 +356,7 @@ class VolatilityCompressionBreakout(Strategy):
             df = df.copy()
             _, bu, bl = ind.bollinger(df["close"], 20, self.p["bb_k"])
             _, ku, kl = ind.keltner(df, 20, self.p["kc_k"])
+            df["bb_u"], df["bb_l"] = bu, bl
             sq = (bu < ku) & (bl > kl)
             grp = (~sq).cumsum()
             df["sq_count"] = sq.astype(int).groupby(grp).cumsum()
@@ -326,3 +412,36 @@ class VolatilityCompressionBreakout(Strategy):
             elif pos.side == "SHORT" and r["close"] > r["ema20"]:
                 out.append(self.close_signal(ctx, pos, "closed back above EMA20", vals))
         return out
+
+
+    def diagnose(self, ctx):
+        out = {}
+        tf = self.primary_timeframe
+        for role in self.roles:
+            if not ctx.has(role, tf, 30):
+                out[role] = {"waiting": "not enough bars yet"}
+                continue
+            r, pv = ctx.last(role, tf), ctx.last(role, tf, 2)
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            late_fri = ctx.now.weekday() == 4 and ctx.now.hour >= 18
+            sq_now = int(r["sq_count"]) if not pd.isna(r["sq_count"]) else 0
+            sq_prev = int(pv["sq_count"]) if not pd.isna(pv["sq_count"]) else 0
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [x for x in (level("EMA20", r["ema20"]), level("Bollinger upper", r["bb_u"]), level("Bollinger lower", r["bb_l"]),
+                                       level("Squeeze high", r["sq_high"]), level("Squeeze low", r["sq_low"])) if x],
+                "filters": [
+                    chk("Not Friday after 18:00 UTC", not late_fri, ""),
+                    chk(f"Squeeze lasted >= {self.p['min_squeeze']} bars", max(sq_now, sq_prev) >= self.p["min_squeeze"],
+                        f"currently squeezed for {sq_now} bars" if sq_now else f"previous squeeze {sq_prev} bars"),
+                    chk("Squeeze just released this bar", bool(r["released"]), "still compressed" if sq_now else ""),
+                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                ],
+                "long": [chk("Closed above the squeeze high", bool(r["released"]) and r["close"] > r["sq_high"],
+                             f"close {fmt(r['close'], d)} vs {fmt(r['sq_high'], d)}")],
+                "short": [chk("Closed below the squeeze low", bool(r["released"]) and r["close"] < r["sq_low"],
+                              f"close {fmt(r['close'], d)} vs {fmt(r['sq_low'], d)}")],
+            }
+        return out
+

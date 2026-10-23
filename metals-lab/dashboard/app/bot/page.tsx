@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { Creature, CREATURES } from "@/components/Creature";
+import { RoleThinking } from "@/components/Thinking";
 import { Any, api, money, pct, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
 
@@ -115,6 +116,14 @@ function BotDetail({ id }: { id: string }) {
       {b.sample_size_note && <p className="muted">{b.sample_size_note}</p>}
 
       <h2>What it sees now</h2>
+      {b.thinking ? (
+        <div className="thinking-list">
+          {Object.keys(b.thinking.roles).map((role) => (
+            <div key={role}><h3>{role === "GOLD" ? "Gold" : "Silver"}</h3><RoleThinking bot={id} th={b.thinking} role={role} /></div>
+          ))}
+        </div>
+      ) : <p className="empty">The checklist appears after the next {st.primary_timeframe} bar closes.</p>}
+      <h3>Last signal</h3>
       {b.last_signal ? (
         <div className="explain">
           <p>{b.last_signal.explanation}</p>

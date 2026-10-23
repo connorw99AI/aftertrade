@@ -27,7 +27,7 @@ function fmtTime(iso: string, tf: string) {
   return d.toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-export function CandleChart({ data }: { data: Any }) {
+export function CandleChart({ data, overlay = [] }: { data: Any; overlay?: { label: string; price: number }[] }) {
   const narrow = useNarrow();
   const W = narrow ? 400 : 760, H = narrow ? 300 : 320, PAD_R = narrow ? 58 : 64;
   const cs: Candle[] = data?.candles ?? [];
@@ -76,6 +76,18 @@ export function CandleChart({ data }: { data: Any }) {
             <text x={4 + (i % 3) * (narrow ? 110 : 140)} y={y(v as number) - 3}>{label}</text>
           </g>
         ));
+      })}
+      {overlay.map((o, i) => {
+        const inside = o.price >= lo && o.price <= hi;
+        const yy = inside ? y(o.price) : o.price > hi ? PAD_T + 10 + i * 12 : H - PAD_B - 4 - i * 12;
+        return (
+          <g key={`ov-${i}`} className="lvl lvl-overlay">
+            {inside && <line x1={0} x2={plotW} y1={yy} y2={yy} />}
+            <text x={plotW - 6} y={inside ? yy - 3 : yy} textAnchor="end">
+              {inside ? "" : o.price > hi ? "↑ " : "↓ "}{o.label} {o.price.toFixed(digits)}
+            </text>
+          </g>
+        );
       })}
       {bid !== null && bid >= lo && bid <= hi && (
         <g className="lvl lvl-bid">

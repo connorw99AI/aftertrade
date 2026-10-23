@@ -133,3 +133,39 @@ def test_pair_strategy_emits_two_leg_group(specs):
     sig = next(iter(found.values()))
     assert sig.group_id and sig.group_id.startswith("S10-")
     assert s.risk_metadata()["uses_trade_groups"] is True
+
+
+@pytest.mark.parametrize("sid", INTRADAY + SWING)
+def test_thinking_checklist_agrees_with_real_entries(sid, specs):
+    """At every bar where the strategy truly signals an entry, its checklist must show all of that side met;
+    at bars with no entry, the verdict must not claim one."""
+    s = build(sid, SCAN_PARAMS.get(sid, {}))
+    frames = frames_for_strategy(type(s))
+    keys = {(r, tf) for r in s.roles for tf in s.timeframes}
+    prepared = s.prepare({k: frames[k] for k in keys})
+    ptf = s.primary_timeframe
+    close = {k: (pd.to_datetime(df["time"], utc=True).dt.as_unit("ns") + pd.Timedelta(minutes=TIMEFRAME_MINUTES[k[1]]))
+             .astype("int64").to_numpy() for k, df in prepared.items()}
+    times = prepared[(s.roles[0], ptf)]["time"]
+    entries_seen = no_entry_seen = 0
+    for i in range(s.min_history_bars, len(times)):
+        T = times.iloc[i] + pd.Timedelta(minutes=TIMEFRAME_MINUTES[ptf])
+        fr = {k: df.iloc[: np.searchsorted(close[k], T.as_unit("ns").value, side="right")] for k, df in prepared.items()}
+        ctx = StrategyContext(T.to_pydatetime(), fr, [], specs)
+        sigs = s.entry_signals(ctx)
+        th = s.think(ctx)
+        assert "error" not in th, th.get("error")
+        for role, r in th["roles"].items():
+            sig = next((x for x in sigs if x.role == role), None)
+            if sig is None:
+                assert not r["verdict"].startswith("ENTRY")
+                no_entry_seen += 1
+                continue
+            side = "long" if sig.intent == Intent.OPEN_LONG else "short"
+            assert r["verdict"] == ("ENTRY_LONG" if side == "long" else "ENTRY_SHORT")
+            failed = [c["label"] for c in r["filters"] + r[side] if not c["ok"]]
+            assert not failed, f"{sid} {role} entered but checklist shows unmet: {failed}"
+            entries_seen += 1
+        if entries_seen >= 4 and no_entry_seen > 50:
+            break
+    assert entries_seen > 0 and no_entry_seen > 0

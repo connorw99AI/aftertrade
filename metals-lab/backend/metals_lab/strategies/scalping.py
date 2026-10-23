@@ -5,7 +5,7 @@ import pandas as pd
 
 from .. import indicators as ind
 from ..domain import Intent, Style
-from .base import Param, Strategy, StrategyContext, spread_price
+from .base import Param, Strategy, StrategyContext, chk, fmt, level, spread_price
 
 
 class TrendPullbackScalper(Strategy):
@@ -105,6 +105,49 @@ class TrendPullbackScalper(Strategy):
         return out
 
 
+    def diagnose(self, ctx):
+        out = {}
+        tf = self.primary_timeframe
+        for role in self.roles:
+            if not ctx.has(role, tf, 3):
+                out[role] = {"waiting": "not enough bars yet"}
+                continue
+            r, pv = ctx.last(role, tf), ctx.last(role, tf, 2)
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [x for x in (level("EMA20", r["ema_f"]), level("EMA50", r["ema_m"]), level("EMA200", r["ema_s"])) if x],
+                "filters": [
+                    chk(f"Liquid hours ({self.p['start_hour']:02d}-{self.p['end_hour']:02d} UTC)",
+                        self.p["start_hour"] <= ctx.now.hour < self.p["end_hour"], f"now {ctx.now:%H:%M} UTC"),
+                    chk("Volatility normal (ATR percentile 20-90)", 20 <= (r["atr_pct"] if not pd.isna(r["atr_pct"]) else -1) <= 90,
+                        f"percentile {fmt(r['atr_pct'], 0)}"),
+                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
+                        f"spread {fmt(spr, d)} vs ATR {fmt(r['atr'], d)}"),
+                ],
+                "long": [
+                    chk("Uptrend: EMA50 above EMA200", r["ema_m"] > r["ema_s"], f"{fmt(r['ema_m'], d)} vs {fmt(r['ema_s'], d)}"),
+                    chk("EMA50 rising", r["slope"] > 0, f"10-bar change {fmt(r['slope'], d)}"),
+                    chk("Previous bar dipped to EMA20", pv["low"] <= pv["ema_f"], f"low {fmt(pv['low'], d)} vs EMA20 {fmt(pv['ema_f'], d)}"),
+                    chk("Closed back above EMA20", r["close"] > r["ema_f"], f"close {fmt(r['close'], d)}"),
+                    chk("Bullish candle", r["close"] > r["open"], ""),
+                    chk(f"Pullback pushed RSI below {self.p['rsi_pull']}", pv["rsi"] < self.p["rsi_pull"], f"previous RSI {fmt(pv['rsi'], 1)}"),
+                    chk("RSI turning up", r["rsi"] > pv["rsi"], f"RSI {fmt(r['rsi'], 1)}"),
+                ],
+                "short": [
+                    chk("Downtrend: EMA50 below EMA200", r["ema_m"] < r["ema_s"], f"{fmt(r['ema_m'], d)} vs {fmt(r['ema_s'], d)}"),
+                    chk("EMA50 falling", r["slope"] < 0, f"10-bar change {fmt(r['slope'], d)}"),
+                    chk("Previous bar rallied to EMA20", pv["high"] >= pv["ema_f"], f"high {fmt(pv['high'], d)} vs EMA20 {fmt(pv['ema_f'], d)}"),
+                    chk("Closed back below EMA20", r["close"] < r["ema_f"], f"close {fmt(r['close'], d)}"),
+                    chk("Bearish candle", r["close"] < r["open"], ""),
+                    chk(f"Rally pushed RSI above {100 - self.p['rsi_pull']}", pv["rsi"] > 100 - self.p["rsi_pull"], f"previous RSI {fmt(pv['rsi'], 1)}"),
+                    chk("RSI turning down", r["rsi"] < pv["rsi"], f"RSI {fmt(r['rsi'], 1)}"),
+                ],
+            }
+        return out
+
+
 class AsianRangeReversion(Strategy):
     strategy_id = "S02"
     name = "Asian Range Reversion Scalper"
@@ -197,6 +240,39 @@ class AsianRangeReversion(Strategy):
         return out
 
 
+    def diagnose(self, ctx):
+        out = {}
+        tf = self.primary_timeframe
+        for role in self.roles:
+            if not ctx.has(role, tf, 2):
+                out[role] = {"waiting": "not enough bars yet"}
+                continue
+            r = ctx.last(role, tf)
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [x for x in (level("Upper band", r["bb_u"]), level("Mean (SMA20)", r["bb_m"]), level("Lower band", r["bb_l"])) if x],
+                "filters": [
+                    chk(f"Asian session ({self.p['entry_start_hour']:02d}-{self.p['entry_end_hour']:02d} UTC)",
+                        self.p["entry_start_hour"] <= ctx.now.hour < self.p["entry_end_hour"], f"now {ctx.now:%H:%M} UTC"),
+                    chk(f"Ranging: ADX below {self.p['adx_max']}", r["adx"] < self.p["adx_max"], f"ADX {fmt(r['adx'], 1)}"),
+                    chk("Bands not wide (width percentile < 50)", r["bbw_pct"] < 50, f"percentile {fmt(r['bbw_pct'], 0)}"),
+                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
+                        f"spread {fmt(spr, d)} vs ATR {fmt(r['atr'], d)}"),
+                ],
+                "long": [
+                    chk("Closed below lower band", r["close"] < r["bb_l"], f"close {fmt(r['close'], d)} vs {fmt(r['bb_l'], d)}"),
+                    chk(f"RSI(5) below {self.p['rsi_low']}", r["rsi"] < self.p["rsi_low"], f"RSI {fmt(r['rsi'], 1)}"),
+                ],
+                "short": [
+                    chk("Closed above upper band", r["close"] > r["bb_u"], f"close {fmt(r['close'], d)} vs {fmt(r['bb_u'], d)}"),
+                    chk(f"RSI(5) above {100 - self.p['rsi_low']}", r["rsi"] > 100 - self.p["rsi_low"], f"RSI {fmt(r['rsi'], 1)}"),
+                ],
+            }
+        return out
+
+
 class FailedBreakoutReversal(Strategy):
     strategy_id = "S03"
     name = "Failed Breakout Reversal"
@@ -265,3 +341,41 @@ class FailedBreakoutReversal(Strategy):
                                         vals, stop_price=stop, target_price=r["close"] + self.p["reward_risk"] * (r["close"] - stop),
                                         max_hold_bars=self.p["max_hold_bars"]))
         return sigs
+
+
+    def diagnose(self, ctx):
+        out = {}
+        tf = self.primary_timeframe
+        n = self.p["lookback"]
+        for role in self.roles:
+            if not ctx.has(role, tf, 3):
+                out[role] = {"waiting": "not enough bars yet"}
+                continue
+            r, b = ctx.last(role, tf), ctx.last(role, tf, 2)
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            hi2, lo2 = max(r["high"], b["high"]), min(r["low"], b["low"])
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [x for x in (level(f"Prior {n}-bar high", r["ph"]), level(f"Prior {n}-bar low", r["pl"])) if x],
+                "filters": [
+                    chk("Hours 07-20 UTC", 7 <= ctx.now.hour < 20, f"now {ctx.now:%H:%M} UTC"),
+                    chk(f"Not a strong trend (ADX < {self.p['adx_max']})", r["adx"] < self.p["adx_max"], f"ADX {fmt(r['adx'], 1)}"),
+                    chk("Breakout bar not a news spike (< 2.5 ATR)", (b["high"] - b["low"]) <= 2.5 * r["atr"],
+                        f"range {fmt(b['high'] - b['low'], d)} vs ATR {fmt(r['atr'], d)}"),
+                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
+                        f"spread {fmt(spr, d)}"),
+                ],
+                "long": [
+                    chk(f"Price broke below the {n}-bar low", lo2 < r["pl"], f"low {fmt(lo2, d)} vs {fmt(r['pl'], d)}"),
+                    chk("Closed back above it (failed breakdown)", r["close"] > r["pl"], f"close {fmt(r['close'], d)}"),
+                    chk("Bullish candle", r["close"] > r["open"], ""),
+                ],
+                "short": [
+                    chk(f"Price broke above the {n}-bar high", hi2 > r["ph"], f"high {fmt(hi2, d)} vs {fmt(r['ph'], d)}"),
+                    chk("Closed back below it (failed breakout)", r["close"] < r["ph"], f"close {fmt(r['close'], d)}"),
+                    chk("Bearish candle", r["close"] < r["open"], ""),
+                ],
+            }
+        return out
+

@@ -312,6 +312,10 @@ class Coordinator:
             armed = self.is_armed()
             for bot in BOT_IDS:
                 try:
+                    self._think(bot, now)
+                except Exception as e:  # explanations must never block trading
+                    log.warning("thinking for %s failed: %s", bot, e)
+                try:
                     summary["bots"][bot] = self._run_bot(bot, now, rep, acct, armed)
                 except Exception as e:  # one bot's failure must not stop the others
                     log.exception("bot %s failed", bot)
@@ -361,6 +365,37 @@ class Coordinator:
             held = int((f["time"] >= pd.Timestamp(opened).floor("min")).sum()) if f is not None else 0
             out.append(PositionView(r["position_key"], r["role"], r["symbol"], r["side"], r["volume_open"], r["entry_price"], opened,
                                     held, r["sl"], r["tp"], r["max_hold_bars"], r["group_id"]))
+        return out
+
+    def _think(self, bot: str, now: datetime) -> None:
+        """Record what the bot currently sees (its entry checklist) whenever a new bar completes."""
+        strat = self.strategy(bot)
+        if set(strat.roles) - set(self.specs):
+            return
+        ptf = strat.primary_timeframe
+        frames = {(r, tf): self.get_frame(r, tf, max(strat.min_history_bars + 50, 300), now)
+                  for r in strat.roles for tf in strat.timeframes}
+        if any(len(frames[(r, ptf)]) == 0 for r in strat.roles):
+            return
+        last_bar = max(str(frames[(r, ptf)]["time"].iloc[-1]) for r in strat.roles)
+        status = self.db.one("SELECT status FROM bots WHERE bot_id=?", (bot,))["status"]
+        key = f"thinkbar:{bot}"
+        if self.db.get_control(key) == f"{last_bar}|{status}":
+            return
+        prepared = strat.prepare(frames)
+        th = strat.think(StrategyContext(now, prepared, self._positions_view(bot, strat, prepared), self.specs))
+        th["bar_time"] = last_bar
+        th["bot_status"] = status
+        th["note"] = ("rules only: an entry still has to pass sizing, the market auditor and the risk engine"
+                      if status == "RUNNING" else "bot is not running: shown for information only")
+        self.db.set_control(f"thinking:{bot}", json.dumps(th, default=str))
+        self.db.set_control(key, f"{last_bar}|{status}")
+
+    def thinking(self) -> dict:
+        out = {}
+        for bot in BOT_IDS:
+            raw = self.db.get_control(f"thinking:{bot}")
+            out[bot] = json.loads(raw) if raw else None
         return out
 
     def _run_bot(self, bot: str, now: datetime, rep, acct: AccountCheck, armed: bool) -> dict:

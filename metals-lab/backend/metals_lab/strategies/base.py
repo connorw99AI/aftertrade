@@ -203,6 +203,47 @@ class Strategy(ABC):
                 f"{signal.intent.value} ({signal.exposure_change}). Why: {signal.rationale}. "
                 f"{'; '.join(lvl)}. Indicators: {ind}")
 
+    # ---------------------------------------------------------- live thinking
+    def diagnose(self, ctx: StrategyContext) -> dict:
+        """Per-role checklist of this strategy's entry conditions on the latest completed bar.
+
+        Returns {role: {"price": float, "levels": [...], "filters": [...], "long": [...], "short": [...]}}
+        or {role: {"waiting": "reason"}}. Strategies override this; the verdict itself always
+        comes from ``entry_signals`` so the explanation cannot disagree with real behaviour."""
+        return {}
+
+    def think(self, ctx: StrategyContext) -> dict:
+        out = {"strategy_id": self.strategy_id, "timeframe": self.primary_timeframe, "as_of": ctx.now.isoformat(), "roles": {}}
+        try:
+            diag = self.diagnose(ctx)
+        except Exception as e:  # never let an explanation break trading
+            diag, out["error"] = {}, f"diagnosis failed: {e}"
+        try:
+            entries = self.entry_signals(ctx)
+        except Exception as e:
+            entries, out["error"] = [], f"entry check failed: {e}"
+        for role, d in diag.items():
+            pos = ctx.position(role)
+            sig = next((x for x in entries if x.role == role), None)
+            if "waiting" in d:
+                verdict, summary = "WAITING_DATA", d["waiting"]
+            elif pos is not None:
+                verdict = f"IN_TRADE_{pos.side}"
+                summary = f"in a {pos.side.lower()} trade since {pos.opened_at:%d %b %H:%M} UTC ({pos.bars_held} bars); managing exits"
+            elif sig is not None:
+                verdict = "ENTRY_LONG" if sig.intent == Intent.OPEN_LONG else "ENTRY_SHORT"
+                summary = f"entry: {sig.rationale}"
+            else:
+                verdict = "NO_ENTRY"
+                f_ok = sum(1 for c in d.get("filters", []) if c["ok"])
+                best = max(("long", "short"), key=lambda k: sum(1 for c in d.get(k, []) if c["ok"]))
+                n_ok = sum(1 for c in d.get(best, []) if c["ok"])
+                summary = (f"no entry: {n_ok} of {len(d.get(best, []))} {best} conditions met, "
+                           f"{f_ok} of {len(d.get('filters', []))} filters passed")
+            out["roles"][role] = {**d, "verdict": verdict, "summary": summary,
+                                  "signal": sig.to_dict() if sig is not None else None}
+        return out
+
     def describe(self) -> dict:
         return {
             "strategy_id": self.strategy_id,
@@ -232,3 +273,30 @@ def bar_close_time(df: pd.DataFrame, tf: str) -> pd.Series:
 
 def spread_price(row: pd.Series, spec: InstrumentSpec) -> float:
     return float(row.get("spread", 0) or 0) * spec.point
+
+
+def chk(label: str, ok, detail: str = "") -> dict:
+    """One line of a bot's live checklist. NaN/None counts as not met (not enough data)."""
+    try:
+        good = bool(ok) and not pd.isna(ok)
+    except (TypeError, ValueError):
+        good = bool(ok)
+    return {"label": label, "ok": good, "detail": detail}
+
+
+def fmt(v, digits: int = 2) -> str:
+    try:
+        if v is None or pd.isna(v):
+            return "n/a"
+        return f"{float(v):.{digits}f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
+def level(label: str, price, kind: str = "line") -> dict | None:
+    try:
+        if price is None or pd.isna(price):
+            return None
+        return {"label": label, "price": float(price), "kind": kind}
+    except (TypeError, ValueError):
+        return None

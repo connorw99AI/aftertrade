@@ -6,7 +6,7 @@ import pandas as pd
 
 from .. import indicators as ind
 from ..domain import Intent, Style
-from .base import Param, Strategy, StrategyContext, spread_price
+from .base import Param, Strategy, StrategyContext, chk, fmt, level, spread_price
 
 
 class RegimeRSI2Reversion(Strategy):
@@ -94,6 +94,37 @@ class RegimeRSI2Reversion(Strategy):
         return out
 
 
+    def diagnose(self, ctx):
+        out = {}
+        for role in self.roles:
+            if not ctx.has(role, "H4", 20) or not ctx.has(role, "D1", self.p["regime_sma"]):
+                out[role] = {"waiting": f"needs {self.p['regime_sma']} daily bars for the trend filter"}
+                continue
+            r = ctx.last(role, "H4")
+            reg, dd = self._regime(ctx, role)
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            e = self.p["rsi_entry"]
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [x for x in (level("SMA5 (exit)", r["sma_x"]), level(f"Daily SMA{self.p['regime_sma']}", dd["sma_r"])) if x],
+                "filters": [
+                    chk(f"Daily trend not runaway (ADX < {self.p['adx_max']})", pd.isna(dd["adx"]) or dd["adx"] < self.p["adx_max"],
+                        f"daily ADX {fmt(dd['adx'], 1)}"),
+                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                ],
+                "long": [
+                    chk("Daily uptrend (close above SMA200)", reg == 1, f"daily close {fmt(dd['close'], d)} vs {fmt(dd['sma_r'], d)}"),
+                    chk(f"H4 RSI(2) below {e} (sharp dip)", r["rsi2"] < e, f"RSI(2) {fmt(r['rsi2'], 1)}"),
+                ],
+                "short": [
+                    chk("Daily downtrend (close below SMA200)", reg == -1, f"daily close {fmt(dd['close'], d)} vs {fmt(dd['sma_r'], d)}"),
+                    chk(f"H4 RSI(2) above {100 - e} (sharp spike)", r["rsi2"] > 100 - e, f"RSI(2) {fmt(r['rsi2'], 1)}"),
+                ],
+            }
+        return out
+
+
 class DonchianChannelBreakout(Strategy):
     strategy_id = "S08"
     name = "Donchian Channel Breakout"
@@ -160,6 +191,30 @@ class DonchianChannelBreakout(Strategy):
                 out.append(self.close_signal(ctx, pos, f"close below {self.p['exit_n']}-day low", vals))
             elif pos.side == "SHORT" and r["close"] > r["hi_x"]:
                 out.append(self.close_signal(ctx, pos, f"close above {self.p['exit_n']}-day high", vals))
+        return out
+
+
+    def diagnose(self, ctx):
+        out = {}
+        tf = self.primary_timeframe
+        for role in self.roles:
+            if not ctx.has(role, tf, self.p["entry_n"] + 2):
+                out[role] = {"waiting": f"needs {self.p['entry_n'] + 2} daily bars"}
+                continue
+            r = ctx.last(role, tf)
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            n, x = self.p["entry_n"], self.p["exit_n"]
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [v for v in (level(f"{n}-day high (long entry)", r["hi_e"]), level(f"{n}-day low (short entry)", r["lo_e"]),
+                                       level(f"{x}-day low (long exit)", r["lo_x"]), level(f"{x}-day high (short exit)", r["hi_x"])) if v],
+                "filters": [chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}")],
+                "long": [chk(f"Daily close above the {n}-day high", r["close"] > r["hi_e"],
+                             f"close {fmt(r['close'], d)} vs {fmt(r['hi_e'], d)} ({fmt(r['hi_e'] - r['close'], d)} away)")],
+                "short": [chk(f"Daily close below the {n}-day low", r["close"] < r["lo_e"],
+                              f"close {fmt(r['close'], d)} vs {fmt(r['lo_e'], d)} ({fmt(r['close'] - r['lo_e'], d)} away)")],
+            }
         return out
 
 
@@ -240,6 +295,32 @@ class TimeSeriesMomentum(Strategy):
                 out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at daily evaluation", vals))
             elif pos.side == "SHORT" and r["strength"] >= -self.p["exit_strength"]:
                 out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at daily evaluation", vals))
+        return out
+
+
+    def diagnose(self, ctx):
+        out = {}
+        tf = self.primary_timeframe
+        for role in self.roles:
+            if not ctx.has(role, tf, self.p["lookback"] + 61):
+                out[role] = {"waiting": f"needs {self.p['lookback'] + 61} hourly bars"}
+                continue
+            r = ctx.last(role, tf)
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            th = self.p["entry_strength"]
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [],
+                "filters": [
+                    chk("Daily evaluation bar (first H1 bar of the UTC day)", bool(r["rebalance"]),
+                        "evaluates once a day; waiting for the next day's first bar" if not r["rebalance"] else ""),
+                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                ],
+                "long": [chk(f"Trend strength above +{th}", r["strength"] > th,
+                             f"strength {fmt(r['strength'], 2)} ({fmt(100 * r['ret_lb'], 2)}% over {self.p['lookback']} bars)")],
+                "short": [chk(f"Trend strength below -{th}", r["strength"] < -th, f"strength {fmt(r['strength'], 2)}")],
+            }
         return out
 
 
@@ -340,3 +421,29 @@ class GoldSilverRatioReversion(Strategy):
         else:
             return []
         return [self.close_signal(ctx, p, why, vals) for p in ctx.positions]
+
+
+    def diagnose(self, ctx):
+        tf = self.primary_timeframe
+        if not ctx.has("GOLD", tf, self.p["lookback"]) or not ctx.has("SILVER", tf, 21):
+            w = {"waiting": f"needs {self.p['lookback']} M15 bars of both metals"}
+            return {"GOLD": w, "SILVER": dict(w)}
+        g, s = ctx.last("GOLD", tf), ctx.last("SILVER", tf)
+        z, e = g["z"], self.p["entry_z"]
+        common = [
+            chk("Gold and silver bars aligned", g["time"] == s["time"], ""),
+            chk(f"Metals still moving together (correlation >= {self.p['min_corr']})", g["corr"] >= self.p["min_corr"],
+                f"correlation {fmt(g['corr'], 2)}"),
+        ]
+        zt = f"ratio z-score {fmt(z, 2)}"
+        high = chk(f"Ratio stretched high (z > +{e})", z > e, zt)
+        low = chk(f"Ratio stretched low (z < -{e})", z < -e, zt)
+        return {
+            "GOLD": {"price": float(g["close"]), "levels": [], "filters": common,
+                     "long": [chk("Gold cheap vs silver: " + low["label"], low["ok"], zt)],
+                     "short": [chk("Gold rich vs silver: " + high["label"], high["ok"], zt)]},
+            "SILVER": {"price": float(s["close"]), "levels": [], "filters": common,
+                       "long": [chk("Silver cheap vs gold: " + high["label"], high["ok"], zt)],
+                       "short": [chk("Silver rich vs gold: " + low["label"], low["ok"], zt)]},
+        }
+
