@@ -113,7 +113,7 @@ def make_open_proposal(c: Coordinator, bot="S01", role="GOLD", intent=Intent.OPE
     return Proposal(bot, role, spec.symbol, intent, volume, sig, magic_for(bot), sl=sig.stop_price, tp=sig.target_price)
 
 
-def approve(c: Coordinator, p: Proposal, owned=None):
+def approve(c: Coordinator, p: Proposal, owned=None, day_start=None):
     """Run a proposal through the real auditor and risk engine."""
     from metals_lab.mt5.guard import check_account
     acct = check_account(c.ro)
@@ -123,7 +123,7 @@ def approve(c: Coordinator, p: Proposal, owned=None):
 
     class R:
         clean = True
-    ctx = c._risk_ctx(p.bot_id, acct, book, book.equity, book.equity, R(), c.specs[p.role], c._tick(c.specs[p.role]), owned=owned)
+    ctx = c._risk_ctx(p.bot_id, acct, book, day_start or book.equity, book.equity, R(), c.specs[p.role], c._tick(c.specs[p.role]), owned=owned)
     risk = c.risk.evaluate(p, audit.approval, ctx) if audit.approval else None
     return audit, risk
 

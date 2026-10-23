@@ -68,7 +68,8 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 | Planned loss at stop (`order_calc_profit`) + estimated spread/commission ≤ risk per trade | 3% of bot equity (£9 on a £300 bot) |
 | Minimum trade size | broker minimum (0.01); `min_lot` can force a larger floor |
 | New trades per bot per UTC day (a two-leg group counts once; shadow approvals count too) | 5 |
-| Daily bot loss → entries blocked for the rest of the UTC day | 5% |
+| Daily bot loss → entries blocked for the rest of the UTC day | 15% |
+| Daily bot gain → entries blocked for the rest of the UTC day (open trades still managed) | 20% |
 | Bot drawdown from peak → bot set to PAUSED_RISK; operator must resume | 20% |
 | Open positions per bot | 2 |
 | Bot margin (`order_calc_margin`) ≤ free capital, and total bot margin ≤ 50% of bot equity | |

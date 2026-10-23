@@ -152,7 +152,7 @@ class Backtester:
         diag = {"decisions": 0, "signals": 0, "rejected_random": 0, "partial_fills": 0, "rejected_margin": 0,
                 "rejected_stops": 0, "skipped_min_lot": 0, "skipped_no_stop": 0, "blocked_auditor": 0,
                 "blocked_risk_pause": 0, "blocked_max_positions": 0, "blocked_daily_entry_cap": 0, "gap_fills": 0, "ambiguous_bars_tick_resolved": 0,
-                "group_leg_failures": 0, "daily_pauses": 0, "drawdown_pause_at": None, "swap_mode_unsupported": []}
+                "group_leg_failures": 0, "daily_pauses": 0, "daily_profit_stops": 0, "drawdown_pause_at": None, "swap_mode_unsupported": []}
         decisions: list[dict] = []
         peak = cash
         day_key, day_start_eq, paused_today, dd_paused = None, cash, False, False
@@ -359,6 +359,9 @@ class Backtester:
             if not paused_today and eq < day_start_eq * (1 - cfg.risk.daily_loss_pause):
                 paused_today = True
                 diag["daily_pauses"] += 1
+            if not paused_today and cfg.risk.daily_profit_stop and eq >= day_start_eq * (1 + cfg.risk.daily_profit_stop):
+                paused_today = True
+                diag["daily_profit_stops"] += 1
             peak = max(peak, eq)
             if not dd_paused and eq < peak * (1 - cfg.risk.max_drawdown_pause):
                 dd_paused = True

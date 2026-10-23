@@ -26,7 +26,8 @@ risk:
   min_lot: 0                       # 0 = size from risk (silver gets fewer lots than gold); >0 forces a minimum
   per_trade_limit_enabled: true    # reject trades whose stop loss exceeds risk_per_trade
   max_entries_per_bot_per_day: 5   # new trades per bot per UTC day (a two-leg group counts once); 0 = no cap
-  daily_loss_pause: 0.05           # bot stops new entries for the rest of the UTC day after losing 5%
+  daily_loss_pause: 0.15           # bot stops new entries for the rest of the UTC day after losing 15%
+  daily_profit_stop: 0.20          # ... or after gaining 20% (0 = off); open trades keep being managed
   max_drawdown_pause: 0.20         # bot is paused (operator resumes) after a 20% fall from its peak
   max_positions_per_bot: 2
   max_bot_margin_fraction: 0.5

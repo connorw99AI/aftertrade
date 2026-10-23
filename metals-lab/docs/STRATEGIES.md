@@ -60,6 +60,6 @@ The operator runs a £3,000 demo so each bot has £300, the amount the best bot 
 - The broker minimum is 0.01 lot. When even 0.01 lot would risk more than £9, the trade is **skipped** (`MIN_LOT_EXCEEDS_RISK_BUDGET`). At 0.01 lot, gold costs about £0.75 per $1 move and silver about £37 per $1 move.
 - **Strategies with wide stops will rarely trade at £300.** On synthetic data, S07, S08 and S09 skip most of their signals, S04 skips most, and S10 (two legs, each with a wide stop) skipped every one. Live frequency will differ, but the direction is the same. That is an honest property of small accounts: those trades could not be afforded live either.
 - **Exposure caps are per bot** (`exposure_scope: per_bot`), as if each bot had its own £300 account, so one bot's trades do not use up another's limits. Position values are converted into account currency with `order_calc_profit`. The cap is 40× the bot's equity: 0.01 lot of gold is already roughly 10× a £300 bot, so a large gap against an open position can lose much more than the stop.
-- Daily-loss pause 5% (£15), drawdown pause 20% (£60).
+- Daily stops: no new entries for the rest of the UTC day after losing 15% (£45) or gaining 20% (£60). Drawdown pause 20% (£60) from the peak, which the operator must resume.
 
 Choosing "the most profitable bot" from ten over a short period mostly selects luck. Before trusting a winner, look for at least 50-100 of its trades, still positive after costs, and run it through the research checks (walk-forward, deflated Sharpe, cost stress).

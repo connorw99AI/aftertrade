@@ -25,7 +25,8 @@ DEFAULTS: dict[str, Any] = {
         "min_lot": 0.0,                     # >0: every entry trades at least this many lots; 0 = risk-sized, skip if below broker min
         "per_trade_limit_enabled": True,    # reject entries whose planned stop loss exceeds risk_per_trade x bot equity
         "max_entries_per_bot_per_day": 5,   # new trades (a two-leg group counts once) per bot per UTC day; 0 = unlimited
-        "daily_loss_pause": 0.05,
+        "daily_loss_pause": 0.15,           # no new entries for the rest of the UTC day after losing this much
+        "daily_profit_stop": 0.20,          # ... or after gaining this much (0 = off); open trades stay managed
         "max_drawdown_pause": 0.20,
         "max_positions_per_bot": 2,
         "max_bot_margin_fraction": 0.5,     # of the bot's own equity

@@ -372,3 +372,15 @@ def test_exposure_caps_are_per_bot_and_in_account_currency(armed):
     c.cfg["risk"]["exposure_scope"] = "account"  # the same trade is small against the whole account
     _, r3 = approve(c, make_open_proposal(c, volume=1.0, stop_dist=3.0))
     assert "GROSS_METALS_EXPOSURE" not in r3.reasons
+
+
+def test_daily_profit_stop(armed):
+    c = armed
+    up = c.bot_book("S01").equity / 1.25  # bot is up 25% on the day
+    _, r = approve(c, make_open_proposal(c), day_start=up)
+    assert "DAILY_PROFIT_TARGET_REACHED" in r.reasons
+    _, r1 = approve(c, make_open_proposal(c), day_start=c.bot_book("S01").equity / 1.10)  # up 10%: still trading
+    assert "DAILY_PROFIT_TARGET_REACHED" not in r1.reasons
+    c.cfg["risk"]["daily_profit_stop"] = 0
+    _, r2 = approve(c, make_open_proposal(c), day_start=up)
+    assert "DAILY_PROFIT_TARGET_REACHED" not in r2.reasons

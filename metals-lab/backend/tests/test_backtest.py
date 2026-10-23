@@ -188,3 +188,11 @@ def test_daily_entry_cap_in_backtest(specs):
     capped = Backtester(EveryBar(), {("GOLD", "H1"): frame(rows)}, specs,
                         cfg(risk=RiskParams(risk_per_trade=0.01, max_entries_per_day=3))).run()
     assert len(uncapped.trades) > 3 and len(capped.trades) == 3 and capped.diagnostics["blocked_daily_entry_cap"] > 0
+
+
+def test_daily_profit_stop_in_backtest(specs):
+    rows = [(2000 + 30 * i, 2031 + 30 * i, 2000 + 30 * i, 2030 + 30 * i) for i in range(12)]  # steady rally: every trade wins
+    c = cfg(risk=RiskParams(risk_per_trade=0.05, daily_profit_stop=0.20))
+    res = Backtester(EveryBar(), {("GOLD", "H1"): frame(rows)}, specs, c).run()
+    free = Backtester(EveryBar(), {("GOLD", "H1"): frame(rows)}, specs, cfg(risk=RiskParams(risk_per_trade=0.05))).run()
+    assert res.diagnostics["daily_profit_stops"] == 1 and len(res.trades) < len(free.trades)
