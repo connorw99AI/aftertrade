@@ -5,20 +5,25 @@ $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $Root
 Write-Host "Metals Creature Lab setup in $Root" -ForegroundColor Cyan
 
-# 1. Python (3.10-3.13; the MetaTrader5 wheel must exist for your version)
+# 1. Python 3.10-3.13 (the official MetaTrader5 package has no wheels for newer versions yet)
+$ErrorActionPreference = "Continue"
 $py = $null
-foreach ($cand in @("py -3.12", "py -3.11", "py -3.13", "py -3.10", "python")) {
-  try {
-    $v = & cmd /c "$cand -c ""import sys;print('%d.%d'%sys.version_info[:2])""" 2>$null
-    if ($LASTEXITCODE -eq 0 -and $v) { $py = $cand; Write-Host "Python $v found ($cand)"; break }
-  } catch {}
+$candidates = @("py -3.12", "py -3.11", "py -3.13", "py -3.10", "python")
+foreach ($cand in $candidates) {
+  $c = $cand.Split(" ")
+  $exe = $c[0]; $rest = @($c | Select-Object -Skip 1)
+  if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { continue }
+  $v = & $exe @rest -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))" 2>$null
+  if ($LASTEXITCODE -eq 0 -and $v -match '^3\.(1[0-3])$') { $py = $c; Write-Host "Using Python $v ($($c -join ' '))"; break }
+  elseif ($v) { Write-Host "Skipping Python $v ($($c -join ' ')): MetaTrader5 needs 3.10-3.13" -ForegroundColor Yellow }
 }
-if (-not $py) { Write-Host "Python 3.10+ not found. Install 64-bit Python 3.12 from python.org, tick 'Add to PATH', then re-run." -ForegroundColor Red; exit 1 }
+$ErrorActionPreference = "Stop"
+if (-not $py) { Write-Host "No suitable Python found. Install 64-bit Python 3.12 from python.org (tick 'Add python.exe to PATH') and re-run." -ForegroundColor Red; exit 1 }
 
 # 2. Virtual environment + dependencies
-if (-not (Test-Path ".venv")) { & cmd /c "$py -m venv .venv" }
+if (-not (Test-Path ".venv")) { $exe = $py[0]; $rest = @($py | Select-Object -Skip 1); & $exe @rest -m venv .venv }
 $vpy = Join-Path $Root ".venv\Scripts\python.exe"
-& $vpy -m pip install --upgrade pip | Out-Null
+& $vpy -m pip install --upgrade pip
 & $vpy -m pip install -r backend\requirements-windows.txt
 & $vpy -m pip install -e backend --no-deps
 & $vpy -c "import MetaTrader5 as m; print('MetaTrader5 package', m.__version__)"
