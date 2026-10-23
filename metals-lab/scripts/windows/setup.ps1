@@ -5,17 +5,17 @@ $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $Root
 Write-Host "Metals Creature Lab setup in $Root" -ForegroundColor Cyan
 
-# 1. Python 3.10-3.13 (the official MetaTrader5 package has no wheels for newer versions yet)
+# 1. Python 3.10-3.14 (versions with official MetaTrader5 Windows wheels)
 $ErrorActionPreference = "Continue"
 $py = $null
-$candidates = @("py -3.12", "py -3.11", "py -3.13", "py -3.10", "python")
+$candidates = @("py -3.12", "py -3.13", "py -3.14", "py -3.11", "py -3.10", "python")
 foreach ($cand in $candidates) {
   $c = $cand.Split(" ")
   $exe = $c[0]; $rest = @($c | Select-Object -Skip 1)
   if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) { continue }
   $v = & $exe @rest -c "import sys; print(str(sys.version_info[0]) + '.' + str(sys.version_info[1]))" 2>$null
-  if ($LASTEXITCODE -eq 0 -and $v -match '^3\.(1[0-3])$') { $py = $c; Write-Host "Using Python $v ($($c -join ' '))"; break }
-  elseif ($v) { Write-Host "Skipping Python $v ($($c -join ' ')): MetaTrader5 needs 3.10-3.13" -ForegroundColor Yellow }
+  if ($LASTEXITCODE -eq 0 -and $v -match '^3\.(1[0-4])$') { $py = $c; Write-Host "Using Python $v ($($c -join ' '))"; break }
+  elseif ($v) { Write-Host "Skipping Python $v ($($c -join ' ')): MetaTrader5 needs 3.10-3.14" -ForegroundColor Yellow }
 }
 $ErrorActionPreference = "Stop"
 if (-not $py) { Write-Host "No suitable Python found. Install 64-bit Python 3.12 from python.org (tick 'Add python.exe to PATH') and re-run." -ForegroundColor Red; exit 1 }

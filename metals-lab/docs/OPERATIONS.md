@@ -8,7 +8,7 @@
   - Open a **demo** account with File → Open an Account, choosing a demo server (for example MetaQuotes-Demo), and prefer a **hedging** account.
   - Stay logged in.
   - Turn on *Algo Trading* in the toolbar, and under Tools → Options → Expert Advisors allow algorithmic trading.
-- **Python 3.10-3.13, 64-bit** (3.12 recommended) from python.org, with "Add to PATH" ticked. The official `MetaTrader5` package ships Windows wheels only. Check on PyPI that a wheel exists for your Python version.
+- **Python 3.10-3.14, 64-bit** (3.12 recommended) from python.org, with "Add to PATH" ticked. The official `MetaTrader5` package ships Windows wheels only. Check on PyPI that a wheel exists for your Python version.
 - **Node.js 20+** (optional). A prebuilt dashboard ships in `dashboard/out`; you only need Node to rebuild it.
 
 ## 2. Guided setup (read-only)
