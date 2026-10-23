@@ -19,7 +19,7 @@ export function MultiEquity({ series }: { series: Record<string, [number, number
         <text x={4} y={y(0) + 4} className="axis">0</text>
         {lo < 0 && <text x={4} y={y(lo)} className="axis">{lo.toFixed(0)}</text>}
         {bots.map((b) => {
-          const pts = [[series[b][0][0], 0] as [number, number], ...series[b]];
+          const pts = series[b];
           const d = pts.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(" ");
           return <path key={b} d={d} fill="none" stroke={CREATURES[b]?.colors.a ?? "#ccc"} strokeWidth={2} />;
         })}

@@ -58,13 +58,14 @@ export default function History() {
             <tbody>
               {rows.map((t) => {
                 const d = String(t.symbol).startsWith("XAG") ? 3 : 2;
+                const pair = String(t.symbol).includes(",");
                 return (
                   <tr key={t.trade_id}>
                     <td>{when(t.exit_time)}</td>
                     <td><Link href={`/bot?id=${t.bot_id}`} className="who"><Creature bot={t.bot_id} size={24} /> {CREATURES[t.bot_id]?.name}</Link></td>
-                    <td>{t.side === "LONG" ? "▲" : "▼"} {t.volume} {t.symbol}</td>
-                    <td className="n num">{Number(t.entry_price).toFixed(d)}</td>
-                    <td className="n num">{Number(t.exit_price).toFixed(d)}</td>
+                    <td>{pair ? "Gold/silver pair (2 legs)" : <>{t.side === "LONG" ? "▲" : "▼"} {t.volume} {t.symbol}</>}</td>
+                    <td className="n num">{pair ? "–" : Number(t.entry_price).toFixed(d)}</td>
+                    <td className="n num">{pair ? "–" : Number(t.exit_price).toFixed(d)}</td>
                     <td>{minutes(t.minutes_held)}</td>
                     <td className={`n num ${t.net >= 0 ? "gain" : "loss"}`}>{money(t.net, true)}{t.provisional ? "*" : ""}</td>
                     <td className="n num">{t.r_multiple ?? "–"}</td>

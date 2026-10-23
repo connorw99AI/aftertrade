@@ -12,6 +12,7 @@ export default function Compare() {
   const series: Record<string, [number, number][]> = {};
   for (const t of [...(hist?.trades ?? [])].reverse()) {
     const s = (series[t.bot_id] ||= []);
+    if (!s.length) s.push([new Date(t.entry_time).getTime(), 0]);
     s.push([new Date(t.exit_time).getTime(), (s.at(-1)?.[1] ?? 0) + (t.net ?? 0)]);
   }
   return (
@@ -43,7 +44,7 @@ export default function Compare() {
             <tr key={r.bot_id}><td><span className="who"><Creature bot={r.bot_id} size={24} /> {CREATURES[r.bot_id]?.name}</span></td>
               <td className="small">{r.latest_backtest ? (r.latest_backtest.dataset === "synthetic" ? "synthetic (machinery check)" : "MT5 history") : <Link href="/backtest">none, run one</Link>}</td>
               <td className="n">{m?.n_trades ?? "–"}</td><td className="n">{m ? `${(m.total_return * 100).toFixed(1)}%` : "–"}</td>
-              <td className="n">{m ? `${(m.max_drawdown * 100).toFixed(1)}%` : "–"}</td><td className="n">{m?.profit_factor ?? "–"}</td>
+              <td className="n">{m ? `${(m.max_drawdown * 100).toFixed(1)}%` : "–"}</td><td className="n">{m?.profit_factor != null ? Number(m.profit_factor).toFixed(2) : "–"}</td>
               <td className="n">{r.forward_demo.closed_trades}</td><td className={`n num ${r.forward_demo.net >= 0 ? "gain" : "loss"}`}>{money(r.forward_demo.net, true)}</td></tr>); })}</tbody>
         </table>
       </div>

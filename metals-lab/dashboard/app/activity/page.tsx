@@ -80,7 +80,7 @@ export default function Activity() {
         </select>
       </div>
       <ul className="feed">
-        {(data?.feed ?? []).map((e: Any, i: number) => e.kind === "decision" ? (
+        {(data?.feed ?? []).filter((e: Any) => e.kind !== "event" || e.event !== "TRADE_FINALIZED").map((e: Any, i: number) => e.kind === "decision" ? (
           <li key={i}>
             <span className="when">{when(e.ts)}</span>
             <span className="who"><Creature bot={e.bot_id} size={22} /> {CREATURES[e.bot_id]?.name}</span>
