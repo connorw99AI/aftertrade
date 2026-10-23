@@ -26,7 +26,7 @@ DEFAULTS: dict[str, Any] = {
         "per_trade_limit_enabled": False,   # True rejects entries whose planned stop loss exceeds risk_per_trade x bot equity
         "max_entries_per_bot_per_day": 5,   # new trades (a two-leg group counts once) per bot per UTC day; 0 = unlimited
         "daily_loss_pause": 0.15,           # no new entries for the rest of the UTC day after losing this much
-        "daily_profit_stop": 0.20,          # ... or after gaining this much (0 = off); open trades stay managed
+        "daily_profit_stop": 0.30,          # ... or after gaining this much (0 = off); open trades stay managed
         "max_drawdown_pause": 0.0,          # >0 pauses a bot (operator resumes) after this fall from its peak; 0 = off
         "weekend_flat_from": "20:00",       # Friday UTC: close every position, no entries until Sunday 22:00 UTC; null = hold
         "max_positions_per_bot": 2,

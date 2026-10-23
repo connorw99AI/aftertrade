@@ -69,7 +69,7 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 | Minimum trade size (sizing floor) | gold 0.04 lot, silver 0.02 lot (`min_lot`) |
 | New trades per bot per UTC day (a two-leg group counts once; shadow approvals count too) | 5 |
 | Daily bot loss → entries blocked for the rest of the UTC day | 15% |
-| Daily bot gain → entries blocked for the rest of the UTC day (open trades still managed) | 20% |
+| Daily bot gain → entries blocked for the rest of the UTC day (open trades still managed) | 30% |
 | Bot drawdown from peak → bot set to PAUSED_RISK; operator must resume | off (`max_drawdown_pause: 0`) |
 | Friday from 20:00 UTC → close all positions, no entries until Sunday 22:00 UTC | on (`weekend_flat_from`) |
 | Open positions per bot | 2 |
