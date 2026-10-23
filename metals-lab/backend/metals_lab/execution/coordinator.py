@@ -227,6 +227,25 @@ class Coordinator:
         self.disarm(f"kill: {reason}", operator)
         return {"closed_attempts": results}
 
+    def close_positions(self, rows: list[dict], reason: str, operator: str) -> list[dict]:
+        """Operator-initiated closes. Each goes through the auditor, risk engine and executor like any exit;
+        a two-leg group is closed together when either leg is selected."""
+        keys = {r["position_key"] for r in rows}
+        groups = {r["group_id"] for r in rows if r.get("group_id")}
+        for g in groups:
+            keys |= {x["position_key"] for x in self.db.q("SELECT position_key FROM positions WHERE status='OPEN' AND group_id=?", (g,))}
+        results = []
+        with self._lock:
+            for key in sorted(keys):
+                row = self.db.one("SELECT * FROM positions WHERE status='OPEN' AND position_key=?", (key,))
+                if row:
+                    results.append(self._close_position_row(row, f"MANUAL CLOSE by {operator}: {reason}"))
+        self.db.x("INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
+                  (None, "MANUAL_CLOSE", json.dumps(sorted(keys)), json.dumps({"reason": reason, "results": results}, default=str),
+                   operator, now_iso()))
+        self.db.event("MANUAL_CLOSE", None, {"operator": operator, "reason": reason, "results": results})
+        return results
+
     def is_armed(self) -> bool:
         return self.db.active_activation() is not None
 

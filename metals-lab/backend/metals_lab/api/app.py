@@ -447,6 +447,9 @@ def create_app(state: State) -> FastAPI:
                         "forward_demo": {"closed_trades": len(fwd), "net": round(sum(t["net"] for t in fwd), 2)}})
         return out
 
+    from . import monitor
+    monitor.register(app, state, auth)
+
     # ----------------------------------------------------------------- static
     dist = Path(os.environ.get("METALS_LAB_DASHBOARD_DIR", Path(__file__).resolve().parents[3] / "dashboard" / "out"))
     if dist.exists():
