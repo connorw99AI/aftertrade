@@ -60,7 +60,9 @@ The operator runs a £3,000 demo so each bot has £300, the amount the best bot 
 - What that means (from the terminal's own figures, GBP account): gold 0.04 lot is about **£3 per $1 move**; silver 0.02 lot is about **£75 per $1 move**. Examples: a $5 gold stop loses about £15 (5% of £300); a $15 gold stop about £45 (15%). A 20-cent silver stop loses about £15 (5%); a 50-cent silver stop about £37 (12%).
 - Leverage (1:500) sets the margin, not the loss. Margin for 0.04 lot gold is lots × 100 oz × price ÷ 500, a few tens of pounds, so margin rarely limits these trades. The loss at the stop is the same at any leverage.
 - **Daily stops**: no new entries for the rest of the UTC day after losing 15% (£45) or gaining 30% (£90). Trades already open keep running, so a day can end worse than -15%.
-- **No total-loss pause** (`max_drawdown_pause: 0`). A bot can lose its whole allocation over several days.
+- **Drawdown pause at 50%** (`max_drawdown_pause: 0.50`): a bot that falls 50% (£150) from its best balance stops opening trades until the operator restarts it. Open trades keep being managed.
+- **No pre-trade risk caps** (`pre_trade_limits: false`): per-trade risk, margin-share and exposure caps are off. Still enforced before each entry: the bot's own free capital covers the margin, the account margin level stays above 300%, at most 2 open trades and 5 new trades a day per bot, and the daily stops.
+- **News checks are off** (`news.enabled: false`).
 - **Flat for the weekend** (`weekend_flat_from: "20:00"`): from Friday 20:00 UTC every bot closes its positions and opens nothing until Sunday 22:00 UTC. Overnight holds on weekdays are allowed.
 - Exposure caps are per bot (`exposure_scope: per_bot`) at 200× equity; they only stop extreme stacking.
 

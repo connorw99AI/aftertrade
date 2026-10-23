@@ -25,10 +25,11 @@ risk:
   risk_per_trade: 0.03             # sizing target: trade more than min_lot only when 3% of the bot allows it
   min_lot: {GOLD: 0.04, SILVER: 0.02}  # floor per trade, per metal (or one number for both); 0 = risk-sized only
   per_trade_limit_enabled: false   # true = reject trades whose stop loss exceeds risk_per_trade
+  pre_trade_limits: false          # true re-enables per-trade risk, margin-share and exposure caps; false = rely on stops/pauses
   max_entries_per_bot_per_day: 5   # new trades per bot per UTC day (a two-leg group counts once); 0 = no cap
   daily_loss_pause: 0.15           # bot stops new entries for the rest of the UTC day after losing 15%
   daily_profit_stop: 0.30          # ... or after gaining 30% (0 = off); open trades keep being managed
-  max_drawdown_pause: 0            # >0 pauses a bot (operator resumes) after this fall from its peak; 0 = off
+  max_drawdown_pause: 0.50         # bot paused (you restart it) after a 50% fall from its best balance; open trades still managed
   weekend_flat_from: "20:00"       # Friday UTC: close every position, no entries until Sunday 22:00 UTC
   max_positions_per_bot: 2
   max_bot_margin_fraction: 0.5
@@ -44,6 +45,7 @@ selection:
   min_trades: 50                   # ranking: closed trades before a bot can be a live candidate
 
 news:
+  enabled: false                   # no news checks at all
   provider: csv
   path: config/news_calendar.csv
   max_age_hours: 192

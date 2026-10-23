@@ -59,7 +59,28 @@ Decisions: `APPROVED`, `DELAYED` (with a reassessment time), `REJECTED`, `MANUAL
   - No AI classifier is used. If one is added, it may only add evidence.
 - **Filter on/off comparison.** `Research.event_filter_comparison` runs the same data with and without the non-safety filter. It reports blocked trades, blocked profitable trades, opportunity cost and avoided losses. Filtering is not assumed to help.
 
+## Trade-setup checks (auditor)
+
+Before any opening order is sent, the auditor checks the order itself and rejects it if:
+
+| Rule | Check |
+|---|---|
+| R17 | lot size is not a valid lot for the symbol (minimum, step, maximum) |
+| R18 | lot size is below the configured `min_lot` for that metal |
+| R19 | there is no stop-loss |
+| R20 | the stop is on the wrong side of the entry price |
+| R21 | the stop is inside the broker's minimum stop distance |
+| R22 | the stop is more than `auditor.max_stop_atr` (15) ATRs away, which points to a bug |
+| R23 | the take-profit is on the wrong side of the entry price |
+| R24 | the take-profit is inside the broker's minimum stop distance |
+
+After a trade is open, every cycle (about 10 seconds) the executor compares each open position in MT5 with the stop and target it was opened with. A missing or changed level is put back (event `PROTECTION_RESTORED`); if that fails, an alert blocks new entries until it is fixed (`PROTECTION_FAILED`).
+
+News checks are off by operator choice (`news.enabled: false`).
+
 ## Central risk engine
+
+With `pre_trade_limits: false` (operator choice) the per-trade risk, bot margin share, account margin share and exposure caps in this table are not applied. The rest still are.
 
 All limits are configurable (`config.yaml → risk`) and measured against each bot's own equity unless marked otherwise.
 
@@ -70,7 +91,7 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 | New trades per bot per UTC day (a two-leg group counts once; shadow approvals count too) | 5 |
 | Daily bot loss → entries blocked for the rest of the UTC day | 15% |
 | Daily bot gain → entries blocked for the rest of the UTC day (open trades still managed) | 30% |
-| Bot drawdown from peak → bot set to PAUSED_RISK; operator must resume | off (`max_drawdown_pause: 0`) |
+| Bot drawdown from peak → bot set to PAUSED_RISK; operator must resume (open trades still managed) | 50% |
 | Friday from 20:00 UTC → close all positions, no entries until Sunday 22:00 UTC | on (`weekend_flat_from`) |
 | Open positions per bot | 2 |
 | Bot margin (`order_calc_margin`) ≤ free capital, and total bot margin ≤ 50% of bot equity | |

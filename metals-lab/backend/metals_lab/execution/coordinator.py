@@ -310,6 +310,9 @@ class Coordinator:
                     except Exception:
                         pass
             armed = self.is_armed()
+            if armed:
+                summary["protection"] = self.executor.verify_protection(
+                    self.db.q("SELECT * FROM positions WHERE status='OPEN' AND ticket IS NOT NULL"), self.specs)
             for bot in BOT_IDS:
                 try:
                     self._think(bot, now)
@@ -521,7 +524,8 @@ class Coordinator:
         spec = self.specs[pr["role"]]
         p = Proposal(bot, pr["role"], spec.symbol, s.intent, float(pr["volume_open"]), s, magic_for(bot),
                      position_key=pr["position_key"], position_ticket=pr["ticket"])
-        audit = self.auditor.assess(view, pr["role"], False, p.proposal_hash, acct.fingerprint or "", primary_tf=strat.primary_timeframe)
+        audit = self.auditor.assess(view, pr["role"], False, p.proposal_hash, acct.fingerprint or "", primary_tf=strat.primary_timeframe,
+                                    proposal=p)
         risk = None
         outcome = f"AUDIT_{audit.decision.value}"
         if audit.decision == Decision.APPROVED:
@@ -569,7 +573,8 @@ class Coordinator:
                 if group:
                     return out
                 continue
-            audit = self.auditor.assess(view, s.role, True, p.proposal_hash, acct.fingerprint or "", primary_tf=strat.primary_timeframe)
+            audit = self.auditor.assess(view, s.role, True, p.proposal_hash, acct.fingerprint or "", primary_tf=strat.primary_timeframe,
+                                        proposal=p)
             risk = None
             outcome = f"AUDIT_{audit.decision.value}"
             if audit.decision == Decision.APPROVED:

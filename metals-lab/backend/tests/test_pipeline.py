@@ -244,6 +244,7 @@ def test_disconnect_reconnect_reverifies(armed):
 
 def test_news_outage_requires_manual_review(armed):
     c = armed
+    c.cfg["news"]["enabled"] = True
     c.cfg["news"]["unknown_policy"] = "manual_review"
     c.auditor.news = FailingProvider()
     p = make_open_proposal(c)
@@ -259,6 +260,7 @@ def test_news_outage_requires_manual_review(armed):
 
 def test_news_blackout_delays_with_reassessment(armed, tmp_path):
     c = armed
+    c.cfg["news"]["enabled"] = True
     now = utc_now()
     f = tmp_path / "cal.csv"
     f.write_text(f"# as_of: {now.isoformat()}\nevent_time_utc,currency,title,impact,known_since_utc\n"
@@ -287,6 +289,7 @@ def test_stale_quote_and_spread_blowout_delay_entries(armed):
 
 def test_risk_limits_and_stop_validation(armed):
     c = armed
+    c.cfg["risk"]["pre_trade_limits"] = True
     c.cfg["risk"]["per_trade_limit_enabled"] = True
     big = make_open_proposal(c, volume=5.0, stop_dist=50.0)  # planned risk >> 0.5% of 10k
     _, r = approve(c, big)
@@ -332,6 +335,7 @@ def test_per_bot_risk_override_and_cap(armed):
     c.cfg["strategies"]["S01"] = {"risk_per_trade": 0.5}
     assert risk_pct_for(c.cfg, "S01") == 0.03  # hard cap
     # a trade risking ~1.5% of the bot is rejected at 0.5% but approved with a 2% override
+    c.cfg["risk"]["pre_trade_limits"] = True
     c.cfg["risk"]["per_trade_limit_enabled"] = True
     c.cfg["strategies"]["S01"] = {}
     p = make_open_proposal(c, volume=0.5, stop_dist=3.0)
@@ -360,6 +364,7 @@ def test_daily_entry_cap(armed):
 
 def test_exposure_caps_are_per_bot_and_in_account_currency(armed):
     c = armed
+    c.cfg["risk"]["pre_trade_limits"] = True
     c.cfg["risk"]["per_trade_limit_enabled"] = False
     p = make_open_proposal(c, volume=1.0, stop_dist=3.0)
     _, r = approve(c, p)
@@ -388,10 +393,66 @@ def test_daily_profit_stop(armed):
 
 def test_no_total_loss_pause_when_disabled(armed):
     c = armed
-    assert not c.cfg["risk"]["max_drawdown_pause"]
+    assert c.cfg["risk"]["max_drawdown_pause"] == 0.50  # operator default
+    c.cfg["risk"]["max_drawdown_pause"] = 0
     _, r = approve(c, make_open_proposal(c))
     assert "MAX_DRAWDOWN_LIMIT" not in r.reasons
 
 
 def test_default_min_lot_is_per_metal(cfg):
     assert cfg["risk"]["min_lot"] == {"GOLD": 0.04, "SILVER": 0.02}
+
+
+def test_news_off_by_default(armed):
+    c = armed
+    c.auditor.news = FailingProvider()
+    audit, _ = approve(c, make_open_proposal(c))
+    assert audit.news_status == "OFF" and not any(t.startswith("R12") or t.startswith("R13") for t in audit.triggered)
+
+
+def _setup_audit(c, p):
+    from metals_lab.execution.coordinator import LiveMarketView
+    from metals_lab.mt5.guard import check_account
+    view = LiveMarketView(c, {}, utc_now())
+    return c.auditor.assess(view, p.role, True, p.proposal_hash, check_account(c.ro).fingerprint, proposal=p)
+
+
+def test_auditor_checks_trade_setup(armed):
+    c = armed
+    good = _setup_audit(c, make_open_proposal(c, volume=0.04))
+    assert good.decision == Decision.APPROVED and good.evidence["setup"]["stop_distance"] > 0
+    assert "R19_NO_STOP" in _setup_audit(c, dataclasses.replace(make_open_proposal(c, volume=0.04), sl=None)).triggered
+    tk = c.ro.symbol_info_tick("XAUUSD")
+    wrong = dataclasses.replace(make_open_proposal(c, volume=0.04), sl=tk["ask"] + 5.0)
+    assert "R20_STOP_WRONG_SIDE" in _setup_audit(c, wrong).triggered
+    bad_tp = dataclasses.replace(make_open_proposal(c, volume=0.04), tp=tk["ask"] - 5.0)
+    assert "R23_TARGET_WRONG_SIDE" in _setup_audit(c, bad_tp).triggered
+    assert "R18_BELOW_MIN_LOT" in _setup_audit(c, make_open_proposal(c, volume=0.01)).triggered
+    assert "R17_VOLUME_INVALID" in _setup_audit(c, make_open_proposal(c, volume=0.043)).triggered
+    far = dataclasses.replace(make_open_proposal(c, volume=0.04), sl=tk["ask"] - 10000 * c.specs["GOLD"].point * 100)
+    assert "R22_STOP_ABNORMAL" in _setup_audit(c, far).triggered
+
+
+def test_pre_trade_limits_off_lets_large_trades_through(armed):
+    c = armed
+    _, r = approve(c, make_open_proposal(c, volume=3.0, stop_dist=3.0))
+    assert not {"PLANNED_RISK_EXCEEDS_LIMIT", "BOT_MARGIN_FRACTION_LIMIT", "ACCOUNT_MARGIN_LIMIT", "GROSS_METALS_EXPOSURE",
+                "CORRELATED_METALS_EXPOSURE"} & set(r.reasons)
+    c.cfg["risk"]["pre_trade_limits"] = True
+    c.cfg["risk"]["per_trade_limit_enabled"] = True
+    _, r2 = approve(c, make_open_proposal(c, volume=0.5, stop_dist=10.0))
+    assert "PLANNED_RISK_EXCEEDS_LIMIT" in r2.reasons
+
+
+def test_missing_stop_and_target_are_restored(armed):
+    c = armed
+    p = make_open_proposal(c, volume=0.04)
+    audit, risk = approve(c, p)
+    res = c.executor.submit(p, c.specs["GOLD"], audit.approval, risk.approval)
+    assert res.ok
+    pos = c.gw._b._positions[res.position_ticket]
+    pos.sl, pos.tp = 0.0, 0.0                          # someone removed them in the terminal
+    out = c.executor.verify_protection(c.db.q("SELECT * FROM positions WHERE status='OPEN'"), c.specs)
+    assert out and out[0]["restored"]
+    assert pos.sl > 0 and pos.tp > 0
+    assert c.executor.verify_protection(c.db.q("SELECT * FROM positions WHERE status='OPEN'"), c.specs) == []

@@ -180,6 +180,43 @@ class Executor:
                    "OPEN", p.signal.group_id or key, p.est_margin, p.planned_risk, p.signal.max_hold_bars,
                    None, json.dumps(p.signal.to_dict(), default=str), intent_id))
 
+    def verify_protection(self, rows: list[dict], specs: dict) -> list[dict]:
+        """Every cycle: each open bot position must carry the stop-loss and take-profit it was opened with.
+        A missing or changed level is put back; if that fails, entries are blocked until it is fixed."""
+        out = []
+        by_symbol: dict[str, dict] = {}
+        for r in rows:
+            spec = next((s for s in specs.values() if s.symbol == r["symbol"]), None)
+            if spec is None:
+                continue
+            if r["symbol"] not in by_symbol:
+                by_symbol[r["symbol"]] = {x.get("ticket"): x for x in self.gw.positions(r["symbol"])}
+            live = by_symbol[r["symbol"]].get(r["ticket"])
+            if live is None:
+                continue  # closed in the terminal; reconciliation records it
+            tol = spec.tick_size * 1.5 if spec.tick_size else 1e-9
+            want_sl = spec.round_price(r["sl"]) if r["sl"] else 0.0
+            want_tp = spec.round_price(r["tp"]) if r["tp"] else 0.0
+            ok_sl = abs(float(live.get("sl") or 0.0) - want_sl) <= tol
+            ok_tp = abs(float(live.get("tp") or 0.0) - want_tp) <= tol
+            code = f"PROTECTION_{r['ticket']}"
+            if ok_sl and ok_tp:
+                self.db.resolve_alert(code)
+                continue
+            res = self.gw.order_send({"action": self.gw.const("TRADE_ACTION_SLTP"), "symbol": spec.symbol, "position": r["ticket"],
+                                      "sl": want_sl, "tp": want_tp})
+            done = bool(res and res.get("retcode") == self.gw.const("TRADE_RETCODE_DONE"))
+            info = {"ticket": r["ticket"], "symbol": r["symbol"], "had_sl": live.get("sl"), "had_tp": live.get("tp"),
+                    "set_sl": want_sl, "set_tp": want_tp, "restored": done}
+            self.db.event("PROTECTION_RESTORED" if done else "PROTECTION_FAILED", r["bot_id"], info)
+            if done:
+                self.db.resolve_alert(code)
+            else:
+                self.db.alert("HIGH", code, f"{r['symbol']} position {r['ticket']} is missing its stop/target and it could not be "
+                              "set; new entries are blocked until it is fixed", blocks_entries=True)
+            out.append(info)
+        return out
+
     def _ensure_protection(self, p: Proposal, spec: InstrumentSpec, ticket: int) -> bool:
         if not p.sl:
             return True

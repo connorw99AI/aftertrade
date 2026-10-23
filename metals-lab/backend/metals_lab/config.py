@@ -24,10 +24,12 @@ DEFAULTS: dict[str, Any] = {
         "max_risk_per_trade_cap": 0.03,     # hard ceiling for any per-bot override
         "min_lot": {"GOLD": 0.04, "SILVER": 0.02},  # floor per trade: a number or per metal; 0 = risk-sized, skip if below broker min
         "per_trade_limit_enabled": False,   # True rejects entries whose planned stop loss exceeds risk_per_trade x bot equity
+        "pre_trade_limits": False,          # True re-enables the per-trade risk, bot margin share, account margin share and
+                                            # exposure caps below; False = losses are handled by the daily stops and drawdown pause
         "max_entries_per_bot_per_day": 5,   # new trades (a two-leg group counts once) per bot per UTC day; 0 = unlimited
         "daily_loss_pause": 0.15,           # no new entries for the rest of the UTC day after losing this much
         "daily_profit_stop": 0.30,          # ... or after gaining this much (0 = off); open trades stay managed
-        "max_drawdown_pause": 0.0,          # >0 pauses a bot (operator resumes) after this fall from its peak; 0 = off
+        "max_drawdown_pause": 0.50,         # >0 pauses a bot (operator resumes) after this fall from its peak; 0 = off
         "weekend_flat_from": "20:00",       # Friday UTC: close every position, no entries until Sunday 22:00 UTC; null = hold
         "max_positions_per_bot": 2,
         "max_bot_margin_fraction": 0.5,     # of the bot's own equity
@@ -53,8 +55,10 @@ DEFAULTS: dict[str, Any] = {
         "correlated_shock_atr": 2.5,
         "delay_seconds": 300,
         "reference_move_atr": 3.0,
+        "max_stop_atr": 15.0,               # trade-setup check: a stop further than this many ATRs is treated as a bug
     },
     "news": {
+        "enabled": False,                   # operator choice: no news checks at all (True re-enables the calendar rules)
         "provider": "csv",                  # "csv" | "none"
         "path": "config/news_calendar.csv",
         "max_age_hours": 192,

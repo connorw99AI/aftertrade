@@ -157,6 +157,7 @@ class RiskEngine:
         if p.intent == Intent.OPEN_SHORT and not spec.can_open_short:
             reject("SYMBOL_SHORT_NOT_ALLOWED")
 
+        limits_on = bool(self.cfg.get("pre_trade_limits", True))
         eq = ctx.book.equity
         m["bot_equity"] = round(eq, 2)
         m["bot_free_capital"] = round(ctx.book.free_capital, 2)
@@ -218,7 +219,7 @@ class RiskEngine:
                     limit = eq * risk_pct_for(self.root_cfg, p.bot_id)
                     m["risk_limit"] = round(limit, 2)
                     m["planned_risk_pct_of_bot"] = round(planned / eq, 5) if eq > 0 else None
-                    if self.cfg.get("per_trade_limit_enabled", True) and planned > limit * 1.0001:
+                    if limits_on and self.cfg.get("per_trade_limit_enabled", True) and planned > limit * 1.0001:
                         reject("PLANNED_RISK_EXCEEDS_LIMIT")
             # margin reservation against the bot's own capital
             if vol > 0:
@@ -231,16 +232,17 @@ class RiskEngine:
                     p.est_margin = margin
                     if margin > ctx.book.free_capital:
                         reject("INSUFFICIENT_BOT_FREE_CAPITAL")
-                    if ctx.book.reserved_margin + ctx.book.pending_reserved + margin > eq * self.cfg["max_bot_margin_fraction"]:
+                    if limits_on and ctx.book.reserved_margin + ctx.book.pending_reserved + margin > eq * self.cfg["max_bot_margin_fraction"]:
                         reject("BOT_MARGIN_FRACTION_LIMIT")
                     if ctx.account_equity > 0:
-                        if (ctx.account_margin + margin) / ctx.account_equity > self.cfg["max_account_margin_used"]:
+                        if limits_on and (ctx.account_margin + margin) / ctx.account_equity > self.cfg["max_account_margin_used"]:
                             reject("ACCOUNT_MARGIN_LIMIT")
+                        # kept even with limits off: protects every bot from a broker margin call / stop-out
                         if ctx.account_margin > 0 and ctx.account_margin_level < self.cfg["min_account_margin_level"]:
                             reject("ACCOUNT_MARGIN_LEVEL_LOW")
                     per_bot = self.cfg.get("exposure_scope", "account") == "per_bot"
                     base_eq = eq if per_bot else ctx.account_equity
-                    if base_eq > 0:
+                    if limits_on and base_eq > 0:
                         notional = self.notional(spec, vol, entry)
                         side = p.intent.position_side
                         held = ctx.bot_gross_notional if per_bot else ctx.gross_exposure_notional

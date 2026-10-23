@@ -61,13 +61,14 @@ class MarketAuditor:
     def __init__(self, cfg: dict, news: NewsProvider, authority=None, operator_alerts=None):
         self.cfg = cfg["auditor"]
         self.ncfg = cfg["news"]
+        self.rcfg = cfg.get("risk", {})
         self.news = news
         self.authority = authority                # ApprovalAuthority("AUDIT") or None (research)
         self.operator_alerts = operator_alerts or (lambda: [])
         self.version = self.cfg["ruleset_version"]
 
     def assess(self, view: MarketView, role: str, intent_is_opening: bool, proposal_hash: str = "",
-               fingerprint: str = "", point_in_time_news: bool = False, primary_tf: str = "M5") -> AuditResult:
+               fingerprint: str = "", point_in_time_news: bool = False, primary_tf: str = "M5", proposal=None) -> AuditResult:
         now = view.now()
         dec = Decision.APPROVED
         trig: list[str] = []
@@ -151,7 +152,9 @@ class MarketAuditor:
                     hit("R11_REFERENCE_SHOCK", Decision.DELAYED, f"abnormal move in reference {name}", self.cfg["delay_seconds"])
         # --- news ---------------------------------------------------------------------
         news_status = "NOT_CHECKED"
-        if intent_is_opening and self.ncfg.get("filter_enabled", True):
+        if not self.ncfg.get("enabled", True):
+            news_status = "OFF"
+        elif intent_is_opening and self.ncfg.get("filter_enabled", True):
             pre, post = timedelta(minutes=self.ncfg["pre_minutes"]), timedelta(minutes=self.ncfg["post_minutes"])
             nr: NewsResult = self.news.events(now - post, now + pre + timedelta(hours=6), now, point_in_time_news)
             news_status = nr.status
@@ -182,6 +185,9 @@ class MarketAuditor:
         # --- instrument permissions ------------------------------------------------
         if intent_is_opening and not spec.can_open_long and not spec.can_open_short:
             hit("R15_TRADING_RESTRICTED", Decision.REJECTED, "symbol trade mode does not allow new positions")
+        # --- trade setup: is the order itself built correctly? ---------------------
+        if proposal is not None and intent_is_opening:
+            self._setup_rules(proposal, spec, tk, bars, ev, hit)
         res = AuditResult(dec, trig, reasons, ev, quality, news_status, self.version, reassess if dec == Decision.DELAYED else None,
                           proposal_hash, flags=flags)
         if dec == Decision.APPROVED and self.authority is not None:
@@ -189,6 +195,47 @@ class MarketAuditor:
         return res
 
     # ------------------------------------------------------------------ helpers
+    def _setup_rules(self, p, spec, tk, bars, ev, hit):
+        """Checks the order itself: lot size, stop and target present, on the right side and at sane distances."""
+        long = p.intent.order_side == "BUY"
+        setup = {"side": "LONG" if long else "SHORT", "volume": p.volume, "sl": p.sl, "tp": p.tp}
+        ev["setup"] = setup
+        rej = Decision.REJECTED
+        if p.volume <= 0 or spec.round_volume_down(p.volume) != p.volume:
+            hit("R17_VOLUME_INVALID", rej, f"volume {p.volume} is not a valid lot for {spec.symbol} "
+                f"(min {spec.volume_min}, step {spec.volume_step}, max {spec.volume_max})")
+        ml = self.rcfg.get("min_lot", 0) or 0
+        floor = float(ml.get(p.role, 0) if isinstance(ml, dict) else ml)
+        setup["min_lot"] = floor
+        if floor and p.volume + 1e-9 < floor:
+            hit("R18_BELOW_MIN_LOT", rej, f"volume {p.volume} is below the configured minimum {floor}")
+        if p.sl is None:
+            hit("R19_NO_STOP", rej, "opening order has no stop-loss")
+        if tk is None:
+            return
+        entry = tk["ask"] if long else tk["bid"]
+        setup["entry_ref"] = entry
+        min_d = max(spec.stops_level_points, spec.freeze_level_points) * spec.point
+        if p.sl is not None:
+            dist = (entry - p.sl) if long else (p.sl - entry)
+            setup["stop_distance"] = round(dist, 6)
+            atr = float(ind.atr(bars, 14).iloc[-1]) if bars is not None and len(bars) > 15 else float("nan")
+            if np.isfinite(atr) and atr > 0:
+                setup["stop_atr"] = round(dist / atr, 2)
+            if dist <= 0:
+                hit("R20_STOP_WRONG_SIDE", rej, f"stop {p.sl} is on the wrong side of entry {entry}")
+            elif dist < min_d:
+                hit("R21_STOP_INSIDE_BROKER_LEVEL", rej, f"stop {dist:.5g} from entry is inside the broker minimum {min_d:.5g}")
+            elif np.isfinite(atr) and atr > 0 and dist > self.cfg.get("max_stop_atr", 15.0) * atr:
+                hit("R22_STOP_ABNORMAL", rej, f"stop is {dist / atr:.1f} ATR away (limit {self.cfg.get('max_stop_atr', 15.0)})")
+        if p.tp is not None:
+            tdist = (p.tp - entry) if long else (entry - p.tp)
+            setup["target_distance"] = round(tdist, 6)
+            if tdist <= 0:
+                hit("R23_TARGET_WRONG_SIDE", rej, f"take-profit {p.tp} is on the wrong side of entry {entry}")
+            elif tdist < min_d:
+                hit("R24_TARGET_INSIDE_BROKER_LEVEL", rej, f"take-profit {tdist:.5g} from entry is inside the broker minimum {min_d:.5g}")
+
     @staticmethod
     def _last_move_atr(b: pd.DataFrame) -> float:
         a = ind.atr(b, 14).iloc[-2] if len(b) > 16 else np.nan
