@@ -91,3 +91,30 @@ def test_older_databases_gain_the_new_columns(tmp_path):
     db = Store(path)
     for t in ("trades", "positions"):
         assert "config_version" in {r["name"] for r in db.q(f"PRAGMA table_info({t})")}
+
+
+def test_daily_stops_lock_in_profit():
+    from metals_lab.risk.daily import daily_stop
+    r = {"daily_loss_pause": 0.30, "daily_lock_from": 0.05, "daily_giveback": 0.5, "daily_profit_stop": 0}
+    assert daily_stop(500, 500, 360, r) is None                      # down 28%: still trading
+    assert daily_stop(500, 500, 350, r) == "DAILY_LOSS_LIMIT"        # down 30%
+    assert daily_stop(500, 650, 600, r) is None                      # best +30%, now +20%: kept more than half
+    assert daily_stop(500, 650, 575, r) == "DAILY_PROFIT_LOCK"       # gave back half of +150
+    assert daily_stop(500, 520, 501, r) is None                      # best only +4%: lock not active yet
+    assert daily_stop(500, 900, 900, r) is None                      # no profit stop
+    assert daily_stop(500, 900, 900, {**r, "daily_profit_stop": 0.3}) == "DAILY_PROFIT_TARGET_REACHED"
+
+
+def test_min_lot_never_risks_more_than_the_cap(armed):
+    from metals_lab.domain import Intent
+    strat = armed.strategy("S01L")
+    p = make_open_proposal(armed, bot="S01L", volume=0.04)
+    sig = p.signal
+    spec = armed.specs["GOLD"]
+    loss = lambda spec, side, entry, stop, vol: abs(entry - stop) * spec.contract_size * vol
+    far = sig.__class__(**{**sig.__dict__, "stop_price": sig.ref_price - 40.0})   # 0.04 lot x $40 = $160 at the stop
+    tp = strat.calculate_target_positions([far], 500.0, armed.specs, 0.03, loss, lambda s: 0.0, min_lot=0.04, max_risk_pct=0.10)[0]
+    assert tp.skipped and tp.skip_reason.startswith("MIN_LOT_RISK_ABOVE_CAP")
+    near = sig.__class__(**{**sig.__dict__, "stop_price": sig.ref_price - 5.0})   # $20 = 4%: allowed at the floor
+    tp = strat.calculate_target_positions([near], 500.0, armed.specs, 0.03, loss, lambda s: 0.0, min_lot=0.04, max_risk_pct=0.10)[0]
+    assert not tp.skipped and tp.volume == 0.04

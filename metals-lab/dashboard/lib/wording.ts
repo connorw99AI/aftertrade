@@ -5,6 +5,8 @@ const REASON: Record<string, string> = {
   MAX_ENTRIES_PER_DAY: "daily trade limit reached",
   DAILY_LOSS_LIMIT: "daily loss stop reached",
   DAILY_PROFIT_TARGET_REACHED: "daily profit stop reached",
+  DAILY_PROFIT_LOCK: "profit lock: gave back half the day's gain",
+  MIN_LOT_RISK_ABOVE_CAP: "minimum lot would risk more than the per-trade cap",
   MAX_DRAWDOWN_LIMIT: "drawdown pause reached",
   MAX_POSITIONS_PER_BOT: "too many trades already open",
   MIN_LOT_EXCEEDS_RISK_BUDGET: "minimum lot too big for the budget",

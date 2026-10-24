@@ -154,7 +154,10 @@ CREATE TABLE IF NOT EXISTS equity_snapshots (
   ts TEXT, bot_id TEXT, equity REAL, realized REAL, unrealized REAL, reserved_margin REAL
 );
 CREATE TABLE IF NOT EXISTS bot_day_start (
-  bot_id TEXT, day TEXT, equity REAL, PRIMARY KEY (bot_id, day)
+  bot_id TEXT, day TEXT, equity REAL,
+  high REAL,                                        -- best equity so far that day (profit lock)
+  stopped TEXT,                                     -- the daily stop that ended the day, once one has; it holds until the day ends
+  PRIMARY KEY (bot_id, day)
 );
 CREATE TABLE IF NOT EXISTS bot_peak (bot_id TEXT PRIMARY KEY, peak REAL);
 

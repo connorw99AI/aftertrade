@@ -383,6 +383,9 @@ def test_exposure_caps_are_per_bot_and_in_account_currency(armed):
 
 def test_daily_profit_stop(armed):
     c = armed
+    assert c.cfg["risk"]["daily_profit_stop"] == 0  # operator default: no profit stop (the profit lock protects gains)
+    c.cfg["risk"]["daily_profit_stop"] = 0.30
+    c.cfg["risk"]["daily_giveback"] = 0          # isolate the profit stop from the profit lock
     up = c.bot_book("S01L").equity / 1.35  # bot is up 35% on the day
     _, r = approve(c, make_open_proposal(c), day_start=up)
     assert "DAILY_PROFIT_TARGET_REACHED" in r.reasons

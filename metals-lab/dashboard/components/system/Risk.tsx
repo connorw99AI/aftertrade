@@ -20,7 +20,9 @@ function limitSentences(l: Any): [string, string][] {
   say("per_trade_limit_enabled", l.per_trade_limit_enabled && caps ? "A trade whose stop would lose more than the per-trade risk is refused." : "A trade may risk more than the per-trade figure when the minimum size needs it.");
   say("pre_trade_limits", caps ? "Margin and exposure caps are checked before every entry." : "Margin-share and exposure caps are off; losses are handled by the daily stops and the drawdown pause.");
   say("max_entries_per_bot_per_day", `Each bot opens at most ${l.max_entries_per_bot_per_day} trades per UTC day (a two-leg pair counts once).`);
+  say("max_trade_risk", l.max_trade_risk ? `A trade is skipped if even the minimum size would risk more than ${pc(l.max_trade_risk)} of the bot's balance.` : "There is no cap on what the minimum size may risk.");
   say("daily_loss_pause", `A bot opens nothing more that UTC day once it is down ${pc(l.daily_loss_pause)} on the day.`);
+  say("daily_giveback", l.daily_giveback ? `Profit lock: once a bot is up ${pc(l.daily_lock_from ?? 0)} or more on the day, it stops for the day if it gives back ${pc(l.daily_giveback)} of its best gain that day.` : "There is no profit lock.");
   say("daily_profit_stop", l.daily_profit_stop ? `A bot opens nothing more that day once it is up ${pc(l.daily_profit_stop)}; open trades stay managed.` : "There is no daily profit stop.");
   say("max_drawdown_pause", l.max_drawdown_pause ? `A bot pauses after falling ${pc(l.max_drawdown_pause)} from its peak; you restart it with Start.` : "There is no drawdown pause.");
   say("weekend_flat_from", l.weekend_flat_from ? `Every trade closes at ${l.weekend_flat_from} UTC on Friday; no entries until Sunday 22:00 UTC.` : "Trades are held over the weekend.");
@@ -34,7 +36,7 @@ function limitSentences(l: Any): [string, string][] {
   say("max_spread_points", `No entry when the spread is wider than ${metals(l.max_spread_points, " points")}.`);
   say("stop_buffer_points", `Stops sit at least ${l.stop_buffer_points} points beyond the broker's minimum distance.`);
   say("require_stop", l.require_stop ? "Every trade must carry a stop-loss." : "Trades may open without a stop-loss.");
-  const known = new Set(out.map(([k]) => k).concat(["max_risk_per_trade_cap"]));
+  const known = new Set(out.map(([k]) => k).concat(["max_risk_per_trade_cap", "daily_lock_from"]));
   for (const [k, v] of Object.entries(l)) if (!known.has(k)) out.push([k, `${k.replace(/_/g, " ")}: ${typeof v === "object" ? metals(v, "") : String(v)}.`]);
   return out;
 }

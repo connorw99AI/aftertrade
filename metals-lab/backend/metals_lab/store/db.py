@@ -30,7 +30,9 @@ class Store:
         self._add_missing_columns()
 
     # columns added after the first release; CREATE TABLE IF NOT EXISTS does not add them to older databases
-    _LATER_COLUMNS = (("positions", "config_version", "INTEGER"), ("trades", "config_version", "INTEGER"))
+    _LATER_COLUMNS = (("positions", "config_version", "INTEGER"), ("trades", "config_version", "INTEGER"),
+                      ("bot_day_start", "high", "REAL"),
+                      ("bot_day_start", "stopped", "TEXT"))
 
     def _add_missing_columns(self) -> None:
         for table, col, kind in self._LATER_COLUMNS:

@@ -35,6 +35,7 @@ from ..mt5.guard import AccountCheck, AccountState, check_account, execution_blo
 from ..risk import RiskContext, RiskEngine, risk_pct_for
 from ..sessions import ServerClock, calendar_from_config, calendar_from_mql5_export
 from ..store import Store, now_iso
+from ..risk.daily import TEXT as DAILY_TEXT, daily_stop
 from ..strategies import ASSESSOR_RETIRED, BOT_IDS, STRATEGY_CLASSES, Strategy, build, magic_for, strategy_for_magic  # noqa: F401
 from ..strategies.base import StrategyContext
 from .approvals import ApprovalAuthority, Proposal
@@ -464,11 +465,21 @@ class Coordinator:
 
     def _day_and_peak(self, bot: str, equity: float, now: datetime) -> tuple[float, float]:
         day = now.strftime("%Y-%m-%d")
-        self.db.x("INSERT OR IGNORE INTO bot_day_start(bot_id,day,equity) VALUES(?,?,?)", (bot, day, equity))
-        ds = self.db.one("SELECT equity FROM bot_day_start WHERE bot_id=? AND day=?", (bot, day))["equity"]
+        self.db.x("INSERT OR IGNORE INTO bot_day_start(bot_id,day,equity,high) VALUES(?,?,?,?)", (bot, day, equity, equity))
+        self.db.x("UPDATE bot_day_start SET high=MAX(COALESCE(high, equity), ?) WHERE bot_id=? AND day=?", (equity, bot, day))
+        row = self.db.one("SELECT equity, high, stopped FROM bot_day_start WHERE bot_id=? AND day=?", (bot, day))
+        ds = row["equity"]
+        if not row["stopped"]:
+            stop = daily_stop(ds, row["high"], equity, self.cfg["risk"])
+            if stop:  # holds for the rest of the UTC day, even if equity recovers
+                self.db.x("UPDATE bot_day_start SET stopped=? WHERE bot_id=? AND day=?", (stop, bot, day))
+                self.db.event("DAILY_STOP", bot, {"reason": DAILY_TEXT[stop], "day_start": round(ds, 2), "equity": round(equity, 2)})
         self.db.x("INSERT INTO bot_peak(bot_id,peak) VALUES(?,?) ON CONFLICT(bot_id) DO UPDATE SET peak=MAX(peak, excluded.peak)", (bot, equity))
         pk = self.db.one("SELECT peak FROM bot_peak WHERE bot_id=?", (bot,))["peak"]
         return ds, pk
+
+    def _day_row(self, bot: str) -> dict:
+        return self.db.one("SELECT high, stopped FROM bot_day_start WHERE bot_id=? ORDER BY day DESC LIMIT 1", (bot,)) or {}
 
     def _positions_view(self, bot: str, strat: Strategy, frames: dict) -> list[PositionView]:
         out = []
@@ -582,7 +593,7 @@ class Coordinator:
             account=acct, activation_fp=act["fingerprint"] if act else None, armed=act is not None,
             killed=self.db.get_control("kill") == "1", global_paused=self.db.get_control("global_pause") == "1",
             bot_status=self.db.one("SELECT status FROM bots WHERE bot_id=?", (bot,))["status"], book=book,
-            day_start_equity=ds, peak_equity=pk,
+            day_start_equity=ds, peak_equity=pk, day_high_equity=self._day_row(bot).get("high") or ds, day_stopped=self._day_row(bot).get("stopped"),
             bot_open_positions=self.db.one("SELECT COUNT(*) n FROM positions WHERE bot_id=? AND status='OPEN'", (bot,))["n"],
             account_equity=float(info.get("equity") or 0), account_margin=float(info.get("margin") or 0),
             account_margin_level=float(info.get("margin_level") or 0), gross_exposure_notional=gross, same_direction_notional=same,
@@ -659,7 +670,7 @@ class Coordinator:
         tps = strat.calculate_target_positions(
             entries, book.equity, self.specs, risk_pct_for(self.cfg, bot), self.risk.loss_at_stop,
             lambda spec: self.risk.est_cost_per_lot(spec, ticks.get(spec.role), commission),
-            min_lot=self.cfg["risk"].get("min_lot", 0.0) or 0.0)
+            min_lot=self.cfg["risk"].get("min_lot", 0.0) or 0.0, max_risk_pct=float(self.cfg["risk"].get("max_trade_risk") or 0))
         approved: list[tuple] = []
         group = any(s.group_id for s in entries)
         for tp in tps:

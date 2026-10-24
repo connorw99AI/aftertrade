@@ -14,7 +14,7 @@ that bar resolves the order; every such case is counted as ``ambiguous_exit``.
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Callable, Optional
 
 import numpy as np
@@ -23,6 +23,7 @@ import pandas as pd
 from ..domain import TIMEFRAME_MINUTES, Intent, PositionView, Signal, Style
 from ..instruments import InstrumentSpec
 from ..strategies.base import Strategy, StrategyContext, contract_loss
+from ..risk.daily import daily_stop
 from . import metrics as M
 from .models import BacktestConfig
 
@@ -173,10 +174,10 @@ class Backtester:
         diag = {"decisions": 0, "signals": 0, "rejected_random": 0, "partial_fills": 0, "rejected_margin": 0,
                 "rejected_stops": 0, "skipped_min_lot": 0, "skipped_no_stop": 0, "blocked_auditor": 0,
                 "blocked_risk_pause": 0, "blocked_max_positions": 0, "blocked_daily_entry_cap": 0, "gap_fills": 0, "ambiguous_bars_tick_resolved": 0,
-                "group_leg_failures": 0, "daily_pauses": 0, "daily_profit_stops": 0, "drawdown_pause_at": None, "drawdown_restarts": [], "swap_mode_unsupported": []}
+                "group_leg_failures": 0, "daily_pauses": 0, "daily_profit_stops": 0, "daily_profit_locks": 0, "drawdown_pause_at": None, "drawdown_restarts": [], "swap_mode_unsupported": []}
         decisions: list[dict] = []
         peak = cash
-        day_key, day_start_eq, paused_today, dd_paused = None, cash, False, False
+        day_key, day_start_eq, day_high_eq, paused_today, dd_paused = None, cash, cash, False, False
         entries_day: set = set()
         roll_key_prev = None
         rh = cfg.costs.rollover_utc_hour
@@ -375,18 +376,17 @@ class Backtester:
             eq_v.append(eq)
             dk = t.floor("1D")
             if dk != day_key:
-                day_key, day_start_eq, paused_today = dk, eq, False
+                day_key, day_start_eq, day_high_eq, paused_today = dk, eq, eq, False
                 entries_day = set()
                 if dd_paused and cfg.restart_after_drawdown and eq > 0:
                     # what a manual restart does live: running again, the drawdown measured from today's equity
                     dd_paused, peak = False, eq
                     diag["drawdown_restarts"].append({"at": str(dk.date()), "equity": round(eq, 2)})
-            if not paused_today and eq < day_start_eq * (1 - cfg.risk.daily_loss_pause):
+            day_high_eq = max(day_high_eq, eq)
+            stop = None if paused_today else daily_stop(day_start_eq, day_high_eq, eq, asdict(cfg.risk))
+            if stop:
                 paused_today = True
-                diag["daily_pauses"] += 1
-            if not paused_today and cfg.risk.daily_profit_stop and eq >= day_start_eq * (1 + cfg.risk.daily_profit_stop):
-                paused_today = True
-                diag["daily_profit_stops"] += 1
+                diag[{"DAILY_LOSS_LIMIT": "daily_pauses", "DAILY_PROFIT_TARGET_REACHED": "daily_profit_stops"}.get(stop, "daily_profit_locks")] += 1
             peak = max(peak, eq)
             if not dd_paused and cfg.risk.max_drawdown_pause and eq < peak * (1 - cfg.risk.max_drawdown_pause):
                 dd_paused = True
@@ -432,7 +432,7 @@ class Backtester:
                     self._rec(decisions, entries, "AUDITOR:" + ";".join(r for v in verdicts for r in v[1]))
                     continue
             tps = s.calculate_target_positions(entries, eq, self.specs, cfg.risk.risk_per_trade, self._loss, self._cost_per_lot,
-                                               min_lot=cfg.risk.min_lot)
+                                               min_lot=cfg.risk.min_lot, max_risk_pct=cfg.risk.max_trade_risk)
             if any(tp.skipped for tp in tps) and any(x.group_id for x in entries):
                 diag["skipped_min_lot"] += len(entries)  # trade groups are all-or-nothing
                 self._rec(decisions, entries, "GROUP_SKIPPED:" + ";".join(tp.skip_reason for tp in tps if tp.skipped))

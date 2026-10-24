@@ -75,7 +75,8 @@ def thought(*, side: str, status: str, kill: bool, stopped_for_day: Optional[str
         return "Paused after falling to the drawdown limit. Press Start to restart me."
     lead = "Paused by you. " if status == "PAUSED" else ""
     if stopped_for_day:
-        return f"{lead}Done for today: {stopped_for_day} reached."
+        why = {"profit lock": "the profit lock kept the rest of today's gain"}.get(stopped_for_day, f"{stopped_for_day} reached")
+        return f"{lead}Done for today: {why}."
     roles = (th or {}).get("roles") or {}
     views = {r: roles[r] for r in allowed_roles(roles, metals) if roles[r] and "waiting" not in roles[r]}
     if not views:

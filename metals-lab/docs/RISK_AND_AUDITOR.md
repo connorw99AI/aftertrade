@@ -88,9 +88,12 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 |---|---|
 | Planned loss at stop (`order_calc_profit`) + estimated spread/commission ≤ risk per trade | **off** (`per_trade_limit_enabled: false`); planned risk is logged. 3% when on |
 | Minimum trade size (sizing floor) | gold 0.04 lot, silver 0.02 lot (`min_lot`) |
+| Trade skipped if even the minimum size would lose more than this share of the bot at its stop | 10% (`max_trade_risk`) |
 | New trades per bot per UTC day (a two-leg group counts once; shadow approvals count too) | 5 |
-| Daily bot loss → entries blocked for the rest of the UTC day | 15% |
-| Daily bot gain → entries blocked for the rest of the UTC day (open trades still managed) | 30% |
+| Daily bot loss → entries blocked for the rest of the UTC day | 30% (`daily_loss_pause`) |
+| Profit lock: once up 5%+ on the day, giving back half the day's best gain → entries blocked for the rest of the day | 5% / half (`daily_lock_from`, `daily_giveback`) |
+| Daily bot gain → entries blocked for the rest of the UTC day | off (`daily_profit_stop: 0`) |
+| A daily stop, once hit, holds until the UTC day ends (open trades still managed) | |
 | Bot drawdown from peak → bot set to PAUSED_RISK; operator must resume (open trades still managed) | 50% |
 | Friday from 20:00 UTC → close all positions, no entries until Sunday 22:00 UTC | on (`weekend_flat_from`) |
 | Open positions per bot | 2 |

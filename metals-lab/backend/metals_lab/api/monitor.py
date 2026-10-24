@@ -20,6 +20,7 @@ from ..execution.coordinator import BOT_IDS
 from ..store import now_iso
 from ..strategies import bot_class, bot_name, is_bot
 from ..timeutil import utc_now
+from ..risk.daily import TEXT as DAILY_TEXT, daily_stop
 from .thoughts import allowed_roles, readiness, thought
 
 
@@ -68,17 +69,14 @@ def register(app: FastAPI, state, auth) -> None:
             cls = bot_class(b)
             row = db.one("SELECT status, pause_reason, config_version FROM bots WHERE bot_id=?", (b,))
             book = c.bot_book(b) if c else None
-            ds = db.one("SELECT equity FROM bot_day_start WHERE bot_id=? AND day=?", (b, day))
+            ds = db.one("SELECT equity, high, stopped FROM bot_day_start WHERE bot_id=? AND day=?", (b, day))
             eq = book.equity if book else 0.0
             today = round(eq - ds["equity"], 2) if ds and book else 0.0
             today_total += today
             today_pct = (today / ds["equity"]) if ds and ds["equity"] else 0.0
             rk = state.cfg["risk"]
-            stopped_for_day = None
-            if rk.get("daily_loss_pause") and today_pct <= -rk["daily_loss_pause"]:
-                stopped_for_day = "daily loss stop"
-            elif rk.get("daily_profit_stop") and today_pct >= rk["daily_profit_stop"]:
-                stopped_for_day = "daily profit stop"
+            stop = (ds["stopped"] or daily_stop(ds["equity"], ds["high"], eq, rk)) if ds and book else None
+            stopped_for_day = DAILY_TEXT.get(stop) if stop else None
             th = thinking.get(b) or {}
             verdicts = {role: {"verdict": r.get("verdict"), "summary": r.get("summary")} for role, r in (th.get("roles") or {}).items()}
             opens = db.q("SELECT position_key, symbol, role, side, volume_open, entry_price, sl, tp, opened_at FROM positions "

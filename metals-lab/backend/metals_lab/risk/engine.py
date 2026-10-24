@@ -24,7 +24,9 @@ from ..execution.approvals import ApprovalAuthority, ApprovalError, Proposal
 from ..instruments import InstrumentSpec
 from ..ledger import BotBook
 from ..mt5.guard import AccountCheck
+from .daily import daily_stop
 from ..store import Store
+
 
 
 def risk_pct_for(cfg: dict, bot_id: str) -> float:
@@ -58,6 +60,8 @@ class RiskContext:
     blocking_alerts: list = field(default_factory=list)
     in_flight_symbols: set = field(default_factory=set)
     tick: Optional[dict] = None
+    day_high_equity: Optional[float] = None   # the bot's best equity so far today, for the profit lock
+    day_stopped: Optional[str] = None         # a daily stop already hit today (it holds until the day ends)
     spec: Optional[InstrumentSpec] = None
     owned_position: Optional[dict] = None
     entries_today: int = 0                   # trades this bot opened (or shadow-approved) this UTC day
@@ -166,10 +170,9 @@ class RiskEngine:
         daily = (eq - ctx.day_start_equity) / ctx.day_start_equity if ctx.day_start_equity else 0.0
         dd = (eq - ctx.peak_equity) / ctx.peak_equity if ctx.peak_equity else 0.0
         m["daily_pnl_pct"], m["drawdown_pct"] = round(daily, 5), round(dd, 5)
-        if daily <= -self.cfg["daily_loss_pause"]:
-            reject("DAILY_LOSS_LIMIT")
-        if self.cfg.get("daily_profit_stop") and daily >= self.cfg["daily_profit_stop"]:
-            reject("DAILY_PROFIT_TARGET_REACHED")
+        stop = ctx.day_stopped or daily_stop(ctx.day_start_equity, ctx.day_high_equity, eq, self.cfg)
+        if stop:
+            reject(stop)
         if self.cfg.get("max_drawdown_pause") and dd <= -self.cfg["max_drawdown_pause"]:
             reject("MAX_DRAWDOWN_LIMIT")
         if ctx.bot_open_positions >= self.cfg["max_positions_per_bot"]:

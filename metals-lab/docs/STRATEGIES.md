@@ -83,13 +83,18 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 
 ## A consequence you should know before arming
 
-The operator runs a £3,000 demo so each bot has £300, the amount the best bot would get live. Operator choices:
+The operator runs a £3,000 demo. With 20 independent bots at 5% each, every bot starts with £150. Operator choices:
 
-- **Minimum lot per trade: gold 0.04, silver 0.02** (`min_lot: {GOLD: 0.04, SILVER: 0.02}`), even when that risks more than 3% of the bot. A bot trades more than the minimum only when 3% of its equity allows it, which at £300 is rare. There is **no per-trade loss limit** (`per_trade_limit_enabled: false`).
-- What that means (from the terminal's own figures, GBP account): gold 0.04 lot is about **£3 per $1 move**; silver 0.02 lot is about **£75 per $1 move**. Examples: a $5 gold stop loses about £15 (5% of £300); a $15 gold stop about £45 (15%). A 20-cent silver stop loses about £15 (5%); a 50-cent silver stop about £37 (12%).
+- **Minimum lot per trade: gold 0.04, silver 0.02** (`min_lot: {GOLD: 0.04, SILVER: 0.02}`), even when that risks more than 3% of the bot. A bot trades more than the minimum only when 3% of its equity allows it, which at £150 is rare.
+- **Per-trade cap 10%** (`max_trade_risk: 0.10`): a trade is skipped when even the minimum size would lose more than 10% of the bot's balance at its stop. At £150 that is £15: roughly a $5 gold stop or a 20-cent silver stop. Wider-stop setups are skipped until the bot's balance grows, so expect fewer trades from the hourly-chart bots.
+- What that means (from the terminal's own figures, GBP account): gold 0.04 lot is about **£3 per $1 move**; silver 0.02 lot is about **£75 per $1 move**. Examples: a $5 gold stop loses about £15 (10% of £150); a $15 gold stop about £45 (30%, skipped by the cap). A 20-cent silver stop loses about £15 (10%); a 50-cent silver stop about £37 (25%, skipped).
 - Leverage (1:500) sets the margin, not the loss. Margin for 0.04 lot gold is lots × 100 oz × price ÷ 500, a few tens of pounds, so margin rarely limits these trades. The loss at the stop is the same at any leverage.
-- **Daily stops**: no new entries for the rest of the UTC day after losing 15% (£45) or gaining 30% (£90). Trades already open keep running, so a day can end worse than -15%.
-- **Drawdown pause at 50%** (`max_drawdown_pause: 0.50`): a bot that falls 50% (£150) from its best balance stops opening trades until the operator restarts it. Open trades keep being managed.
+- **Daily stops** (new entries only; open trades keep running, so a day can end worse):
+  - **Loss stop 30%** (`daily_loss_pause: 0.30`): down 30% on the day.
+  - **Profit lock** (`daily_lock_from: 0.05`, `daily_giveback: 0.5`): once a bot is up 5% or more on the day, it stops for the day if it gives back half of its best gain that day. Three wins then losses: it stops with about half the day's gain kept.
+  - **No daily profit stop** (`daily_profit_stop: 0`).
+  - A daily stop, once hit, holds until the UTC day ends even if equity recovers.
+- **Drawdown pause at 50%** (`max_drawdown_pause: 0.50`): a bot that falls 50% (£75 from £150) from its best balance stops opening trades until the operator restarts it. Open trades keep being managed.
 - **No pre-trade risk caps** (`pre_trade_limits: false`): per-trade risk, margin-share and exposure caps are off. Still enforced before each entry: the bot's own free capital covers the margin, the account margin level stays above 300%, at most 2 open trades and 5 new trades a day per bot, and the daily stops.
 - **News checks are off** (`news.enabled: false`).
 - **Flat for the weekend** (`weekend_flat_from: "20:00"`): from Friday 20:00 UTC every bot closes its positions and opens nothing until Sunday 22:00 UTC. Overnight holds on weekdays are allowed.
