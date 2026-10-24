@@ -18,7 +18,7 @@ function BotCard({ b }: { b: Any }) {
   const roles = Object.keys(b.verdicts || {});
   const tone = b.status === "RETIRED" ? "card-retired" : b.stopped_for_day ? "card-stopped" : inTrade ? "card-trade" : b.status !== "RUNNING" ? "card-idle" : "";
   return (
-    <Link href={`/bot?id=${b.bot_id}`} className={`botcard ${tone}`}>
+    <Link href={`/bot?id=${b.bot_id}`} className={`botcard bc-${b.side} ${tone}`}>
       <div className="botcard-top">
         <span className="tf-tag">{b.timeframe}</span>
         <span className={`side-tag side-${b.side}`}>{b.side === "L" ? "▲ Bull · long" : "▼ Bear · short"}</span>

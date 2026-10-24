@@ -310,6 +310,8 @@ svg.multi-eq .axis { fill: var(--muted); font-size: 11px; }
 .botcard-art svg { width: 100%; height: auto; border-radius: 10px; }
 .side-tag { font-size: .72rem; padding: 1px 7px; border-radius: 999px; background: var(--ink-deep); }
 .side-tag.side-L { color: #4FCB8A; } .side-tag.side-S { color: #E0604A; }
+.botcard.bc-L { background: linear-gradient(180deg, #13281d, var(--panel) 70%); }
+.botcard.bc-S { background: linear-gradient(180deg, #2c1316, var(--panel) 70%); }
 .retired-note { font-size: .82rem; color: var(--muted); text-align: center; }
 .btn-retire { background: none; border-color: var(--line); color: var(--muted); }
 .hero-art svg { border-radius: 14px; }

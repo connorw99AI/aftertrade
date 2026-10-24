@@ -1,4 +1,4 @@
-/* Procedural 32x32 pixel aliens: one distinct species per bot, with a bull (long) or bear (short) accessory.
+/* Procedural 32x32 pixel aliens: one species per strategy; the long half wears bull horns, the short half its hood.
    Pure data (no React) so it can be previewed outside the app. Deterministic per bot id. */
 
 export type Px = { x: number; y: number; c: string; layer: "body" | "eye" | "acc" };
@@ -39,21 +39,24 @@ const SHAPES: Shape[] = [
   { name: "slug", inside: (x, y) => y >= 17 && ((x - cx) / 14) ** 2 + ((y - 23) / 5.5) ** 2 <= 1 || (y >= 13 && y < 18 && Math.abs(x - cx) <= 8), eyeY: 16, legs: "none" },
 ];
 
-export const SPECIES: Record<string, string> = {
-  S01L: "Ember Glimmerkin", S01S: "Tide Driftjelly", S02L: "Sun Spirelop", S02S: "Frost Shardling",
-  S03L: "Moss Mudwaddle", S03S: "Dusk Chitterbug", S04L: "Fern Peardrop", S04S: "Rose Orbwhisp",
-  S05L: "Mint Capcrawler", S05S: "Coral Slurmlet", S06L: "Lagoon Jellywisp", S06S: "Amber Glumkin",
-  S07L: "Cobalt Shardback", S07S: "Lemon Stalker", S08L: "Violet Chitterwing", S08S: "Lime Mudpuddler",
-  S09L: "Orchid Orbling", S09S: "Jade Pearnut", S10L: "Ruby Slugmallow", S10S: "Teal Capling",
+/* One species per strategy: both halves are the same creature. The long half (bull) wears horns on a green scene,
+   the short half (bear) has its hood up, a different body colour and a dark red scene. */
+const SPECIES_BY_STRATEGY: Record<string, string> = {
+  S01: "Glimmerkin", S02: "Spirelop", S03: "Mudwaddle", S04: "Peardrop", S05: "Capcrawler",
+  S06: "Jellywisp", S07: "Shardback", S08: "Chitterwing", S09: "Orbling", S10: "Slugmallow",
 };
+export const SPECIES: Record<string, string> = Object.fromEntries(
+  Object.entries(SPECIES_BY_STRATEGY).flatMap(([sid, n]) => [[`${sid}L`, `Bull ${n}`], [`${sid}S`, `Hooded ${n}`]]));
 
 export function alienArt(bot: string): Art {
   if (bot === "ASSESSOR") return assessorArt();
+  const sid = bot.slice(0, 3);
   const idx = Math.max(0, parseInt(bot.slice(1, 3), 10) - 1);
   const short = bot.endsWith("S");
-  const r = rng(hash(bot));
-  const shape = SHAPES[(idx + (short ? 5 : 0)) % SHAPES.length];
-  const hue = (idx * 36 + (short ? 197 : 0) + Math.floor(r() * 18)) % 360;
+  const r = rng(hash(sid)); // same draws for both halves: same pattern, eyes and mouth
+  const shape = SHAPES[idx % SHAPES.length];
+  const jitter = Math.floor(r() * 18);
+  const hue = (idx * 36 + jitter + (short ? 150 : 0)) % 360;
   const base = hsl(hue, 58, 56), shade = hsl(hue, 52, 38), light = hsl(hue, 70, 74), outline = "#14131F";
   const pattern = hsl((hue + 40) % 360, 55, 45);
   const grid: (string | null)[][] = Array.from({ length: N }, () => Array(N).fill(null));
@@ -80,17 +83,31 @@ export function alienArt(bot: string): Art {
   if (shape.legs === "tentacles") {
     for (const x0 of [8, 12, 16, 20, 24]) { const b = bottom(Math.min(31, x0)); for (let i = 1; i <= 9 && b + i < N - 1; i++) grid[b + i][x0 + (i % 4 < 2 ? 0 : 1) - 1 + (x0 > 16 ? 1 : 0)] = i % 3 === 0 ? pattern : shade; }
   }
-  // second-use variation so two bots never share a silhouette: shorts get a crest, longs get arms
-  const topY = (x: number) => { for (let y = 0; y < N; y++) if (grid[y][x]) return y; return -1; };
+  const ey = shape.eyeY;
+  // hood (short half): cloth over the head down to the eyes, framing the face, one pixel proud of the body, with a peak
   if (short) {
-    for (const [dx, h] of [[-3, 2], [0, 3], [3, 2]] as [number, number][]) {
-      const x = 15 + dx + (dx > 0 ? 1 : 0), t = topY(x);
-      if (t > 1) for (let i = 1; i <= h; i++) grid[t - i][x] = i === h ? light : pattern;
+    const cloth = hsl((hue + 200) % 360, 28, 26), clothLight = hsl((hue + 200) % 360, 30, 38), rim = hsl((hue + 200) % 360, 35, 48);
+    const hoodTo = ey + 3;
+    const body = grid.map((row) => row.map((c) => c !== null));
+    const isBody = (x: number, y: number) => body[y]?.[x] === true;
+    for (let y = 0; y <= Math.min(N - 1, hoodTo); y++) for (let x = 0; x < N; x++) {
+      const near = [[1, 0], [-1, 0], [0, -1], [1, -1], [-1, -1]].some(([dx, dy]) => isBody(x + dx, y + dy));
+      if (isBody(x, y)) {
+        let edge = 99;
+        for (let d = 1; d <= 3; d++) if (!isBody(x - d, y) || !isBody(x + d, y)) { edge = d; break; }
+        if (y <= ey - 2) grid[y][x] = y === ey - 2 ? rim : (x < 16 ? clothLight : cloth);
+        else if (edge <= 2) grid[y][x] = edge === 2 ? rim : cloth;
+      } else if (near && y >= 1) grid[y][x] = cloth;
     }
+    // peak on top, leaning back
+    let t = 0;
+    for (let y = 0; y < N; y++) if (grid[y][15] || grid[y][16]) { t = y; break; }
+    for (const [dx, dy] of [[0, -1], [1, -1], [1, -2], [2, -2], [2, -3]]) if (t + dy >= 0) grid[t + dy][15 + dx] = cloth;
   } else {
+    // arms
     let w = 0;
-    for (let x = 0; x < 16; x++) if (grid[shape.eyeY + 3]?.[x]) { w = x; break; }
-    if (w > 2) for (let i = 1; i <= 3; i++) { grid[shape.eyeY + 3 + (i === 3 ? 1 : 0)][w - i] = shade; grid[shape.eyeY + 3 + (i === 3 ? 1 : 0)][31 - (w - i)] = shade; }
+    for (let x = 0; x < 16; x++) if (grid[ey + 3]?.[x]) { w = x; break; }
+    if (w > 2) for (let i = 1; i <= 3; i++) { grid[ey + 3 + (i === 3 ? 1 : 0)][w - i] = shade; grid[ey + 3 + (i === 3 ? 1 : 0)][31 - (w - i)] = shade; }
   }
   // outline
   const out: (string | null)[][] = grid.map((row) => row.slice());
@@ -103,7 +120,6 @@ export function alienArt(bot: string): Art {
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (out[y][x]) px.push({ x, y, c: out[y][x] as string, layer: "body" });
   // eyes
   const nEyes = 1 + Math.floor(r() * 3);
-  const ey = shape.eyeY;
   const eyeXs = nEyes === 1 ? [15] : nEyes === 2 ? [11, 19] : [9, 15, 21];
   const big = nEyes === 1;
   for (const ex of eyeXs) {
@@ -120,14 +136,13 @@ export function alienArt(bot: string): Art {
     if (mouth === 1 && Math.abs(dx) <= 1) px.push({ x: 15 + dx + (dx > 0 ? 1 : 0), y: my, c: outline, layer: "body" });
   }
   if (mouth === 2) { px.push({ x: 14, y: my, c: outline, layer: "body" }, { x: 17, y: my, c: outline, layer: "body" }, { x: 15, y: my + 1, c: "#FFFFFF", layer: "body" }, { x: 16, y: my + 1, c: "#FFFFFF", layer: "body" }); }
-  // accessory: bull horns (long) or bear ears (short), plus a chest badge
-  const top = (x: number) => { for (let y = 0; y < N; y++) if (out[y][x] && out[y][x] !== null) return y; return 10; };
+  // bull horns (long half), plus a chest badge on both
+  const top = (x: number) => { for (let y = 0; y < N; y++) if (out[y][x]) return y; return 10; };
   if (!short) {
     const horn = "#F2E6C9", hornShade = "#C9B48A";
     for (const side of [-1, 1]) {
       const bx = side < 0 ? 10 : 21;
       const ty = top(bx);
-      // a thick curved horn: base 2px wide sweeping out and up to a point
       const pts: [number, number, string][] = [[0, 0, hornShade], [0, -1, horn], [side, -1, horn], [side, -2, horn], [side * 2, -2, horn],
         [side * 2, -1, hornShade], [side * 3, -2, horn], [side * 3, -3, horn], [side * 4, -3, hornShade], [side * 4, -4, horn], [side * 4, -5, "#FFFFFF"]];
       for (const [dx, dy, c] of pts) px.push({ x: bx + dx, y: ty + dy, c, layer: "acc" });
@@ -136,16 +151,10 @@ export function alienArt(bot: string): Art {
     }
     for (const [dx, dy] of [[0, 0], [-1, 1], [0, 1], [1, 1]]) px.push({ x: 15 + dx, y: Math.min(29, my + 4) + dy, c: "#4FCB8A", layer: "acc" });
   } else {
-    const fur = "#6B4A33", inner = "#E58FA8";
-    for (const bx of [8, 23]) {
-      const ty = top(bx) - 2;
-      for (let dy = 0; dy < 3; dy++) for (let dx = -1; dx <= 1; dx++) px.push({ x: bx + dx, y: ty + dy, c: dx === 0 && dy === 1 ? inner : fur, layer: "acc" });
-    }
     for (const [dx, dy] of [[-1, 0], [0, 0], [1, 0], [0, 1]]) px.push({ x: 15 + dx, y: Math.min(29, my + 4) + dy, c: "#E0604A", layer: "acc" });
   }
-  const skyHue = (hue + 180) % 360;
   const stars: [number, number][] = Array.from({ length: 5 }, () => [Math.floor(r() * 32), Math.floor(r() * 9)]);
-  return { px, sky: [hsl(skyHue, 35, 16), hsl(skyHue, 40, 26)], ground: hsl((hue + 90) % 360, 30, 28), stars,
+  return { px, sky: short ? ["#1F0B0E", "#3A1418"] : ["#0A1E14", "#123623"], ground: short ? "#4A1F22" : "#1F4A30", stars,
            species: SPECIES[bot] ?? bot };
 }
 
