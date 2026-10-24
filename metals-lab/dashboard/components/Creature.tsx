@@ -11,12 +11,12 @@ const SPECIES: Record<string, string> = {
   S01: "Oculon", S02: "Fanmantis", S03: "Bruiser", S04: "Prismid", S05: "Manyeye",
   S06: "Magmaw", S07: "Coilhorn", S08: "Snorkler", S09: "Ironhorn", S10: "Hollowheart",
 };
-/** Body colour of each sprite, for chart lines and legends. */
+/** Body colour of each sprite, for chart lines and legends. Every long half has its own colour, as does every short half. */
 const COLOUR: Record<string, string> = {
-  S01L: "#E96205", S01S: "#0597E9", S02L: "#33B277", S02S: "#9C33B2", S03L: "#2A5FB7", S03S: "#B7692A",
-  S04L: "#8051B2", S04S: "#54BC79", S05L: "#CB5083", S05S: "#48C2B9", S06L: "#B2551B", S06S: "#1C73B2",
-  S07L: "#EF9E07", S07S: "#EF0671", S08L: "#8736B2", S08S: "#44B237", S09L: "#B27239", S09S: "#7A39B2",
-  S10L: "#27B2A6", S10S: "#B22687",
+  S01L: "#EA8D3A", S01S: "#3AAEEA", S02L: "#3AEA65", S02S: "#EA3AC4", S03L: "#3A4EEA", S03S: "#EA9B3A",
+  S04L: "#3AB8EA", S04S: "#D1DBE5", S05L: "#EA3AB3", S05S: "#3AEAD3", S06L: "#EA3A3A", S06S: "#3A5DEA",
+  S07L: "#EAD33A", S07S: "#EA3B3A", S08L: "#9C3AEA", S08S: "#3AEA79", S09L: "#D1DBE5", S09S: "#983AEA",
+  S10L: "#3AEACE", S10S: "#EACF3A",
 };
 
 /** Display name and colour per bot, used everywhere a bot is shown. */
