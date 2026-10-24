@@ -85,10 +85,10 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 
 The operator runs a £3,000 demo. With 20 independent bots at 5% each, every bot starts with £150. Operator choices:
 
-- **Minimum lot per trade: gold 0.04, silver 0.02** (`min_lot: {GOLD: 0.04, SILVER: 0.02}`), even when that risks more than 3% of the bot. A bot trades more than the minimum only when 3% of its equity allows it, which at £150 is rare.
+- **Minimum lot per trade: gold 0.1, silver 0.05** (`min_lot: {GOLD: 0.1, SILVER: 0.05}`), even when that risks more than 3% of the bot. At £150 per bot the minimum is almost always what trades. Raised from 0.04/0.02 so a trade moves the balance by more than a few pounds; losses grow by the same factor.
 - **Per-trade cap 30%** (`max_trade_risk: 0.30`): a trade is skipped when even the minimum size would lose more than 30% of the bot's balance at its stop. At £150 that is £45: roughly a $15 gold stop or a 60-cent silver stop. One full loss at the cap equals the daily loss stop; two in a row bring a bot close to the 50% drawdown pause.
-- What that means (from the terminal's own figures, GBP account): gold 0.04 lot is about **£3 per $1 move**; silver 0.02 lot is about **£75 per $1 move**. Examples: a $5 gold stop loses about £15 (10% of £150); a $15 gold stop about £45 (30%, the cap). A 20-cent silver stop loses about £15 (10%); a 50-cent silver stop about £37 (25%).
-- Leverage (1:500) sets the margin, not the loss. Margin for 0.04 lot gold is lots × 100 oz × price ÷ 500, a few tens of pounds, so margin rarely limits these trades. The loss at the stop is the same at any leverage.
+- What that means (from the terminal's own figures, GBP account): gold 0.1 lot is about **£7.50 per $1 move**; silver 0.05 lot is about **£190 per $1 move** (scaled from the 0.04/0.02 figures). Examples on a £150 bot: a $2 gold stop loses about £15 (10%); a $6 gold stop about £45 (30%, the cap); wider gold stops are skipped. An 8-cent silver stop loses about £15 (10%); a 24-cent silver stop about £45 (the cap).
+- Leverage (1:500) sets the margin, not the loss. Margin for 0.1 lot gold is lots × 100 oz × price ÷ 500, roughly £50-80, and each bot must cover it from its own free balance, so two open gold trades can use most of a £150 bot. The loss at the stop is the same at any leverage.
 - **Daily stops** (new entries only; open trades keep running, so a day can end worse):
   - **Loss stop 30%** (`daily_loss_pause: 0.30`): down 30% on the day.
   - **Profit lock** (`daily_lock_from: 0.05`, `daily_giveback: 0.5`): once a bot is up 5% or more on the day, it stops for the day if it gives back half of its best gain that day. Three wins then losses: it stops with about half the day's gain kept.

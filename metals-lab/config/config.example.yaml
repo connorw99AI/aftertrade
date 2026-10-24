@@ -23,7 +23,7 @@ capital:
 
 risk:
   risk_per_trade: 0.03             # sizing target: trade more than min_lot only when 3% of the bot allows it
-  min_lot: {GOLD: 0.04, SILVER: 0.02}  # floor per trade, per metal (or one number for both); 0 = risk-sized only
+  min_lot: {GOLD: 0.1, SILVER: 0.05}  # floor per trade, per metal (or one number for both); 0 = risk-sized only
   per_trade_limit_enabled: false   # true = reject trades whose stop loss exceeds risk_per_trade
   pre_trade_limits: false          # true re-enables per-trade risk, margin-share and exposure caps; false = rely on stops/pauses
   max_entries_per_bot_per_day: 5   # new trades per bot per UTC day (a two-leg group counts once); 0 = no cap
@@ -39,7 +39,7 @@ risk:
   min_account_margin_level: 300
   max_account_margin_used: 0.5
   exposure_scope: per_bot          # exposure caps judge each bot as if it had its own account
-  max_metals_gross_exposure: 200.0 # position value / bot equity (0.04 lot of gold is roughly 50x a 300 bot)
+  max_metals_gross_exposure: 200.0 # position value / bot equity (0.1 lot of gold is roughly 250x a 150 bot)
   max_same_direction_exposure: 200.0
   max_spread_points: {GOLD: 80, SILVER: 80}
   commission_per_lot_side_estimate: 0.0   # set to your demo's commission for planning; actual commission comes from deals

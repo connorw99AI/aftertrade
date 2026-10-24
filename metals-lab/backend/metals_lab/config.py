@@ -23,7 +23,7 @@ DEFAULTS: dict[str, Any] = {
     "risk": {
         "risk_per_trade": 0.03,             # default; a bot may override it with strategies.<id>.risk_per_trade
         "max_risk_per_trade_cap": 0.03,     # hard ceiling for any per-bot override
-        "min_lot": {"GOLD": 0.04, "SILVER": 0.02},  # floor per trade: a number or per metal; 0 = risk-sized, skip if below broker min
+        "min_lot": {"GOLD": 0.1, "SILVER": 0.05},  # floor per trade: a number or per metal; 0 = risk-sized, skip if below broker min
         "per_trade_limit_enabled": False,   # True rejects entries whose planned stop loss exceeds risk_per_trade x bot equity
         "pre_trade_limits": False,          # True re-enables the per-trade risk, bot margin share, account margin share and
                                             # exposure caps below; False = losses are handled by the daily stops and drawdown pause
@@ -41,7 +41,7 @@ DEFAULTS: dict[str, Any] = {
         "max_account_margin_used": 0.5,     # fraction of account equity
         "exposure_scope": "per_bot",        # "per_bot": exposure caps use the bot's own positions and equity, as if it
                                             # had its own account; "account": all bots' positions vs account equity
-        "max_metals_gross_exposure": 200.0, # gross notional / equity (account currency); 0.04 lot gold is ~50x a 300 bot
+        "max_metals_gross_exposure": 200.0, # gross notional / equity (account currency); 0.1 lot gold is ~250x a 150 bot
         "max_same_direction_exposure": 200.0,# long-gold+long-silver (or short) notional / equity
         "max_spread_points": {"GOLD": 80, "SILVER": 80},
         "stop_buffer_points": 5,
