@@ -28,11 +28,23 @@ export default function Activity() {
   const funnel: Any[] = (span === "today" ? data?.funnel : data?.funnel_7d) ?? [];
   const alerts: Any[] = data?.alerts ?? [];
 
-  async function resolve(code: string) {
-    const name = confirmAction(`Mark alert ${code} as resolved?`);
+  // identical alerts (same severity and message) are shown once with a count and resolved together
+  const groups = Object.values(alerts.reduce((acc: Record<string, Any>, a) => {
+    const k = `${a.severity}|${a.message}`;
+    (acc[k] ??= { ...a, codes: [] as string[], first: a.ts, last: a.ts }).codes.push(a.code);
+    if (a.ts < acc[k].first) acc[k].first = a.ts;
+    if (a.ts > acc[k].last) acc[k].last = a.ts;
+    return acc;
+  }, {})) as Any[];
+
+  async function resolve(g: Any) {
+    const n = g.codes.length;
+    const name = confirmAction(n > 1 ? `Mark all ${n} of these alerts as resolved?` : `Mark alert ${g.code} as resolved?`);
     if (!name) return;
-    try { await api.post(`/api/alerts/${code}/resolve`, { operator: name, reason: "resolved from dashboard" }); reload(); }
-    catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
+    try {
+      for (const code of g.codes) await api.post(`/api/alerts/${code}/resolve`, { operator: name, reason: "resolved from dashboard" });
+    } catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
+    reload();
   }
 
   return (
@@ -43,10 +55,12 @@ export default function Activity() {
         <section className="panel alerts-panel">
           <h2>Open alerts</h2>
           <ul className="alert-list">
-            {alerts.map((a) => (
-              <li key={a.id} className={`sev-${a.severity}`}>
-                <b>{a.severity}</b> {a.message} <span className="muted">{when(a.created_at)}{a.blocks_entries ? " · blocks new entries" : ""}</span>
-                <button className="small-btn" onClick={() => resolve(a.code)}>Resolve</button>
+            {groups.map((g) => (
+              <li key={g.id} className={`sev-${g.severity}`}>
+                <b>{g.severity}</b>
+                <span className="alert-msg">{g.message}{g.codes.length > 1 && <span className="alert-count">×{g.codes.length}</span>}</span>
+                <span className="muted small">{g.codes.length > 1 ? `${when(g.first)} to ${when(g.last)}` : when(g.ts)}{g.blocks_entries ? ", blocks new entries" : ""}</span>
+                <button className="small-btn" onClick={() => resolve(g)}>{g.codes.length > 1 ? `Resolve all ${g.codes.length}` : "Resolve"}</button>
               </li>
             ))}
           </ul>

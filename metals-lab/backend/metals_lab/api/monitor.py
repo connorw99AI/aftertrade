@@ -91,6 +91,7 @@ def register(app: FastAPI, state, auth) -> None:
                 "entries_today": c.entries_today(b) if c else 0,
                 "max_entries_per_day": int(rk.get("max_entries_per_bot_per_day", 0) or 0),
                 "open_positions": opens, "verdicts": verdicts, "thinking_as_of": th.get("bar_time"),
+                "metals": (c.strategy(b).p.get("metals") or "both") if c else "both",
             })
         alerts = db.q("SELECT * FROM alerts WHERE resolved_at IS NULL ORDER BY id DESC")
         bots.sort(key=lambda x: x["status"] == "RETIRED")  # retired halves go last (stable: otherwise in bot order)

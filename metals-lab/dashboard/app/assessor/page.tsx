@@ -53,6 +53,17 @@ export default function Assessor() {
 
   const sugg: Any[] = data?.suggestions ?? [];
   const cards: Any[] = [...(data?.cards ?? [])].sort((a, b) => Number(a.status === "RETIRED") - Number(b.status === "RETIRED"));
+  const reportCard = (c: Any) => (
+    <div key={c.bot_id} className={`report-card ${c.status === "RETIRED" ? "card-retired" : ""}`}>
+      <Link href={`/bot?id=${c.bot_id}&tab=review`} className="who"><Creature bot={c.bot_id} size={36} mood={c.status === "RETIRED" ? "asleep" : "idle"} />
+        <span><b>{CREATURES[c.bot_id]?.name}</b><br /><span className="muted small">{c.bot_id} · {c.name}</span></span><StatusBadge status={c.status} /></Link>
+      <Grade g={c.demo.grade} label="Demo" />
+      <Grade g={c.backtest.grade} label="Backtest" />
+      {c.status !== "RETIRED" && (c.demo.grade?.grade === "retire" || c.backtest.grade?.grade === "retire") &&
+        <button className="btn-retire small-btn" onClick={() => retire(c.bot_id, c.demo.grade?.grade === "retire" ? c.demo.grade.why : c.backtest.grade.why)}>Retire</button>}
+    </div>
+  );
+
   return (
     <>
       <div className="hero">
@@ -100,17 +111,14 @@ export default function Assessor() {
 
       <h2>Report cards</h2>
       <div className="report-cards">
-        {cards.map((c) => (
-          <div key={c.bot_id} className={`report-card ${c.status === "RETIRED" ? "card-retired" : ""}`}>
-            <Link href={`/bot?id=${c.bot_id}&tab=review`} className="who"><Creature bot={c.bot_id} size={36} mood={c.status === "RETIRED" ? "asleep" : "idle"} />
-              <span><b>{CREATURES[c.bot_id]?.name}</b><br /><span className="muted small">{c.bot_id} · {c.name}</span></span><StatusBadge status={c.status} /></Link>
-            <Grade g={c.demo.grade} label="Demo" />
-            <Grade g={c.backtest.grade} label="Backtest" />
-            {c.status !== "RETIRED" && (c.demo.grade?.grade === "retire" || c.backtest.grade?.grade === "retire") &&
-              <button className="btn-retire small-btn" onClick={() => retire(c.bot_id, c.demo.grade?.grade === "retire" ? c.demo.grade.why : c.backtest.grade.why)}>Retire</button>}
-          </div>
-        ))}
+        {cards.filter((c) => c.status !== "RETIRED").map(reportCard)}
       </div>
+      {cards.some((c) => c.status === "RETIRED") && (
+        <details className="retired-fold">
+          <summary>{cards.filter((c) => c.status === "RETIRED").length} retired halves</summary>
+          <div className="report-cards">{cards.filter((c) => c.status === "RETIRED").map(reportCard)}</div>
+        </details>
+      )}
 
       <h2>What got blocked (last 7 days)</h2>
       {(data?.blocks ?? []).length === 0 ? <p className="empty">Nothing blocked.</p> : (

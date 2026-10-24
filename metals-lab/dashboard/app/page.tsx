@@ -15,12 +15,14 @@ function mood(b: Any): Mood {
 
 function BotCard({ b }: { b: Any }) {
   const inTrade = b.open_positions.length > 0;
-  const roles = Object.keys(b.verdicts || {});
+  // only the metals this bot may trade (a gold-only bot has nothing to say about silver), plus any metal it is in a trade on
+  const roles = Object.keys(b.verdicts || {}).filter((r) => b.metals === "both" || r.toLowerCase() === b.metals
+    || b.open_positions.some((p: Any) => p.role === r));
   const tone = b.status === "RETIRED" ? "card-retired" : b.stopped_for_day ? "card-stopped" : inTrade ? "card-trade" : b.status !== "RUNNING" ? "card-idle" : "";
   return (
     <Link href={`/bot?id=${b.bot_id}`} className={`botcard bc-${b.side} ${tone}`}>
       <div className="botcard-top">
-        <span className="botcard-tags"><span className="tf-tag">{b.timeframe}</span><StatusBadge status={b.status} /></span>
+        <span className="botcard-tags"><span className="tf-tag">{b.timeframe}</span>{b.status !== "RUNNING" && <StatusBadge status={b.status} />}</span>
         <SideIcon bot={b.bot_id} />
       </div>
       <div className="botcard-art"><Creature bot={b.bot_id} size={150} mood={mood(b)} scene /></div>

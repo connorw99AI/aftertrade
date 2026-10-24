@@ -323,7 +323,7 @@ svg.multi-eq .axis { fill: var(--muted); font-size: 11px; }
 .report-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
 .report-card { background: var(--panel); border-radius: 10px; padding: 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; align-items: start; }
 .report-card .who { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; min-width: 0; }
-.report-card .who > span:not(.badge) { flex: 1; min-width: 0; }
+.report-card .who > span:not(.badge):not(.creature) { flex: 1; min-width: 0; }
 .report-card .who > .badge { flex: none; }
 .report-card .grade { display: grid; min-width: 0; overflow-wrap: anywhere; }
 .report-card > .btn-retire { grid-column: 1 / -1; justify-self: start; }
@@ -453,3 +453,14 @@ button.primary { background: linear-gradient(180deg, var(--bronze-hi), var(--bro
 .closebar { background: #050709; border: 1px solid var(--line); }
 .closebar span.full { background: var(--bull); box-shadow: 0 0 6px var(--bull); }
 .dot.on { background: var(--bull); }
+
+/* critique fixes */
+button:disabled, .controls button:disabled { opacity: .32; filter: grayscale(.7); box-shadow: none; cursor: not-allowed; }
+.report-card { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.report-card .who .muted { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.retired-fold { margin-top: 10px; }
+.retired-fold > summary { padding: 8px 0; color: var(--muted); }
+.retired-fold[open] > summary { margin-bottom: 8px; }
+.alert-list li { flex-wrap: nowrap; }
+.alert-list .alert-msg { flex: 1; min-width: 0; }
+.alert-count { margin-left: 8px; font-family: var(--pixel); font-size: .8rem; color: var(--bronze-hi); }
