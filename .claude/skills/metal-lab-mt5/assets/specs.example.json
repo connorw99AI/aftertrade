@@ -1,0 +1,16 @@
+{
+  "_note": "ILLUSTRATIVE ONLY. Contract specs differ by broker. Generate the real file with DumpSymbolSpecs.mq5 on the account you trade.",
+  "account": {"currency": "USD", "leverage": 100, "margin_mode": 2},
+  "symbols": {
+    "XAUUSD": {
+      "digits": 2, "point": 0.01, "tick_size": 0.01, "tick_value": 1.0, "tick_value_loss": 1.0,
+      "contract_size": 100, "volume_min": 0.01, "volume_max": 50.0, "volume_step": 0.01,
+      "spread_points": 25, "stops_level_points": 0, "margin_initial": 0.0
+    },
+    "XAGUSD": {
+      "digits": 3, "point": 0.001, "tick_size": 0.001, "tick_value": 5.0, "tick_value_loss": 5.0,
+      "contract_size": 5000, "volume_min": 0.01, "volume_max": 50.0, "volume_step": 0.01,
+      "spread_points": 30, "stops_level_points": 0, "margin_initial": 0.0
+    }
+  }
+}

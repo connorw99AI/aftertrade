@@ -1,0 +1,33 @@
+{
+  "_note": "Illustrative starting values, not recommendations. Set your own limits, then run scripts/riskcheck.py.",
+  "limits": {
+    "risk_per_trade_pct": 0.5,
+    "max_daily_loss_pct": 2.0,
+    "max_weekly_loss_pct": 4.0,
+    "max_drawdown_pct": 8.0,
+    "max_open_positions": 3,
+    "max_lots_per_trade": 0.5,
+    "max_total_lots": 1.0,
+    "max_entries_per_day": 6,
+    "max_consecutive_losses": 4,
+    "cooldown_minutes_after_loss": 30,
+    "max_spread_points": 40,
+    "min_margin_level_pct": 400,
+    "session_start_hour": -1,
+    "session_end_hour": -1,
+    "friday_cutoff_hour": 18,
+    "close_on_breach": true
+  },
+  "assessor": {
+    "min_trades": 30,
+    "bot_drawdown_pause_pct": 6.0,
+    "max_cost_share_of_gross_profit": 0.3,
+    "top3_concentration": 0.5,
+    "pf_drift_ratio": 0.6,
+    "win_rate_drift_points": 0.15
+  },
+  "bots": {
+    "1001": {"name": "Bot One", "expected_pf": null, "expected_win_rate": null},
+    "1002": {"name": "Bot Two", "expected_pf": null, "expected_win_rate": null}
+  }
+}
