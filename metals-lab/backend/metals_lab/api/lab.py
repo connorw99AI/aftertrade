@@ -149,10 +149,17 @@ def register(app: FastAPI, state, auth) -> None:
     fetch_job: dict = {"state": "IDLE"}
 
     def default_capital() -> float:
+        """What one bot starts with: the starting balance (or the balance now, before the first arm) x bot_fraction.
+        Taken from the config, not a bot's ledger, so an old database's allocations can never leak into a backtest."""
         c = state.coord
+        frac = float(state.cfg["capital"]["bot_fraction"])
         if c:
             try:
-                return round(c.bot_book(BOT_IDS[0]).allocation, 2) or 1000.0
+                acct = c.account
+                snap = c.ledger.snapshot(acct.fingerprint) if acct and acct.fingerprint else None
+                base = float(snap["starting_balance"]) if snap else float((c.ro.account_info() or {}).get("balance") or 0)
+                if base > 0:
+                    return round(base * frac, 2)
             except Exception:
                 pass
         return 1000.0

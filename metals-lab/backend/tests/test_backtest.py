@@ -216,3 +216,16 @@ def test_drawdown_pause_restarts_next_day_like_a_manual_restart(specs):
     assert off.metrics["drawdown_restarts"] == 0 and len(days(off)) == 1      # stopped for good on day one
     assert on.metrics["drawdown_restarts"] >= 1 and len(days(on)) >= 2        # restarted the next day and kept trading
     assert any(r.startswith("DRAWDOWN_RESTARTS") for r in on.reliability)
+
+
+def test_dates_with_no_price_history_fail_clearly_instead_of_zero_trades(specs):
+    from metals_lab.backtest.engine import NoDataInRange
+    rows = FLAT * 3
+    with pytest.raises(NoDataInRange, match="no H1 price history between 2013-01-01 and 2019-12-31.*covers: gold H1 2026-03-02"):
+        run(rows, {"at": 3}, specs, cfg(start="2013-01-01", end="2020-01-01"))
+
+
+def test_dates_reaching_past_the_history_are_flagged(specs):
+    res = run(FLAT * 3, {"at": 3}, specs, cfg(start="2026-01-01"))
+    assert any(x.startswith("PARTIAL_DATA") and "2026-03-02" in x for x in res.reliability)
+    assert not any(x.startswith("PARTIAL_DATA") for x in run(FLAT * 3, {"at": 3}, specs, cfg(start="2026-03-02")).reliability)

@@ -26,6 +26,7 @@ from ..strategies.base import Strategy, StrategyContext, contract_loss
 from . import metrics as M
 from .models import BacktestConfig
 
+
 def _ns(df: pd.DataFrame) -> pd.DataFrame:
     """Copy with nanosecond UTC timestamps (pandas>=3 may default to us resolution)."""
     df = df.reset_index(drop=True).copy()
@@ -34,6 +35,18 @@ def _ns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 AuditFn = Callable[[Signal, pd.Timestamp], tuple[str, list[str]]]
+
+
+class NoDataInRange(ValueError):
+    """The requested backtest dates have no downloaded price bars."""
+
+
+def _day(t) -> str:
+    return pd.Timestamp(t).strftime("%Y-%m-%d")
+
+
+def _day_before(end: str) -> str:
+    return (pd.Timestamp(end) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 @dataclass
@@ -141,6 +154,14 @@ class Backtester:
             timeline = timeline[timeline >= pd.Timestamp(cfg.start, tz="UTC").value]
         if cfg.end:
             timeline = timeline[timeline < pd.Timestamp(cfg.end, tz="UTC").value]
+        if not len(timeline):
+            # never report "0 trades" for a period there is no price data for: say what data exists instead
+            have = "; ".join(f"{r.lower()} {ptf} {_day(df['time'].iloc[0])} to {_day(df['time'].iloc[-1])}" if len(df) else f"{r.lower()} {ptf} none"
+                             for r, df in prim.items())
+            raise NoDataInRange(f"no {ptf} price history between {cfg.start or 'the start'} and {_day_before(cfg.end) if cfg.end else 'today'}. "
+                                f"Downloaded history covers: {have}. Download that period from MT5 first; MT5 only returns as much "
+                                f"history as the broker keeps and its 'Max bars in chart' setting allows.")
+        self._coverage_gap = self._coverage_note(prim, timeline)
 
         cash = cfg.initial_capital
         positions: dict[str, _Pos] = {}
@@ -480,8 +501,21 @@ class Backtester:
                     return "TP"
         return None
 
+    def _coverage_note(self, prim: dict, timeline) -> Optional[str]:
+        """A warning when the requested dates reach beyond the downloaded history (the run silently covers less)."""
+        ptf = self.s.primary_timeframe
+        first, last = pd.Timestamp(int(timeline[0]), tz="UTC"), pd.Timestamp(int(timeline[-1]), tz="UTC")
+        want_from = pd.Timestamp(self.cfg.start, tz="UTC") if self.cfg.start else None
+        want_to = pd.Timestamp(self.cfg.end, tz="UTC") - pd.Timedelta(days=1) if self.cfg.end else None
+        short = (want_from is not None and first - want_from > pd.Timedelta(days=7)) or \
+                (want_to is not None and want_to - last > pd.Timedelta(days=7))
+        if not short:
+            return None
+        return (f"PARTIAL_DATA: you asked for {_day(want_from) if want_from is not None else 'the start'} to "
+                f"{_day(want_to) if want_to is not None else 'today'}, but {ptf} history only covers {_day(first)} to {_day(last)}")
+
     def _reliability(self, mets: dict) -> list[str]:
-        out = []
+        out = [self._coverage_gap] if getattr(self, "_coverage_gap", None) else []
         src = {str(v.get("source")) for v in self.data_meta.values()} if self.data_meta else set()
         if "SYNTHETIC" in src or not src:
             out.append("SYNTHETIC_OR_UNKNOWN_DATA: results say nothing about real markets")

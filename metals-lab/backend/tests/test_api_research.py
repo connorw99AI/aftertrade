@@ -74,6 +74,8 @@ def test_backtest_endpoint_labels_replay(client):
     assert b["status"] == "DONE", b.get("diagnostics")
     assert b["label"].startswith("HISTORICAL REPLAY")
     assert any("SYNTHETIC" in x for x in b["reliability"])
+    # each bot starts with bot_fraction (5%) of the starting balance, not whatever an old database allocated
+    assert b["metrics"]["initial_capital"] == round(200000.0 * 0.05, 2)
 
 
 def test_dataset_store_versioning_integrity_and_quality(tmp_path, intraday_frames):
