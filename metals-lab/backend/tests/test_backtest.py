@@ -229,3 +229,35 @@ def test_dates_reaching_past_the_history_are_flagged(specs):
     res = run(FLAT * 3, {"at": 3}, specs, cfg(start="2026-01-01"))
     assert any(x.startswith("PARTIAL_DATA") and "2026-03-02" in x for x in res.reliability)
     assert not any(x.startswith("PARTIAL_DATA") for x in run(FLAT * 3, {"at": 3}, specs, cfg(start="2026-03-02")).reliability)
+
+
+FALLING = [(2000 - 6 * i, 2001 - 6 * i, 1990 - 6 * i, 1994 - 6 * i) for i in range(16)]  # one day, every long loses
+
+
+def test_guard_losing_streak_pause_and_cooldown(specs):
+    base = Backtester(EveryBar(), {("GOLD", "H1"): frame(FALLING)}, specs,
+                      cfg(risk=RiskParams(risk_per_trade=0.01, daily_loss_pause=0.99))).run()
+    streak = Backtester(EveryBar(), {("GOLD", "H1"): frame(FALLING)}, specs,
+                        cfg(risk=RiskParams(risk_per_trade=0.01, daily_loss_pause=0.99, max_consecutive_losses=2))).run()
+    assert len(base.trades) > 2 and len(streak.trades) == 2                 # paused after two losses in a row
+    assert streak.metrics["loss_streak_pauses"] == 1 and any(r.startswith("LOSS_STREAK_PAUSES") for r in streak.reliability)
+    cool = Backtester(EveryBar(), {("GOLD", "H1"): frame(FALLING)}, specs,
+                      cfg(risk=RiskParams(risk_per_trade=0.01, daily_loss_pause=0.99, cooldown_minutes_after_loss=180))).run()
+    assert 0 < len(cool.trades) < len(base.trades) and cool.diagnostics["blocked_cooldown"] > 0
+
+
+def test_guard_closes_the_bots_trades_when_a_loss_limit_trips(specs):
+    risk = RiskParams(risk_per_trade=0.01, daily_loss_pause=0.002, close_on_breach=True)
+    holds = lambda: OneShot({"at": 1, "stop": 50.0})    # one long with a wide stop, held while price falls
+    res = Backtester(holds(), {("GOLD", "H1"): frame(FALLING)}, specs, cfg(risk=risk)).run()
+    assert "GUARD_BREACH" in set(res.trades["exit_reason"]) and res.diagnostics["guard_closes"] >= 1
+    kept = Backtester(holds(), {("GOLD", "H1"): frame(FALLING)}, specs, cfg(risk=RiskParams(risk_per_trade=0.01, daily_loss_pause=0.002))).run()
+    assert "GUARD_BREACH" not in set(kept.trades["exit_reason"])
+
+
+def test_guard_lot_caps(specs):
+    big = RiskParams(risk_per_trade=0.5, max_lots_per_trade=0.2)        # a 50% budget would size far above 0.2 lots
+    res = Backtester(EveryBar(), {("GOLD", "H1"): frame(FLAT * 2)}, specs, cfg(risk=big)).run()
+    assert len(res.trades) and res.trades["volume"].max() <= 0.2 + 1e-9
+    capped = Backtester(EveryBar(), {("GOLD", "H1"): frame(FLAT * 2)}, specs, cfg(risk=RiskParams(risk_per_trade=0.5, max_lots_per_bot=0.001))).run()
+    assert len(capped.trades) == 0 and capped.diagnostics["blocked_lot_cap"] > 0

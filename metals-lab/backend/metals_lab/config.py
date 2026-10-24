@@ -36,6 +36,14 @@ DEFAULTS: dict[str, Any] = {
         "daily_lock_from": 0.05,            # profit lock: once up this much on the day...
         "daily_giveback": 0.5,              # ...stop for the day after giving back this share of the day's best gain (0 = off)
         "daily_profit_stop": 0.0,           # stop after gaining this much (0 = off); open trades stay managed
+        # per-bot guard rules from the Metal Lab MT5 risk guard (risk/guard.py)
+        "weekly_loss_pause": 0.40,          # no new entries for the rest of the UTC week after losing this much (0 = off)
+        "max_consecutive_losses": 4,        # pause the bot (Start resumes it) after this many losing trades in a row (0 = off)
+        "cooldown_minutes_after_loss": 30,  # no new entry for this long after a losing trade (0 = off)
+        "max_lots_per_trade": {"GOLD": 0.5, "SILVER": 0.3},  # one trade never larger than this (risk sizing is clamped)
+        "max_lots_per_bot": 1.0,            # all of one bot's open trades together
+        "daily_headroom_check": False,      # True: today's loss + this trade's risk at its stop must fit the daily loss stop
+        "close_on_breach": True,            # close the bot's own open trades when a loss limit trips
         "max_drawdown_pause": 0.50,         # >0 pauses a bot (operator resumes) after this fall from its peak; 0 = off
         "weekend_flat_from": "20:00",       # Friday UTC: close every position, no entries until Sunday 22:00 UTC; null = hold
         "max_positions_per_bot": 2,

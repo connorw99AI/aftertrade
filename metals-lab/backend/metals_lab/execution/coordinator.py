@@ -36,6 +36,7 @@ from ..risk import RiskContext, RiskEngine, risk_pct_for
 from ..sessions import ServerClock, calendar_from_config, calendar_from_mql5_export
 from ..store import Store, now_iso
 from ..risk.daily import TEXT as DAILY_TEXT, daily_stop
+from ..risk.guard import LOSS_LIMITS, loss_streak, week_start, weekly_stop
 from ..strategies import ASSESSOR_RETIRED, BOT_IDS, STRATEGY_CLASSES, Strategy, build, magic_for, strategy_for_magic  # noqa: F401
 from ..strategies.base import StrategyContext
 from .approvals import ApprovalAuthority, Proposal
@@ -267,6 +268,7 @@ class Coordinator:
         if old and old["status"] == "PAUSED_RISK" and status == "RUNNING":
             # a restart after the drawdown pause measures the drawdown from now on; otherwise the next cycle re-pauses it
             self.db.x("DELETE FROM bot_peak WHERE bot_id=?", (bot_id,))
+            self.db.set_control(f"streak_reset:{bot_id}", now_iso())  # a restart also clears the losing streak
         self.db.x("UPDATE bots SET status=?, pause_reason=?, enabled=?, updated_at=? WHERE bot_id=?",
                   (status, reason, int(status == "RUNNING"), now_iso(), bot_id))
         self.db.x("INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
@@ -477,9 +479,30 @@ class Coordinator:
             if stop:  # holds for the rest of the UTC day, even if equity recovers
                 self.db.x("UPDATE bot_day_start SET stopped=? WHERE bot_id=? AND day=?", (stop, bot, day))
                 self.db.event("DAILY_STOP", bot, {"reason": DAILY_TEXT[stop], "day_start": round(ds, 2), "equity": round(equity, 2)})
+                self.__dict__.setdefault("_trips", {}).setdefault(bot, []).append(stop)
+        wk = week_start(now)
+        self.db.x("INSERT OR IGNORE INTO bot_week_start(bot_id,week,equity) VALUES(?,?,?)", (bot, wk, equity))
+        w = self.db.one("SELECT equity, stopped FROM bot_week_start WHERE bot_id=? AND week=?", (bot, wk))
+        if not w["stopped"]:
+            stop = weekly_stop(w["equity"], equity, self.cfg["risk"])
+            if stop:  # holds for the rest of the UTC week
+                self.db.x("UPDATE bot_week_start SET stopped=? WHERE bot_id=? AND week=?", (stop, bot, wk))
+                self.db.event("WEEKLY_STOP", bot, {"week_start": round(w["equity"], 2), "equity": round(equity, 2)})
+                self.__dict__.setdefault("_trips", {}).setdefault(bot, []).append(stop)
         self.db.x("INSERT INTO bot_peak(bot_id,peak) VALUES(?,?) ON CONFLICT(bot_id) DO UPDATE SET peak=MAX(peak, excluded.peak)", (bot, equity))
         pk = self.db.one("SELECT peak FROM bot_peak WHERE bot_id=?", (bot,))["peak"]
         return ds, pk
+
+    def guard_state(self, bot: str) -> dict:
+        """The per-bot guard inputs: losing streak since the last restart, last loss time, weekly stop, open lots."""
+        reset = self.db.get_control(f"streak_reset:{bot}") or ""
+        rows = self.db.q("SELECT net, exit_time FROM trades WHERE bot_id=? AND exit_time>? ORDER BY exit_time DESC LIMIT 50", (bot, reset))
+        last = rows[0] if rows and rows[0]["net"] is not None and rows[0]["net"] < 0 else None
+        wk = self.db.one("SELECT stopped FROM bot_week_start WHERE bot_id=? ORDER BY week DESC LIMIT 1", (bot,))
+        lots = self.db.one("SELECT COALESCE(SUM(volume_open),0) v FROM positions WHERE bot_id=? AND status='OPEN'", (bot,))["v"]
+        return {"streak": loss_streak(r["net"] for r in rows),
+                "last_loss_at": datetime.fromisoformat(last["exit_time"]) if last else None,
+                "week_stopped": wk["stopped"] if wk else None, "open_lots": float(lots or 0)}
 
     def _day_row(self, bot: str) -> dict:
         return self.db.one("SELECT high, stopped FROM bot_day_start WHERE bot_id=? ORDER BY day DESC LIMIT 1", (bot,)) or {}
@@ -538,10 +561,27 @@ class Coordinator:
         book = self.bot_book(bot, rep)
         ds, pk = self._day_and_peak(bot, book.equity, now) if snap else (book.equity, book.equity)
         ddp = float(self.cfg["risk"].get("max_drawdown_pause") or 0)
+        trips = self.__dict__.setdefault("_trips", {}).pop(bot, [])
         if ddp > 0 and snap and pk and (book.equity - pk) / pk <= -ddp and status == "RUNNING":
             self.db.x("UPDATE bots SET status='PAUSED_RISK', pause_reason='max drawdown reached' WHERE bot_id=?", (bot,))
             self.db.event("BOT_PAUSED", bot, {"reason": "max drawdown"})
             status = "PAUSED_RISK"
+            trips.append("MAX_DRAWDOWN_LIMIT")
+        rk = self.cfg["risk"]
+        streak_cap = int(rk.get("max_consecutive_losses") or 0)
+        if snap and streak_cap and status == "RUNNING":
+            streak = self.guard_state(bot)["streak"]
+            if streak >= streak_cap:  # the guard's "needs a human look": paused until you press Start
+                self.db.x("UPDATE bots SET status='PAUSED_RISK', pause_reason=? WHERE bot_id=?", (f"{streak} losses in a row", bot))
+                self.db.event("BOT_PAUSED", bot, {"reason": f"{streak} losses in a row"})
+                status = "PAUSED_RISK"
+                trips.append("LOSS_STREAK_LIMIT")
+        if rk.get("close_on_breach") and has_pos and any(t in LOSS_LIMITS for t in trips):
+            # close this bot's own trades through the guarded pipeline; other bots are not touched
+            why = ", ".join(DAILY_TEXT.get(t, t.replace("_", " ").lower()) for t in trips if t in LOSS_LIMITS)
+            for r in self.db.q("SELECT * FROM positions WHERE bot_id=? AND status='OPEN'", (bot,)):
+                self._close_position_row(r, f"GUARD: {why} (close on breach)")
+            self.db.event("GUARD_CLOSE", bot, {"reason": why})
         # only act when a new primary bar completed, or a delayed proposal is due for reassessment
         ptf = strat.primary_timeframe
         frames = {(r, tf): self.get_frame(r, tf, max(strat.min_history_bars + 50, 300), now)
@@ -597,6 +637,8 @@ class Coordinator:
             killed=self.db.get_control("kill") == "1", global_paused=self.db.get_control("global_pause") == "1",
             bot_status=self.db.one("SELECT status FROM bots WHERE bot_id=?", (bot,))["status"], book=book,
             day_start_equity=ds, peak_equity=pk, day_high_equity=self._day_row(bot).get("high") or ds, day_stopped=self._day_row(bot).get("stopped"),
+            **(lambda g: {"week_stopped": g["week_stopped"], "loss_streak": g["streak"], "last_loss_at": g["last_loss_at"],
+                          "bot_open_lots": g["open_lots"]})(self.guard_state(bot)),
             bot_open_positions=self.db.one("SELECT COUNT(*) n FROM positions WHERE bot_id=? AND status='OPEN'", (bot,))["n"],
             account_equity=float(info.get("equity") or 0), account_margin=float(info.get("margin") or 0),
             account_margin_level=float(info.get("margin_level") or 0), gross_exposure_notional=gross, same_direction_notional=same,
@@ -674,7 +716,8 @@ class Coordinator:
             entries, book.equity, self.specs, risk_pct_for(self.cfg, bot), self.risk.loss_at_stop,
             lambda spec: self.risk.est_cost_per_lot(spec, ticks.get(spec.role), commission),
             min_lot=self.cfg["risk"].get("min_lot", 0.0) or 0.0, max_risk_pct=float(self.cfg["risk"].get("max_trade_risk") or 0),
-            big_lot=self.cfg["risk"].get("big_lot", 0.0) or 0.0, big_lot_max_risk=float(self.cfg["risk"].get("big_lot_max_risk") or 0))
+            big_lot=self.cfg["risk"].get("big_lot", 0.0) or 0.0, big_lot_max_risk=float(self.cfg["risk"].get("big_lot_max_risk") or 0),
+            max_lots=self.cfg["risk"].get("max_lots_per_trade", 0.0) or 0.0)
         approved: list[tuple] = []
         group = any(s.group_id for s in entries)
         for tp in tps:

@@ -157,3 +157,34 @@ def test_every_bot_trades_both_metals_while_the_switch_is_on(armed):
     assert armed.strategy("S03L").p["metals"] == "both"                   # a saved metal filter is overridden
     armed.cfg["trading"]["all_metals"] = False
     assert armed.strategy("S03L").p["metals"] == "gold"                   # switch off: the bot's own setting applies
+
+
+def test_guard_entry_blocks():
+    from datetime import timedelta
+    from metals_lab.risk.guard import entry_blocks, loss_streak, week_start
+    r = {"max_consecutive_losses": 4, "cooldown_minutes_after_loss": 30, "max_lots_per_trade": {"GOLD": 0.5}, "max_lots_per_bot": 1.0,
+         "daily_loss_pause": 0.30, "daily_headroom_check": True}
+    ok = dict(risk=r, now=NOW, role="GOLD", volume=0.1, bot_open_lots=0.0, streak=0, last_loss_at=None, week_stopped=None,
+              day_loss_pct=0.0, planned_risk_pct=0.1)
+    assert entry_blocks(**ok) == []
+    assert entry_blocks(**{**ok, "streak": 4}) == ["LOSS_STREAK_LIMIT"]
+    assert entry_blocks(**{**ok, "streak": 1, "last_loss_at": NOW - timedelta(minutes=10)}) == ["LOSS_COOLDOWN"]
+    assert entry_blocks(**{**ok, "streak": 1, "last_loss_at": NOW - timedelta(minutes=40)}) == []
+    assert entry_blocks(**{**ok, "volume": 0.6}) == ["LOTS_ABOVE_TRADE_CAP"]
+    assert entry_blocks(**{**ok, "bot_open_lots": 0.95}) == ["LOTS_ABOVE_BOT_CAP"]
+    assert entry_blocks(**{**ok, "day_loss_pct": 0.25}) == ["DAILY_HEADROOM"]
+    assert entry_blocks(**{**ok, "week_stopped": "WEEKLY_LOSS_LIMIT"}) == ["WEEKLY_LOSS_LIMIT"]
+    assert loss_streak([-1, -2, 3, -4]) == 2 and week_start(NOW) == "2026-10-19"
+
+
+def test_live_losing_streak_pauses_the_bot_until_start(armed):
+    for i in range(4):
+        armed.db.x("INSERT INTO trades(trade_id,bot_id,exit_time,net,provisional) VALUES(?,?,?,?,1)",
+                   (f"t{i}", "S01L", f"2099-01-0{i + 1}T00:00:00+00:00", -5.0))
+    assert armed.guard_state("S01L")["streak"] == 4
+    armed.cycle()
+    row = armed.db.one("SELECT status, pause_reason FROM bots WHERE bot_id='S01L'")
+    assert row["status"] == "PAUSED_RISK" and "4 losses in a row" in row["pause_reason"]
+    armed.set_bot_status("S01L", "RUNNING", operator="pytest")
+    armed.db.set_control("streak_reset:S01L", "2099-12-31T00:00:00+00:00")  # Start clears the streak (the trades above are future-dated)
+    assert armed.guard_state("S01L")["streak"] == 0

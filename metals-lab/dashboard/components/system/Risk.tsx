@@ -26,6 +26,13 @@ function limitSentences(l: Any): [string, string][] {
   say("daily_loss_pause", `A bot opens nothing more that UTC day once it is down ${pc(l.daily_loss_pause)} on the day.`);
   say("daily_giveback", l.daily_giveback ? `Profit lock: once a bot is up ${pc(l.daily_lock_from ?? 0)} or more on the day, it stops for the day if it gives back ${pc(l.daily_giveback)} of its best gain that day.` : "There is no profit lock.");
   say("daily_profit_stop", l.daily_profit_stop ? `A bot opens nothing more that day once it is up ${pc(l.daily_profit_stop)}; open trades stay managed.` : "There is no daily profit stop.");
+  say("weekly_loss_pause", l.weekly_loss_pause ? `A bot opens nothing more that UTC week once it is down ${pc(l.weekly_loss_pause)} on the week.` : "There is no weekly loss stop.");
+  say("max_consecutive_losses", l.max_consecutive_losses ? `A bot pauses after ${l.max_consecutive_losses} losing trades in a row; you restart it with Start.` : "No pause after a losing streak.");
+  say("cooldown_minutes_after_loss", l.cooldown_minutes_after_loss ? `After a losing trade a bot waits ${l.cooldown_minutes_after_loss} minutes before its next entry.` : "No cooldown after a loss.");
+  say("max_lots_per_trade", `One trade is never larger than ${metals(l.max_lots_per_trade, " lots")}; risk sizing is clamped to it.`);
+  say("max_lots_per_bot", l.max_lots_per_bot ? `All of one bot's open trades together stay at or below ${l.max_lots_per_bot} lots.` : "No cap on a bot's total open lots.");
+  say("daily_headroom_check", l.daily_headroom_check ? "A trade is refused if a stop-out would take the bot past its daily loss stop." : "A trade may be taken even if a stop-out would take the bot past its daily loss stop.");
+  say("close_on_breach", l.close_on_breach ? "When a bot hits its daily or weekly loss stop, drawdown pause or losing-streak pause, its own open trades are closed." : "Open trades keep running when a loss limit trips.");
   say("max_drawdown_pause", l.max_drawdown_pause ? `A bot pauses after falling ${pc(l.max_drawdown_pause)} from its peak; you restart it with Start.` : "There is no drawdown pause.");
   say("weekend_flat_from", l.weekend_flat_from ? `Every trade closes at ${l.weekend_flat_from} UTC on Friday; no entries until Sunday 22:00 UTC.` : "Trades are held over the weekend.");
   say("max_positions_per_bot", `Each bot holds at most ${l.max_positions_per_bot} trades at once.`);

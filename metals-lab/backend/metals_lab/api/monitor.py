@@ -77,6 +77,11 @@ def register(app: FastAPI, state, auth) -> None:
             rk = state.cfg["risk"]
             stop = (ds["stopped"] or daily_stop(ds["equity"], ds["high"], eq, rk)) if ds and book else None
             stopped_for_day = DAILY_TEXT.get(stop) if stop else None
+            guard = c.guard_state(b) if c else {"streak": 0, "last_loss_at": None, "week_stopped": None}
+            if not stopped_for_day and guard["week_stopped"]:
+                stopped_for_day = "weekly loss stop"
+            mins = float(rk.get("cooldown_minutes_after_loss") or 0)
+            cooldown_until = guard["last_loss_at"] + timedelta(minutes=mins) if guard["streak"] and guard["last_loss_at"] and mins else None
             th = thinking.get(b) or {}
             verdicts = {role: {"verdict": r.get("verdict"), "summary": r.get("summary")} for role, r in (th.get("roles") or {}).items()}
             opens = db.q("SELECT position_key, symbol, role, side, volume_open, entry_price, sl, tp, opened_at FROM positions "
@@ -100,7 +105,9 @@ def register(app: FastAPI, state, auth) -> None:
                 "readiness": {r: v for r, v in ready.items() if v},
                 "trading_window": window,
                 "thought": thought(side=b[3], status=row["status"], kill=kill, stopped_for_day=stopped_for_day, opens=opens,
-                                   th=th, metals=metals, window=window, now=now),
+                                   th=th, metals=metals, window=window, now=now, pause_reason=row["pause_reason"],
+                                   cooldown_until=cooldown_until),
+                "loss_streak": guard["streak"],
                 # every bot trades the demo account today; reserved so a live bot can never look like a demo one
                 "environment": "demo",
             })

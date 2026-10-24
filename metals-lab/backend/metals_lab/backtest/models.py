@@ -46,6 +46,14 @@ class RiskParams:
     max_trade_risk: float = 0.0               # >0: skip trades whose (floored) size risks more than this share
     big_lot: float | dict = 0.0               # size for tighter stops (mirrors live risk.big_lot)
     big_lot_max_risk: float = 0.0             # big_lot is used when its loss at the stop is at most this share
+    # per-bot guard rules (risk/guard.py), mirroring the live settings
+    weekly_loss_pause: float = 0.0
+    max_consecutive_losses: int = 0
+    cooldown_minutes_after_loss: float = 0.0
+    max_lots_per_trade: float | dict = 0.0
+    max_lots_per_bot: float = 0.0
+    daily_headroom_check: bool = False
+    close_on_breach: bool = False
     max_drawdown_pause: float = 0.10          # 0 = off
     weekend_flat_from: Optional[str] = None   # "HH:MM" UTC Friday: close all, no entries until Sunday 22:00 UTC
     max_open_positions: int = 2
@@ -62,7 +70,13 @@ class RiskParams:
                    daily_profit_stop=float(r.get("daily_profit_stop", 0.0) or 0.0),
                    daily_lock_from=float(r.get("daily_lock_from", 0.0) or 0.0), daily_giveback=float(r.get("daily_giveback", 0.0) or 0.0),
                    max_trade_risk=float(r.get("max_trade_risk", 0.0) or 0.0), big_lot=r.get("big_lot", 0.0) or 0.0,
-                   big_lot_max_risk=float(r.get("big_lot_max_risk", 0.0) or 0.0), max_drawdown_pause=float(r.get("max_drawdown_pause", 0.10) or 0),
+                   big_lot_max_risk=float(r.get("big_lot_max_risk", 0.0) or 0.0),
+                   weekly_loss_pause=float(r.get("weekly_loss_pause", 0.0) or 0.0),
+                   max_consecutive_losses=int(r.get("max_consecutive_losses", 0) or 0),
+                   cooldown_minutes_after_loss=float(r.get("cooldown_minutes_after_loss", 0) or 0),
+                   max_lots_per_trade=r.get("max_lots_per_trade", 0.0) or 0.0, max_lots_per_bot=float(r.get("max_lots_per_bot", 0.0) or 0.0),
+                   daily_headroom_check=bool(r.get("daily_headroom_check", False)), close_on_breach=bool(r.get("close_on_breach", False)),
+                   max_drawdown_pause=float(r.get("max_drawdown_pause", 0.10) or 0),
                    max_open_positions=int(r.get("max_positions_per_bot", 2)),
                    max_margin_fraction=float(r.get("max_bot_margin_fraction", 0.5)))
 

@@ -230,7 +230,8 @@ class Strategy(ABC):
     def calculate_target_positions(self, signals: list[Signal], equity: float, specs: dict[str, InstrumentSpec],
                                    risk_pct: float, loss_fn: LossFn, cost_per_lot: Callable[[InstrumentSpec], float],
                                    min_lot: float | dict = 0.0, max_risk_pct: float = 0.0,
-                                   big_lot: float | dict = 0.0, big_lot_max_risk: float = 0.0) -> list[TargetPosition]:
+                                   big_lot: float | dict = 0.0, big_lot_max_risk: float = 0.0,
+                                   max_lots: float | dict = 0.0) -> list[TargetPosition]:
         """Risk-based sizing from the bot's own equity only.
 
         volume = floor_to_step(risk_budget / (stop loss per lot + est. round-trip cost per lot))
@@ -240,6 +241,7 @@ class Strategy(ABC):
         ``big_lot`` (number or {role: lots}) is the size for tighter stops: used instead of ``min_lot`` when its loss at the
         strategy's stop is at most ``big_lot_max_risk`` of equity. Wider stops fall back to ``min_lot``. The stop itself is
         always the strategy's; only the size changes.
+        ``max_lots`` (number or {role: lots}) clamps any single trade, however large the risk budget grows.
         ``max_risk_pct`` > 0 is a hard cap: a trade whose size (after the floor) would lose more than that share of
         equity at its stop is skipped, so the floor can never turn into an outsized bet.
         """
@@ -271,6 +273,9 @@ class Strategy(ABC):
                 out.append(TargetPosition(s, 0.0, min_risk, budget, True,
                                           f"MIN_LOT_EXCEEDS_RISK_BUDGET (min lot risk {min_risk:.2f} > budget {budget:.2f})"))
                 continue
+            cap = float(max_lots.get(s.role, 0.0) if isinstance(max_lots, dict) else max_lots or 0.0)
+            if cap > 0 and vol > cap:
+                vol = spec.round_volume_down(cap)
             if max_risk_pct > 0 and loss_1 * vol > equity * max_risk_pct:
                 out.append(TargetPosition(s, 0.0, loss_1 * vol, budget, True,
                                           f"MIN_LOT_RISK_ABOVE_CAP (risk {loss_1 * vol:.2f} > cap {equity * max_risk_pct:.2f})"))

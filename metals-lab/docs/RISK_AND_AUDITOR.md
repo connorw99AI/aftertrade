@@ -93,7 +93,15 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 | Daily bot loss → entries blocked for the rest of the UTC day | 30% (`daily_loss_pause`) |
 | Profit lock: once up 5%+ on the day, giving back half the day's best gain → entries blocked for the rest of the day | 5% / half (`daily_lock_from`, `daily_giveback`) |
 | Daily bot gain → entries blocked for the rest of the UTC day | off (`daily_profit_stop: 0`) |
-| A daily stop, once hit, holds until the UTC day ends (open trades still managed) | |
+| A daily stop, once hit, holds until the UTC day ends | |
+| Weekly bot loss → entries blocked for the rest of the UTC week | 40% (`weekly_loss_pause`) |
+| Losing trades in a row → bot set to PAUSED_RISK until you press Start (Start clears the streak) | 4 (`max_consecutive_losses`) |
+| Cooldown after a losing trade before the next entry | 30 minutes (`cooldown_minutes_after_loss`) |
+| Largest single trade (risk sizing is clamped to it) | gold 0.5, silver 0.3 lots (`max_lots_per_trade`) |
+| All of one bot's open trades together | 1.0 lot (`max_lots_per_bot`) |
+| Margin level after the new trade (as well as now) | ≥ 300% (`min_account_margin_level`) |
+| Today's loss + this trade's risk at its stop within the daily loss stop | off (`daily_headroom_check`) |
+| Close the bot's own open trades when its daily/weekly loss stop, drawdown pause or losing-streak pause trips | on (`close_on_breach`); other bots are not touched |
 | Bot drawdown from peak → bot set to PAUSED_RISK; operator must resume (open trades still managed) | 50% |
 | Friday from 20:00 UTC → close all positions, no entries until Sunday 22:00 UTC | on (`weekend_flat_from`) |
 | Open positions per bot | 2 |
@@ -139,3 +147,16 @@ These are planning limits, not guarantees: gaps, slippage and weekend opens can 
 - The following raise **blocking** alerts and stop new entries until an operator reviews them: manual or unknown trades, unknown positions, positions that vanished without a closing deal, and balance operations (deposits, withdrawals, credits).
 - Balance operations land in an unallocated pool and are never distributed automatically.
 - Every half has its own allocation (5% of the starting balance) and its own ledger; retiring a half only stops new entries, its balance stays on its own book. Un-retiring returns any balance an older lab moved to the other half, as an audited `ALLOCATION_MOVE`.
+
+## Per-bot guard (from the Metal Lab MT5 risk guard)
+
+The rules of `MetalLabRiskGuard.mqh` (the metal-lab-mt5 skill) are applied to every bot on its own balance, live and in
+backtests, by `risk/guard.py`: weekly loss stop, losing-streak pause, cooldown after a loss, lot caps per trade and per
+bot, margin level after the trade, optional daily headroom, and closing the bot's trades when a loss limit trips. The
+guard's other rules were already enforced (stop required, open-position and entries-per-day caps, spread and session
+limits, Friday close, daily stops, drawdown pause, margin floor, kill switch). The MQL5 file itself is not used: the lab
+trades from Python, so every order already passes through one risk engine.
+
+What it cannot protect against, as the skill says: a terminal that is off or disconnected (only each order's
+server-side stop protects then), a broker that fills a stop badly in a gap, or a strategy with no edge.
+

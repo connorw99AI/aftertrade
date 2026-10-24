@@ -160,6 +160,11 @@ CREATE TABLE IF NOT EXISTS bot_day_start (
   PRIMARY KEY (bot_id, day)
 );
 CREATE TABLE IF NOT EXISTS bot_peak (bot_id TEXT PRIMARY KEY, peak REAL);
+CREATE TABLE IF NOT EXISTS bot_week_start (
+  bot_id TEXT, week TEXT, equity REAL,             -- week: Monday (UTC) of the week
+  stopped TEXT,                                     -- the weekly stop, once hit; holds until the week ends
+  PRIMARY KEY (bot_id, week)
+);
 
 CREATE TABLE IF NOT EXISTS experiments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

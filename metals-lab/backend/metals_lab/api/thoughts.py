@@ -55,7 +55,8 @@ def _lower_first(s: str) -> str:
 
 
 def thought(*, side: str, status: str, kill: bool, stopped_for_day: Optional[str], opens: list[dict],
-            th: Optional[dict], metals: str, window: Optional[dict], now: datetime) -> str:
+            th: Optional[dict], metals: str, window: Optional[dict], now: datetime,
+            pause_reason: Optional[str] = None, cooldown_until: Optional[datetime] = None) -> str:
     long = side == "L"
     if kill:
         return "The kill switch is on, so I can't open anything."
@@ -72,11 +73,15 @@ def thought(*, side: str, status: str, kill: bool, stopped_for_day: Optional[str
     if status == "STOPPED":
         return "Stopped. Press Start and I'll begin watching."
     if status == "PAUSED_RISK":
+        if pause_reason and "in a row" in pause_reason:
+            return f"Paused after {pause_reason}. Have a look at what went wrong, then press Start."
         return "Paused after falling to the drawdown limit. Press Start to restart me."
     lead = "Paused by you. " if status == "PAUSED" else ""
     if stopped_for_day:
         why = {"profit lock": "the profit lock kept the rest of today's gain"}.get(stopped_for_day, f"{stopped_for_day} reached")
-        return f"{lead}Done for today: {why}."
+        return f"{lead}{'Done for the week' if stopped_for_day == 'weekly loss stop' else 'Done for today'}: {why}."
+    if cooldown_until and now < cooldown_until:
+        return f"{lead}Cooling down after a loss until {cooldown_until:%H:%M} UTC."
     roles = (th or {}).get("roles") or {}
     views = {r: roles[r] for r in allowed_roles(roles, metals) if roles[r] and "waiting" not in roles[r]}
     if not views:

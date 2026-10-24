@@ -24,6 +24,7 @@ from ..domain import TIMEFRAME_MINUTES, Intent, PositionView, Signal, Style
 from ..instruments import InstrumentSpec
 from ..strategies.base import Strategy, StrategyContext, contract_loss
 from ..risk.daily import daily_stop
+from ..risk.guard import LOSS_LIMITS, in_cooldown, weekly_stop
 from . import metrics as M
 from .models import BacktestConfig
 
@@ -174,10 +175,13 @@ class Backtester:
         diag = {"decisions": 0, "signals": 0, "rejected_random": 0, "partial_fills": 0, "rejected_margin": 0,
                 "rejected_stops": 0, "skipped_min_lot": 0, "skipped_no_stop": 0, "blocked_auditor": 0,
                 "blocked_risk_pause": 0, "blocked_max_positions": 0, "blocked_daily_entry_cap": 0, "gap_fills": 0, "ambiguous_bars_tick_resolved": 0,
-                "group_leg_failures": 0, "daily_pauses": 0, "daily_profit_stops": 0, "daily_profit_locks": 0, "drawdown_pause_at": None, "drawdown_restarts": [], "swap_mode_unsupported": []}
+                "group_leg_failures": 0, "daily_pauses": 0, "daily_profit_stops": 0, "daily_profit_locks": 0, "weekly_pauses": 0, "loss_streak_pauses": [], "blocked_cooldown": 0,
+                "blocked_lot_cap": 0, "blocked_daily_headroom": 0, "guard_closes": 0, "drawdown_pause_at": None, "drawdown_restarts": [], "swap_mode_unsupported": []}
         decisions: list[dict] = []
         peak = cash
         day_key, day_start_eq, day_high_eq, paused_today, dd_paused = None, cash, cash, False, False
+        week_key, week_start_eq, paused_week = None, cash, False
+        guard = {"streak": 0, "last_loss": None, "streak_paused": False}
         entries_day: set = set()
         roll_key_prev = None
         rh = cfg.costs.rollover_utc_hour
@@ -215,6 +219,11 @@ class Backtester:
                 "stop": p.sl, "target": p.tp,
             })
             del positions[p.key]
+            if net < 0:  # losing streak and cooldown, per the guard
+                guard["streak"] += 1
+                guard["last_loss"] = t
+            else:
+                guard["streak"] = 0
 
         def execute(o: _Order, i: int, t: pd.Timestamp) -> bool:
             nonlocal cash
@@ -381,16 +390,41 @@ class Backtester:
                 if dd_paused and cfg.restart_after_drawdown and eq > 0:
                     # what a manual restart does live: running again, the drawdown measured from today's equity
                     dd_paused, peak = False, eq
+                    guard["streak"], guard["streak_paused"] = 0, False
                     diag["drawdown_restarts"].append({"at": str(dk.date()), "equity": round(eq, 2)})
+                if guard["streak_paused"] and cfg.restart_after_drawdown:
+                    guard["streak"], guard["streak_paused"] = 0, False  # pressing Start the next day clears the streak
+                wk = dk - pd.Timedelta(days=dk.weekday())
+                if wk != week_key:
+                    week_key, week_start_eq, paused_week = wk, eq, False
             day_high_eq = max(day_high_eq, eq)
+            trips = []
             stop = None if paused_today else daily_stop(day_start_eq, day_high_eq, eq, asdict(cfg.risk))
             if stop:
                 paused_today = True
+                trips.append(stop)
                 diag[{"DAILY_LOSS_LIMIT": "daily_pauses", "DAILY_PROFIT_TARGET_REACHED": "daily_profit_stops"}.get(stop, "daily_profit_locks")] += 1
+            wstop = None if paused_week else weekly_stop(week_start_eq, eq, asdict(cfg.risk))
+            if wstop:
+                paused_week = True
+                trips.append(wstop)
+                diag["weekly_pauses"] += 1
             peak = max(peak, eq)
             if not dd_paused and cfg.risk.max_drawdown_pause and eq < peak * (1 - cfg.risk.max_drawdown_pause):
                 dd_paused = True
+                trips.append("MAX_DRAWDOWN_LIMIT")
                 diag["drawdown_pause_at"] = str(t)
+            if cfg.risk.max_consecutive_losses and not guard["streak_paused"] and guard["streak"] >= cfg.risk.max_consecutive_losses:
+                guard["streak_paused"] = True
+                trips.append("LOSS_STREAK_LIMIT")
+                diag["loss_streak_pauses"].append({"at": str(t), "losses": guard["streak"]})
+            if cfg.risk.close_on_breach and positions and any(x in LOSS_LIMITS for x in trips):
+                for p in list(positions.values()):  # close on breach, at the bar's close
+                    spec = self.specs[p.role]
+                    px = last_close[p.role] if p.side == "LONG" else last_close[p.role] + last_spread[p.role] * spec.point
+                    close_pos(p, px, t + step, "GUARD_BREACH", "closed when a loss limit tripped (" + ", ".join(trips) + ")")
+                    diag["guard_closes"] += 1
+                eq = equity_now()
             # 3) decision at bar close
             T = t + step
             frames = {}
@@ -414,9 +448,13 @@ class Backtester:
             entries = [x for x in sigs if x.intent.is_opening]
             if not entries:
                 continue
-            if paused_today or dd_paused:
+            if paused_today or dd_paused or paused_week or guard["streak_paused"]:
                 diag["blocked_risk_pause"] += len(entries)
                 self._rec(decisions, entries, "RISK_PAUSED")
+                continue
+            if guard["streak"] > 0 and in_cooldown(guard["last_loss"], T, asdict(cfg.risk)):
+                diag["blocked_cooldown"] += len(entries)
+                self._rec(decisions, entries, "LOSS_COOLDOWN")
                 continue
             if len(positions) + len([o for o in pending if o.signal.intent.is_opening]) + len(entries) > cfg.risk.max_open_positions:
                 diag["blocked_max_positions"] += len(entries)
@@ -433,16 +471,28 @@ class Backtester:
                     continue
             tps = s.calculate_target_positions(entries, eq, self.specs, cfg.risk.risk_per_trade, self._loss, self._cost_per_lot,
                                                min_lot=cfg.risk.min_lot, max_risk_pct=cfg.risk.max_trade_risk,
-                                               big_lot=cfg.risk.big_lot, big_lot_max_risk=cfg.risk.big_lot_max_risk)
+                                               big_lot=cfg.risk.big_lot, big_lot_max_risk=cfg.risk.big_lot_max_risk,
+                                               max_lots=cfg.risk.max_lots_per_trade)
             if any(tp.skipped for tp in tps) and any(x.group_id for x in entries):
                 diag["skipped_min_lot"] += len(entries)  # trade groups are all-or-nothing
                 self._rec(decisions, entries, "GROUP_SKIPPED:" + ";".join(tp.skip_reason for tp in tps if tp.skipped))
                 continue
+            open_lots = sum(p.volume for p in positions.values()) + sum(o.volume for o in pending if o.signal.intent.is_opening)
             for tp in tps:
                 if tp.skipped:
                     diag["skipped_min_lot" if "MIN_LOT" in tp.skip_reason else "skipped_no_stop"] += 1
                     self._rec(decisions, [tp.signal], tp.skip_reason)
                     continue
+                if cfg.risk.max_lots_per_bot and open_lots + tp.volume > cfg.risk.max_lots_per_bot + 1e-9:
+                    diag["blocked_lot_cap"] += 1
+                    self._rec(decisions, [tp.signal], "LOTS_ABOVE_BOT_CAP")
+                    continue
+                if cfg.risk.daily_headroom_check and eq > 0 and cfg.risk.daily_loss_pause and \
+                        max(0.0, (day_start_eq - eq) / day_start_eq) + tp.planned_risk / eq > cfg.risk.daily_loss_pause:
+                    diag["blocked_daily_headroom"] += 1
+                    self._rec(decisions, [tp.signal], "DAILY_HEADROOM")
+                    continue
+                open_lots += tp.volume
                 pending.append(_Order(tp.signal, tp.volume, tp.planned_risk, T))
                 entries_day.add(tp.signal.group_id or tp.signal.signal_id)
                 self._rec(decisions, [tp.signal], "QUEUED")
@@ -462,7 +512,12 @@ class Backtester:
         mets = M.summarize(trades_df, equity, cfg.initial_capital)
         mets["stopped_by_drawdown_at"] = diag["drawdown_pause_at"]
         mets["drawdown_restarts"] = len(diag["drawdown_restarts"])
+        mets["loss_streak_pauses"] = len(diag["loss_streak_pauses"])
+        mets["guard_closes"] = diag["guard_closes"]
         rel = self._reliability(mets)
+        if diag["loss_streak_pauses"]:
+            rel.insert(0, f"LOSS_STREAK_PAUSES: {len(diag['loss_streak_pauses'])} pause(s) after {cfg.risk.max_consecutive_losses} losses in a row; "
+                          "each time the bot was restarted the next day as if you pressed Start.")
         rs = diag["drawdown_restarts"]
         if rs:
             rel.insert(0, f"DRAWDOWN_RESTARTS: the {cfg.risk.max_drawdown_pause:.0%} drawdown pause hit {len(rs)} time(s); each time the "

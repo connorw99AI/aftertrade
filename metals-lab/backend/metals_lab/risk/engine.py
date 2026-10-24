@@ -25,6 +25,7 @@ from ..instruments import InstrumentSpec
 from ..ledger import BotBook
 from ..mt5.guard import AccountCheck
 from .daily import daily_stop
+from .guard import entry_blocks
 from ..store import Store
 
 
@@ -62,6 +63,10 @@ class RiskContext:
     tick: Optional[dict] = None
     day_high_equity: Optional[float] = None   # the bot's best equity so far today, for the profit lock
     day_stopped: Optional[str] = None         # a daily stop already hit today (it holds until the day ends)
+    week_stopped: Optional[str] = None        # the weekly loss stop, once hit this week
+    loss_streak: int = 0                      # losing trades in a row (since the last restart)
+    last_loss_at: Optional[datetime] = None   # when the most recent trade closed at a loss
+    bot_open_lots: float = 0.0                # all of this bot's open volume
     spec: Optional[InstrumentSpec] = None
     owned_position: Optional[dict] = None
     entries_today: int = 0                   # trades this bot opened (or shadow-approved) this UTC day
@@ -173,6 +178,11 @@ class RiskEngine:
         stop = ctx.day_stopped or daily_stop(ctx.day_start_equity, ctx.day_high_equity, eq, self.cfg)
         if stop:
             reject(stop)
+        for g in entry_blocks(risk=self.cfg, now=now, role=p.role, volume=p.volume, bot_open_lots=ctx.bot_open_lots,
+                              streak=ctx.loss_streak, last_loss_at=ctx.last_loss_at, week_stopped=ctx.week_stopped,
+                              day_loss_pct=0.0, planned_risk_pct=None):
+            reject(g)
+        m["loss_streak"] = ctx.loss_streak
         if self.cfg.get("max_drawdown_pause") and dd <= -self.cfg["max_drawdown_pause"]:
             reject("MAX_DRAWDOWN_LIMIT")
         if ctx.bot_open_positions >= self.cfg["max_positions_per_bot"]:
@@ -224,6 +234,9 @@ class RiskEngine:
                     m["planned_risk_pct_of_bot"] = round(planned / eq, 5) if eq > 0 else None
                     if limits_on and self.cfg.get("per_trade_limit_enabled", True) and planned > limit * 1.0001:
                         reject("PLANNED_RISK_EXCEEDS_LIMIT")
+                    if self.cfg.get("daily_headroom_check") and eq > 0 and self.cfg.get("daily_loss_pause") and \
+                            max(0.0, -daily) + planned / eq > float(self.cfg["daily_loss_pause"]):
+                        reject("DAILY_HEADROOM")
             # margin reservation against the bot's own capital
             if vol > 0:
                 otype = self.gw.const("ORDER_TYPE_BUY") if p.intent == Intent.OPEN_LONG else self.gw.const("ORDER_TYPE_SELL")
@@ -243,6 +256,11 @@ class RiskEngine:
                         # kept even with limits off: protects every bot from a broker margin call / stop-out
                         if ctx.account_margin > 0 and ctx.account_margin_level < self.cfg["min_account_margin_level"]:
                             reject("ACCOUNT_MARGIN_LEVEL_LOW")
+                        # the guard's rule: the margin level AFTER this trade must stay above the floor
+                        after = ctx.account_equity / (ctx.account_margin + margin) * 100 if ctx.account_margin + margin > 0 else None
+                        m["margin_level_after"] = round(after, 1) if after else None
+                        if after is not None and self.cfg.get("min_account_margin_level") and after < self.cfg["min_account_margin_level"]:
+                            reject("ACCOUNT_MARGIN_LEVEL_AFTER_LOW")
                     per_bot = self.cfg.get("exposure_scope", "account") == "per_bot"
                     base_eq = eq if per_bot else ctx.account_equity
                     if limits_on and base_eq > 0:
