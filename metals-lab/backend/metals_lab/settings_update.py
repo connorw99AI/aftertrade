@@ -27,6 +27,7 @@ UPDATES: list[tuple[str, str, dict[str, str]]] = [
         "daily_profit_stop": "0",
     }),
     ("2026-10-25-silver", "risk", {"big_lot": "{GOLD: 0.1, SILVER: 0.05}"}),
+    ("2026-10-25-silver-006", "risk", {"big_lot": "{GOLD: 0.1, SILVER: 0.06}"}),
 ]
 
 MARK = "# metal-lab settings applied: "

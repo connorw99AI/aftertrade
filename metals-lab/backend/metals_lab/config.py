@@ -25,7 +25,7 @@ DEFAULTS: dict[str, Any] = {
         "risk_per_trade": 0.03,             # default; a bot may override it with strategies.<id>.risk_per_trade
         "max_risk_per_trade_cap": 0.03,     # hard ceiling for any per-bot override
         "min_lot": {"GOLD": 0.05, "SILVER": 0.03},  # size for wider stops (floor): a number or per metal; 0 = risk-sized only
-        "big_lot": {"GOLD": 0.1, "SILVER": 0.05},    # size for tighter stops...
+        "big_lot": {"GOLD": 0.1, "SILVER": 0.06},    # size for tighter stops...
         "big_lot_max_risk": 0.30,           # ...used when its loss at the strategy's stop is at most 30% of the bot
         "per_trade_limit_enabled": False,   # True rejects entries whose planned stop loss exceeds risk_per_trade x bot equity
         "pre_trade_limits": False,          # True re-enables the per-trade risk, bot margin share, account margin share and

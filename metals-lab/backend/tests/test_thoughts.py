@@ -139,9 +139,9 @@ def test_settings_update_edits_config_once_and_keeps_the_rest(tmp_path):
     p = tmp_path / "config.yaml"
     p.write_text("mt5:\n  server_timezone: Europe/Athens   # keep me\n\nrisk:\n  risk_per_trade: 0.30\n  min_lot: {GOLD: 0.04, SILVER: 0.02}\n"
                  "  daily_loss_pause: 0.50\n  daily_profit_stop: false\n  max_drawdown_pause: 0.50\n")
-    assert apply(p) == ["2026-10-25-risk", "2026-10-25-silver"]
+    assert apply(p) == ["2026-10-25-risk", "2026-10-25-silver", "2026-10-25-silver-006"]
     r = yaml.safe_load(p.read_text())["risk"]
-    assert r["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and r["big_lot"] == {"GOLD": 0.1, "SILVER": 0.05}
+    assert r["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and r["big_lot"] == {"GOLD": 0.1, "SILVER": 0.06}
     assert r["daily_loss_pause"] == 0.30 and r["daily_profit_stop"] == 0 and r["risk_per_trade"] == 0.03
     assert r["max_drawdown_pause"] == 0.50 and "# keep me" in p.read_text()
     assert (tmp_path / "config.yaml.bak-2026-10-25-risk").exists()

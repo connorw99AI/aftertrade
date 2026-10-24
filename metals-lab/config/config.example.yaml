@@ -27,7 +27,7 @@ trading:
 risk:
   risk_per_trade: 0.03             # sizing target: trade more than min_lot only when 3% of the bot allows it
   min_lot: {GOLD: 0.05, SILVER: 0.03}  # size for wider stops (floor), per metal; 0 = risk-sized only
-  big_lot: {GOLD: 0.1, SILVER: 0.05}   # size for tighter stops...
+  big_lot: {GOLD: 0.1, SILVER: 0.06}   # size for tighter stops...
   big_lot_max_risk: 0.30           # ...used when its loss at the strategy's stop is at most 30% of the bot
   per_trade_limit_enabled: false   # true = reject trades whose stop loss exceeds risk_per_trade
   pre_trade_limits: false          # true re-enables per-trade risk, margin-share and exposure caps; false = rely on stops/pauses

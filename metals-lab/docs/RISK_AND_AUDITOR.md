@@ -87,7 +87,7 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 | Check | Default |
 |---|---|
 | Planned loss at stop (`order_calc_profit`) + estimated spread/commission ≤ risk per trade | **off** (`per_trade_limit_enabled: false`); planned risk is logged. 3% when on |
-| Minimum trade size (sizing floor) | tighter stops gold 0.1 / silver 0.05 (`big_lot`, when it loses at most 30% at the stop: `big_lot_max_risk`); wider stops gold 0.05 / silver 0.03 (`min_lot`) |
+| Minimum trade size (sizing floor) | tighter stops gold 0.1 / silver 0.06 (`big_lot`, when it loses at most 30% at the stop: `big_lot_max_risk`); wider stops gold 0.05 / silver 0.03 (`min_lot`) |
 | Trade skipped if even the minimum size would lose more than this share of the bot at its stop | off (`max_trade_risk: 0`) |
 | New trades per bot per UTC day (a two-leg group counts once; shadow approvals count too) | 5 |
 | Daily bot loss → entries blocked for the rest of the UTC day | 30% (`daily_loss_pause`) |

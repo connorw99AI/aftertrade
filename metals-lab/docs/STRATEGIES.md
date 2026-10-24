@@ -88,12 +88,12 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 The operator runs a £3,000 demo. With 20 independent bots at 5% each, every bot starts with £150. Operator choices:
 
 - **Two trade sizes, chosen by the strategy's stop** (the stop is always the strategy's own; risk limits never move it):
-  - Tighter stops: **gold 0.1, silver 0.05** (`big_lot`), used when that size loses at most 30% of the bot at the stop (`big_lot_max_risk: 0.30`).
+  - Tighter stops: **gold 0.1, silver 0.06** (`big_lot`), used when that size loses at most 30% of the bot at the stop (`big_lot_max_risk: 0.30`).
   - Wider stops: **gold 0.05, silver 0.03** (`min_lot`).
   - No per-trade cap (`max_trade_risk: 0`): no trade is skipped for its stop being wide, so one wide-stop loss can exceed 30% of a bot.
   - A bot trades more than these only when 3% of its balance allows it, which at £150 is rare.
 
-- What that means (from the terminal's own figures, GBP account): gold 0.1 lot is about **£7.50 per $1 move** and 0.05 about £3.75; silver 0.05 lot is about **£190 per $1 move** and 0.03 about £115 (scaled from the terminal's 0.04/0.02 figures). On a £150 bot the larger size is used for gold stops up to about $6 and silver stops up to about 24 cents. Examples at the smaller size: a $15 gold stop loses about £56 (37%); a 40-cent silver stop about £46 (31%).
+- What that means (from the terminal's own figures, GBP account): gold 0.1 lot is about **£7.50 per $1 move** and 0.05 about £3.75; silver 0.06 lot is about **£225 per $1 move** and 0.03 about £115 (scaled from the terminal's 0.04/0.02 figures). On a £150 bot the larger size is used for gold stops up to about $6 and silver stops up to about 20 cents. Examples at the smaller size: a $15 gold stop loses about £56 (37%); a 40-cent silver stop about £46 (31%).
 - Leverage (1:500) sets the margin, not the loss. Margin for 0.1 lot gold is lots × 100 oz × price ÷ 500, roughly £50-80, and each bot must cover it from its own free balance, so two open gold trades can use most of a £150 bot. The loss at the stop is the same at any leverage.
 - **Daily stops** (new entries only; open trades keep running, so a day can end worse):
   - **Loss stop 30%** (`daily_loss_pause: 0.30`): down 30% on the day.
