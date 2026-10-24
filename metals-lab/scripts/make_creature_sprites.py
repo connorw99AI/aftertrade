@@ -58,14 +58,16 @@ def hsv2rgb(h, s, v):
     return np.dstack([r + m, g + m, b + m]) * 255
 
 # Colour per half. None keeps the original art untouched. A number is a hue; a tuple is (hue, saturation x, brightness x)
-# for lighter shades; "ice" is silver-white. Rules: every long differs from every other long, every short from every
-# other short, no short matches its twin, no long is red, no short is blue or green.
-LONG = {1: None, 2: None, 3: None, 4: 200, 5: None, 6: "ice", 7: None, 8: None, 9: 95, 10: None}
-SHORT = {1: (340, 0.65, 1.12), 2: 305, 3: 28, 4: "ice", 5: (262, 0.5, 1.15), 6: 22, 7: 0, 8: (38, 1.25, 1.1), 9: 272, 10: (55, 1.25, 1.25)}
+# for lighter or deeper shades. Longs are blues and greens, shorts are reds and oranges; within each side every
+# creature has its own shade.
+LONG = {1: 85, 2: None, 3: None, 4: 200, 5: (185, 0.75, 1.12), 6: 212, 7: (155, 0.6, 1.15), 8: 248, 9: 120, 10: None}
+SHORT = {1: (8, 0.6, 1.15), 2: (348, 1.1, 0.9), 3: 28, 4: (0, 1.2, 0.8), 5: (22, 0.8, 1.12), 6: 22, 7: (0, 1.1, 1.05),
+         8: (38, 1.25, 1.1), 9: 355, 10: (14, 1.2, 1.15)}
 
+WHOLE = {4}  # two-coloured bodies (the crystal): recolour every coloured pixel, not just the main colour
 STONE = {6, 9}  # grey-bodied golems: only the glowing accents change, the stone keeps its detail
 
-def recolour(rgb, al, target, stone=False):
+def recolour(rgb, al, target, stone=False, whole=False):
     if target is None:
         return rgb
     h, s, v = rgb2hsv(rgb)
@@ -77,7 +79,8 @@ def recolour(rgb, al, target, stone=False):
     hue, smul, vmul = target if isinstance(target, tuple) else (target, 1.0, 1.0)
     dom = np.degrees(np.angle(np.mean(np.exp(1j * np.radians(h[sat])))))
     # only the body colour changes: eyes, bellies and trim in other colours keep their original look
-    sat = sat & (np.abs(((h - dom + 180) % 360) - 180) < 70)
+    if not whole:
+        sat = sat & (np.abs(((h - dom + 180) % 360) - 180) < 70)
     h2 = (h + (hue - dom)) % 360
     # pull saturated pixels towards the target so a multi-coloured body reads as one colour
     diff = ((h2 - hue + 180) % 360) - 180
@@ -95,7 +98,7 @@ for i in range(10):
     box = (int(c * cw), int(r * ch), int((c + 1) * cw), int((r + 1) * ch))
     rgb, al = cut(a, box, bg)
     sid = i + 1
-    save(recolour(rgb, al, LONG[sid], sid in STONE), al, f"{out}/S{sid:02d}L.png", 320)
-    save(recolour(rgb, al, SHORT[sid], sid in STONE), al, f"{out}/S{sid:02d}S.png", 320)
+    save(recolour(rgb, al, LONG[sid], sid in STONE, sid in WHOLE), al, f"{out}/S{sid:02d}L.png", 320)
+    save(recolour(rgb, al, SHORT[sid], sid in STONE, sid in WHOLE), al, f"{out}/S{sid:02d}S.png", 320)
 
 print("ok")
