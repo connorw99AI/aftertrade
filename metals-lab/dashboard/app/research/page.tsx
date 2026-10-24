@@ -40,6 +40,42 @@ function Coverage({ ds }: { ds: Any[] }) {
   );
 }
 
+const mb = (b: number) => `${(b / 1e6).toFixed(b < 1e7 ? 1 : 0)} MB`;
+
+/** Every download on disk, with delete. Live trading never reads these files; finished backtest results stay. */
+function Downloads({ onChange, busy }: { onChange: () => void; busy: boolean }) {
+  const { data, reload } = usePoll<Any>("/api/data/downloads", 0);
+  const [err, setErr] = useState<string | null>(null);
+  const rows: Any[] = data?.downloads ?? [];
+  async function remove(versions: string[] | "all", what: string, bytes: number) {
+    const name = await confirmAction({ title: `Delete ${what}?`, tone: "danger", confirmLabel: "Delete",
+      consequences: [`Frees ${mb(bytes)} on disk.`, "Backtests over those dates need the history downloaded again.",
+        "Finished backtest results and live trading are not affected."] });
+    if (!name) return;
+    setErr(null);
+    try { await api.post("/api/data/delete", versions === "all" ? { all: true, operator: name } : { versions, operator: name }); reload(); onChange(); }
+    catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+  }
+  if (!rows.length) return null;
+  return (
+    <details className="downloads">
+      <summary>{rows.length} download{rows.length === 1 ? "" : "s"} on disk, {mb(data.total_bytes)}: view or delete</summary>
+      {err && <div className="notice notice-danger">{err}</div>}
+      <Table><thead><tr><th>Metal</th><th>Chart</th><th>From</th><th>To</th><th className="n">Bars</th><th className="n">Size</th><th>Downloaded</th><th /></tr></thead>
+        <tbody>{rows.map((d) => (
+          <tr key={d.version}><td className={`metal-${d.role}`}>{d.role === "GOLD" ? "Gold" : "Silver"}</td><td>{d.timeframe}</td>
+            <td>{ukDay(d.start)}</td><td>{ukDay(d.end)}</td><td className="n">{d.rows?.toLocaleString("en-GB") ?? "–"}</td><td className="n">{mb(d.bytes)}</td>
+            <td>{when(d.retrieved_at)}</td>
+            <td><Button size="sm" tone="ghost" disabled={busy} onClick={() => remove([d.version], `${d.role === "GOLD" ? "gold" : "silver"} ${d.timeframe} ${ukDay(d.start)} to ${ukDay(d.end)}`, d.bytes)}>Delete</Button></td></tr>
+        ))}</tbody></Table>
+      <div className="actions" style={{ marginTop: 8 }}>
+        <Button tone="danger" disabled={busy} onClick={() => remove("all", `all ${rows.length} downloads`, data.total_bytes)}>Delete all downloaded history</Button>
+        {busy && <span className="muted small">Wait for downloads and backtests to finish before deleting.</span>}
+      </div>
+    </details>
+  );
+}
+
 function DataPanel() {
   const { data, reload } = usePoll<Any>("/api/data/status", 3000);
   const [from, setFrom] = useState(daysAgo(365));
@@ -62,6 +98,7 @@ function DataPanel() {
       {err && <div className="notice notice-danger">{err}</div>}
       {f?.failed?.length > 0 && <div className="notice notice-danger">Some downloads failed: {f.failed.join("; ")}. MT5 only returns as much history as its &quot;Max bars in chart&quot; setting allows (Tools → Options → Charts).</div>}
       <Coverage ds={data?.datasets ?? []} />
+      <Downloads onChange={reload} busy={f?.state === "RUNNING"} />
       <p className="muted small">{ready} of {data?.bots?.length ?? 20} bots have all the history they need. Add an older year to test on data the bots have never seen.</p>
     </Panel>
   );

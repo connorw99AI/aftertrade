@@ -174,3 +174,18 @@ def test_chart_endpoint_returns_separate_metals_and_positions(client, armed):
         assert g["positions"] and g["positions"][0]["bot_id"] == "S01L"
     assert client.get("/api/chart?role=GOLD&tf=W9").status_code == 400
     assert client.get("/api/chart?role=PLATINUM").status_code == 404
+
+
+def test_downloaded_history_can_be_listed_and_deleted(client, cfg, intraday_frames):
+    ds = DatasetStore(cfg["storage"]["cache_dir"])
+    df = intraday_frames[("GOLD", "M5")].iloc[:300]
+    a = ds.save(df, Provenance("MT5_TERMINAL", "XAUUSD", "GOLD", "M5"))
+    b = ds.save(df.iloc[:200], Provenance("MT5_TERMINAL", "XAUUSD", "GOLD", "M15"))
+    listed = client.get("/api/data/downloads").json()
+    assert {d["version"] for d in listed["downloads"]} == {a, b} and listed["total_bytes"] > 0
+    assert client.post("/api/data/delete", json={"versions": [a], "operator": "me"}).json()["deleted"] == 1
+    assert [d["version"] for d in client.get("/api/data/downloads").json()["downloads"]] == [b]
+    assert client.post("/api/data/delete", json={"all": True, "operator": "me"}).json()["deleted"] == 1
+    assert client.get("/api/data/downloads").json()["downloads"] == []
+    assert client.post("/api/data/delete", json={"all": True, "operator": "me"}).status_code == 404
+    assert client.post("/api/data/delete", json={"all": True}).status_code == 422  # operator name required

@@ -8,7 +8,7 @@ from datetime import timedelta
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..backtest.engine import Backtester
 from ..backtest.models import BacktestConfig, CostModel, RiskParams
@@ -54,6 +54,12 @@ class TestChangeBody(BaseModel):
     dataset: str = "mt5"
     start: Optional[str] = None
     end: Optional[str] = None
+
+
+class DeleteDataBody(BaseModel):
+    versions: list[str] = []
+    all: bool = False
+    operator: str = Field(min_length=1)
 
 
 class FetchBody(BaseModel):
@@ -190,6 +196,38 @@ def register(app: FastAPI, state, auth) -> None:
             missing = [f"{r} {tf}" for r in cls.roles for tf in cls.timeframes if (r, tf) not in have]
             bots.append({"bot_id": b, "timeframes": list(cls.timeframes), "ready": not missing, "missing": missing})
         return {"datasets": rows, "bots": bots, "fetch": fetch_job}
+
+    @app.get("/api/data/downloads")
+    def data_downloads():
+        """Every MT5 history download on disk, newest first, so you can see and delete them one by one."""
+        out = []
+        for m in state.datasets.manifests():
+            pv, q = m["provenance"], m.get("quality", {})
+            if pv.get("source") != "MT5_TERMINAL":
+                continue
+            out.append({"version": m["version"], "role": pv["role"], "timeframe": pv["timeframe"], "start": q.get("start"),
+                        "end": q.get("end"), "rows": q.get("rows"), "retrieved_at": pv.get("retrieved_at"),
+                        "bytes": state.datasets.size_of(m["version"])})
+        out.sort(key=lambda d: d["retrieved_at"] or "", reverse=True)
+        return {"downloads": out, "total_bytes": sum(d["bytes"] for d in out)}
+
+    @app.post("/api/data/delete", dependencies=[Depends(auth)])
+    def data_delete(body: DeleteDataBody):
+        """Delete downloaded history: the listed downloads, or all of them. Live trading never reads these files;
+        finished backtest results are kept (their numbers are stored separately)."""
+        if fetch_job.get("state") == "RUNNING":
+            raise HTTPException(409, "a download is running; wait for it to finish")
+        if any(v in ("RUNNING", "QUEUED") for v in state.jobs.values()):
+            raise HTTPException(409, "backtests are running; wait for them to finish")
+        known = {m["version"] for m in state.datasets.manifests() if m["provenance"].get("source") == "MT5_TERMINAL"}
+        targets = sorted(known) if body.all else [v for v in body.versions if v in known]
+        if not targets:
+            raise HTTPException(404, "nothing to delete")
+        freed = sum(state.datasets.delete(v) for v in targets)
+        db.x("INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
+             (None, "DELETE_HISTORY", json.dumps({"downloads": targets}), json.dumps({"deleted": len(targets), "bytes": freed}),
+              body.operator, now_iso()))
+        return {"deleted": len(targets), "bytes_freed": freed}
 
     @app.post("/api/data/fetch", dependencies=[Depends(auth)])
     def data_fetch(body: FetchBody):

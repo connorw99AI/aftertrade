@@ -106,6 +106,17 @@ class DatasetStore:
             return df, m
         raise FileNotFoundError(version)
 
+    def delete(self, version: str) -> int:
+        """Remove one download (its data and manifest). Returns the bytes freed; 0 if it was not there."""
+        freed = 0
+        for p in list(self.root.rglob(f"{version}.parquet")) + list(self.root.rglob(f"{version}.json")):
+            freed += p.stat().st_size
+            p.unlink()
+        return freed
+
+    def size_of(self, version: str) -> int:
+        return sum(p.stat().st_size for p in self.root.rglob(f"{version}.parquet"))
+
     def latest(self, source: str, role: str, tf: str) -> Optional[str]:
         cands = [m for m in self.manifests() if m["provenance"]["source"] == source and m["provenance"]["role"] == role
                  and m["provenance"]["timeframe"] == tf]

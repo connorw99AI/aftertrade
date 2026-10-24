@@ -393,6 +393,8 @@ kbd { font: 600 var(--t-12) var(--f-mono); border: 1px solid var(--line-2); bord
 .feed .when { color: var(--muted); font: var(--t-12) var(--f-mono); }
 
 /* ---------------------------------------------------------------- research */
+.downloads { margin: var(--s-2) 0; }
+.downloads > summary { padding: var(--s-1) 0; }
 .bt-layout { display: grid; grid-template-columns: minmax(340px, 1fr) 2fr; gap: var(--s-4); margin-top: var(--s-4); }
 .coverage { display: grid; gap: var(--s-1); margin: var(--s-2) 0; }
 .coverage-row { display: grid; grid-template-columns: 110px 1fr 120px; gap: var(--s-2); align-items: center; font-size: var(--t-12); }

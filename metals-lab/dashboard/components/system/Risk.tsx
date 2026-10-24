@@ -41,7 +41,7 @@ function limitSentences(l: Any): [string, string][] {
 
 const ACTION: Record<string, string> = {
   INITIAL_ALLOCATION: "Initial allocation", ALLOCATION_MOVE: "Allocation moved", STATUS: "Status changed", PARAMS: "Rules changed",
-  ARM: "Armed", DISARM: "Disarmed", KILL: "Kill switch", RETIRE: "Retired", UNRETIRE: "Un-retired",
+  ARM: "Armed", DISARM: "Disarmed", CLEAR_BACKTESTS: "Backtest results cleared", DELETE_HISTORY: "Price history deleted", KILL: "Kill switch", RETIRE: "Retired", UNRETIRE: "Un-retired",
 };
 const STATUS_WORD: Record<string, string> = { RUNNING: "Running", PAUSED: "Paused", PAUSED_RISK: "Paused (drawdown)", STOPPED: "Stopped", RETIRED: "Retired" };
 
@@ -50,6 +50,8 @@ function change(a: Any): string {
   const o = parse(a.old_json), n = parse(a.new_json);
   if (a.action === "INITIAL_ALLOCATION" || a.action === "ALLOCATION_MOVE") return n?.amount != null ? money(n.amount) : "";
   if (a.action === "ARM") return "demo account verified";
+  if (a.action === "DELETE_HISTORY") return `${n?.deleted} download${n?.deleted === 1 ? "" : "s"}, ${((n?.bytes ?? 0) / 1e6).toFixed(1)} MB freed`;
+  if (a.action === "CLEAR_BACKTESTS") return `${o?.backtests ?? 0} runs deleted`;
   if (n && typeof n === "object") {
     const keys = Object.keys(n).filter((k) => !o || typeof o !== "object" || JSON.stringify(o[k]) !== JSON.stringify(n[k]));
     return keys.slice(0, 4).map((k) => {
