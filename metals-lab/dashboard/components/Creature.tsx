@@ -1,14 +1,10 @@
 "use client";
+import { CHARACTERS } from "./characters";
 
 export type Mood = "idle" | "still" | "asleep" | "hurt" | "busy" | "happy";
 
 export const BOTS = ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10"].flatMap((s) => [`${s}L`, `${s}S`]);
 
-/** One species per strategy: the long half (bull) and short half (bear) are the same creature in different colours. */
-const SPECIES: Record<string, string> = {
-  S01: "Oculon", S02: "Fanmantis", S03: "Bruiser", S04: "Prismid", S05: "Manyeye",
-  S06: "Magmaw", S07: "Coilhorn", S08: "Snorkler", S09: "Ironhorn", S10: "Hollowheart",
-};
 /** Body colour of each sprite, for chart lines and legends. Longs are blues and greens, shorts reds and oranges. */
 const COLOUR: Record<string, string> = {
   S01L: "#9BEA2E", S01S: "#EA7461", S02L: "#40EA6E", S02S: "#EA3732", S03L: "#3371EA", S03S: "#EA8332",
@@ -19,7 +15,7 @@ const COLOUR: Record<string, string> = {
 
 /** Display name and colour per bot, used everywhere a bot is shown. */
 export const CREATURES: Record<string, { name: string; colors: { a: string } }> = {
-  ...Object.fromEntries(BOTS.map((b) => [b, { name: `${b.endsWith("L") ? "Bull" : "Bear"} ${SPECIES[b.slice(0, 3)]}`, colors: { a: COLOUR[b] } }])),
+  ...Object.fromEntries(BOTS.map((b) => [b, { name: CHARACTERS[b].name, colors: { a: COLOUR[b] } }])),
   ASSESSOR: { name: "The Assessor", colors: { a: "#3D5BD9" } },
 };
 
@@ -27,7 +23,7 @@ export const CREATURES: Record<string, { name: string; colors: { a: string } }> 
 export function SideIcon({ bot, size = 44 }: { bot: string; size?: number }) {
   const long = bot.endsWith("L");
   return <img className="side-icon" src={`/creatures/${long ? "bull" : "bear"}.png`} width={size} height={size}
-              alt={long ? "Long (bull)" : "Short (bear)"} title={long ? "Long half (bull)" : "Short half (bear)"} />;
+              alt={long ? "Long (bull)" : "Short (bear)"} title={long ? "Long bot (bull)" : "Short bot (bear)"} />;
 }
 
 /** Image for a bot or the Assessor. The Assessor uses its headshot everywhere except its own page (`full`). */
@@ -44,7 +40,7 @@ export function Creature(props: { bot: string; size?: number; mood?: Mood; label
   const sceneCls = scene ? `scene scene-${bot === "ASSESSOR" ? "A" : bot.slice(-1)}` : "";
   return (
     <span className={`creature sprite mood-${mood} ${sceneCls} ${bot === "ASSESSOR" && !full ? "headshot" : ""}`}
-          style={{ width: size, height: size }} role="img" aria-label={label ?? `${name}${mood === "asleep" ? ", retired" : ""}`}>
+          style={{ width: size, height: size, ["--phase" as string]: `${-((Math.max(0, BOTS.indexOf(bot)) * 1.3) % 7)}s` }} role="img" aria-label={label ?? `${name}${mood === "asleep" ? ", retired" : ""}`}>
       {mood === "busy" && <span className="glow" />}
       <img className="creature-body" src={src} alt="" draggable={false} />
       {mood === "happy" && size >= 60 && <span className="sparkle"><i /><i /><i /><i /></span>}

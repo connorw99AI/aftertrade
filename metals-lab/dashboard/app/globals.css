@@ -498,3 +498,15 @@ button:disabled, .controls button:disabled { opacity: .32; filter: grayscale(.7)
 .zoom .zoom-level { min-width: 58px; font-size: .86rem; color: var(--muted); }
 /* small cards keep the creature, name, money and controls; the checklist rows and strategy line are on the bot page */
 .botgrid.compact .botcard-verdicts, .botgrid.compact .botcard-name .muted { display: none; }
+.character { max-width: 70ch; margin: 6px 0; }
+.character b { color: var(--bronze-hi); font-weight: 400; }
+
+/* calm motion: one slow float for every creature, offset per bot so they never bob in step */
+.creature.sprite.mood-idle .creature-body, .creature.sprite.mood-busy .creature-body,
+.creature.sprite.mood-happy .creature-body, .creature.sprite.mood-hurt .creature-body {
+  animation: calmfloat 7s ease-in-out infinite; animation-delay: var(--phase, 0s); }
+@keyframes calmfloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5%); } }
+.creature.sprite.mood-still .creature-body, .creature.sprite.mood-asleep .creature-body { animation: none; }
+.creature.sprite.mood-hurt .creature-body { filter: drop-shadow(0 0 6px #e0604a88); }
+.creature.sprite .glow { animation: pulseglow 6s ease-in-out infinite; }
+.creature.sprite .sparkle i { animation: twinkle 4s ease-in-out infinite; }

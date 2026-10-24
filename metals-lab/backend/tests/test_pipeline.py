@@ -523,3 +523,11 @@ def test_clock_check_ignores_stale_prices_and_flags_a_real_mismatch(armed):
     t["v"] += 10
     c._verify_clock(now.replace(second=10))
     assert c.db.one("SELECT 1 FROM alerts WHERE code='CLOCK_MISMATCH' AND resolved_at IS NULL")
+
+
+def test_restarting_after_the_drawdown_pause_measures_drawdown_from_now(armed):
+    c = armed
+    c.db.x("INSERT INTO bot_peak(bot_id,peak) VALUES('S03L', 30000) ON CONFLICT(bot_id) DO UPDATE SET peak=30000")
+    c.db.x("UPDATE bots SET status='PAUSED_RISK' WHERE bot_id='S03L'")
+    c.set_bot_status("S03L", "RUNNING", "restart", "pytest")
+    assert c.db.one("SELECT 1 FROM bot_peak WHERE bot_id='S03L'") is None  # old 30000 peak would re-pause it at once

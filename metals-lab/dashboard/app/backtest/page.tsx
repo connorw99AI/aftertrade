@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { BacktestTrades } from "@/components/BacktestTrades";
 import { useEffect, useState } from "react";
 import { BOTS, Creature, CREATURES } from "@/components/Creature";
 import { EquityChart } from "@/components/EquityChart";
@@ -121,6 +122,7 @@ export default function Backtest() {
               <div className="metric"><span>Profit factor</span><b>{m.profit_factor ?? "–"}</b></div>
               <div className="metric"><span>Costs</span><b>{money((m.total_spread_slippage_cost ?? 0) * -1 + (m.total_commission ?? 0) + (m.total_swap ?? 0), true)}</b></div>
               <div className="metric"><span>Starting capital</span><b>{money(m.initial_capital)}</b></div>
+              <div className="metric"><span>Drawdown restarts</span><b>{m.drawdown_restarts ?? 0}</b></div>
             </div>
             {m.sample_warning && <p className="muted">{m.sample_warning}</p>}
             <EquityChart points={detail.equity || []} />
@@ -129,14 +131,9 @@ export default function Backtest() {
           </>}
         </div>
       </div>
-      {detail?.trades?.length > 0 && <>
-        <h2>Trades in this run</h2>
-        <div className="table-wrap"><table><thead><tr><th>Entry</th><th>Exit</th><th>Trade</th><th className="n">Net</th><th className="n">R</th><th>Exit reason</th><th>Why it entered</th></tr></thead>
-          <tbody>{detail.trades.slice(0, 400).map((t: Any) => <tr key={t.trade_id}><td>{when(t.entry_time)}</td><td>{when(t.exit_time)}</td>
-            <td>{t.side === "LONG" ? "▲" : "▼"} {t.volume} {t.symbol}</td>
-            <td className={`n num ${t.net_pnl >= 0 ? "gain" : "loss"}`}>{money(t.net_pnl, true)}</td><td className="n">{t.r_multiple != null ? Number(t.r_multiple).toFixed(2) : "–"}</td>
-            <td>{String(t.exit_reason).replace(/_/g, " ").toLowerCase()}{t.ambiguous_exit ? " (ambiguous bar)" : ""}</td>
-            <td className="muted small">{t.entry_rationale}</td></tr>)}</tbody></table></div>
+      {detail?.trades && <>
+        <h2>Trades in this run{detail.trades.length ? ` (${detail.trades.length})` : ""}</h2>
+        <BacktestTrades trades={detail.trades} restarts={detail.diagnostics?.drawdown_restarts ?? []} />
       </>}
     </>
   );

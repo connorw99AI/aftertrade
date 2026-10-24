@@ -68,6 +68,9 @@ class BacktestConfig:
     start: Optional[str] = None
     end: Optional[str] = None
     label: str = ""
+    # After the drawdown pause, restart the bot at the start of the next day with a fresh peak, as if the operator
+    # pressed Start. False = stay stopped for the rest of the backtest.
+    restart_after_drawdown: bool = True
 
     def describe(self) -> dict:
         return asdict(self)

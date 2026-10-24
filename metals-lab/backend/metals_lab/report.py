@@ -70,7 +70,7 @@ def build_report(db, cfg: dict) -> tuple[str, dict]:
         lines += [f"## {b} {bot_name(b)}", "",
                   f"Run #{d['run_id']}, {d['data']}{', ' + d['period'] if d['period'] else ''}. "
                   f"Costs: {d['metrics'].get('total_spread_slippage_cost')} spread/slippage, {d['metrics'].get('total_commission')} commission, "
-                  f"{d['metrics'].get('total_swap')} swap. Stopped by drawdown: {d['metrics'].get('stopped_by_drawdown_at') or 'no'}.", ""]
+                  f"{d['metrics'].get('total_swap')} swap. First drawdown pause: {d['metrics'].get('stopped_by_drawdown_at') or 'none'}; restarts after it: {d['metrics'].get('drawdown_restarts', 0)}.", ""]
         for w in d["reliability"]:
             lines.append(f"- warning: {w}")
         if st.get("n"):

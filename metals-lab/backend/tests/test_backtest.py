@@ -196,3 +196,23 @@ def test_daily_profit_stop_in_backtest(specs):
     res = Backtester(EveryBar(), {("GOLD", "H1"): frame(rows)}, specs, c).run()
     free = Backtester(EveryBar(), {("GOLD", "H1"): frame(rows)}, specs, cfg(risk=RiskParams(risk_per_trade=0.05))).run()
     assert res.diagnostics["daily_profit_stops"] == 1 and len(res.trades) < len(free.trades)
+
+
+class Keeps(OneShot):
+    """Buys whenever flat, with a tight stop: in a falling market it keeps losing."""
+    def entry_signals(self, ctx):
+        r = ctx.last("GOLD", "H1")
+        if ctx.position("GOLD"):
+            return []
+        return [self.signal(ctx, "GOLD", Intent.OPEN_LONG, "t", {}, stop_price=r["close"] - 3)]
+
+
+def test_drawdown_pause_restarts_next_day_like_a_manual_restart(specs):
+    rows = [(2000 - 6 * i, 2001 - 6 * i, 1990 - 6 * i, 1994 - 6 * i) for i in range(60)]  # 2.5 days, always falling
+    risk = RiskParams(risk_per_trade=0.01, daily_loss_pause=0.99, max_drawdown_pause=0.02)
+    days = lambda res: {str(t)[:10] for t in res.trades["entry_time"]}
+    on = Backtester(Keeps({}), {("GOLD", "H1"): frame(rows)}, specs, cfg(risk=risk)).run()
+    off = Backtester(Keeps({}), {("GOLD", "H1"): frame(rows)}, specs, cfg(risk=risk, restart_after_drawdown=False)).run()
+    assert off.metrics["drawdown_restarts"] == 0 and len(days(off)) == 1      # stopped for good on day one
+    assert on.metrics["drawdown_restarts"] >= 1 and len(days(on)) >= 2        # restarted the next day and kept trading
+    assert any(r.startswith("DRAWDOWN_RESTARTS") for r in on.reliability)

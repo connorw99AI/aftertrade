@@ -260,6 +260,9 @@ class Coordinator:
     def set_bot_status(self, bot_id: str, status: str, reason: str = "", operator: str = "operator") -> None:
         assert status in ("RUNNING", "PAUSED", "STOPPED", "RETIRED")
         old = self.db.one("SELECT status FROM bots WHERE bot_id=?", (bot_id,))
+        if old and old["status"] == "PAUSED_RISK" and status == "RUNNING":
+            # a restart after the drawdown pause measures the drawdown from now on; otherwise the next cycle re-pauses it
+            self.db.x("DELETE FROM bot_peak WHERE bot_id=?", (bot_id,))
         self.db.x("UPDATE bots SET status=?, pause_reason=?, enabled=?, updated_at=? WHERE bot_id=?",
                   (status, reason, int(status == "RUNNING"), now_iso(), bot_id))
         self.db.x("INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",

@@ -59,7 +59,7 @@ function BotCard({ b, kill }: { b: Any; kill: boolean }) {
   );
 }
 
-/** A retired half collapses to one line: who it is, why it was retired, and a way back. */
+/** A retired bot collapses to one line: who it is, why it was retired, and a way back. */
 function RetiredRow({ b }: { b: Any }) {
   return (
     <div className={`retired-row bc-${b.side}`}>

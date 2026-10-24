@@ -1,10 +1,12 @@
 "use client";
 import Link from "next/link";
+import { BacktestTrades } from "@/components/BacktestTrades";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { BotControls, StatusBadge, Tabs } from "@/components/Bits";
 import { Creature, CREATURES, SideIcon, StateSymbol, stateSymbol } from "@/components/Creature";
 import { useSummary } from "@/components/Shell";
+import { CHARACTERS } from "@/components/characters";
 import { RoleThinking } from "@/components/Thinking";
 import { Compare2 } from "@/components/TestResult";
 import { Any, api, confirmAction, minutes, money, pct, when } from "@/lib/api";
@@ -66,7 +68,34 @@ function LiveTab({ b }: { b: Any }) {
 }
 
 /* ---------------------------------------------------------------- trades */
+function BacktestTab({ id }: { id: string }) {
+  const { data: runs } = usePoll<Any[]>("/api/backtests", 15000);
+  const run = (runs ?? []).find((r) => r.strategy_id === id && r.status === "DONE");
+  const { data: detail } = usePoll<Any>(run ? `/api/backtests/${run.id}` : "", 0);
+  if (!runs) return <p className="empty">Loading…</p>;
+  if (!run) return <p className="empty">No finished backtest for this bot yet. Run one on the Backtest page.</p>;
+  if (!detail) return <p className="empty">Loading run {run.id}…</p>;
+  const m = detail.metrics ?? {};
+  return (
+    <>
+      <p className="muted">Latest backtest, run {run.id}: {m.n_trades} trades, {money(m.net_pnl, true)} net ({((m.total_return ?? 0) * 100).toFixed(1)}%).
+        This is a replay on history, not demo trading.</p>
+      <BacktestTrades trades={detail.trades ?? []} restarts={detail.diagnostics?.drawdown_restarts ?? []} />
+    </>
+  );
+}
+
 function TradesTab({ id }: { id: string }) {
+  const [view, setView] = useState("demo");
+  return (
+    <>
+      <Tabs tabs={[["demo", "Demo trades"], ["backtest", "Backtest trades"]]} value={view} onChange={setView} />
+      {view === "demo" ? <DemoTrades id={id} /> : <BacktestTab id={id} />}
+    </>
+  );
+}
+
+function DemoTrades({ id }: { id: string }) {
   const { data } = usePoll<Any>(`/api/history?bot=${id}`, 10000);
   const rows: Any[] = data?.trades ?? [];
   if (!rows.length) return <p className="empty">No closed demo trades yet.</p>;
@@ -246,7 +275,8 @@ function BotDetail({ id }: { id: string }) {
   if (!b) return <p className="empty">Loading…</p>;
   const st = b.strategy;
   const mood = b.status === "RUNNING" ? (b.open_positions.length ? "busy" : "idle") : b.status === "PAUSED_RISK" ? "hurt" : b.status === "RETIRED" ? "asleep" : "still";
-  const side = id.endsWith("L") ? "▲ Bull · long half" : "▼ Bear · short half";
+  const side = id.endsWith("L") ? "▲ Long bot" : "▼ Short bot";
+  const who = CHARACTERS[id];
   return (
     <>
       <p className="crumbs"><Link href="/">← All bots</Link></p>
@@ -255,6 +285,7 @@ function BotDetail({ id }: { id: string }) {
         <div className="hero-text">
           <h1 className="hero-title">{CREATURES[id]?.name} <SideIcon bot={id} size={52} /></h1>
           <p><b>{id} {st.name}</b> · <span className={`side-tag side-${id[3]}`}>{side}</span> · {st.timeframes.join(" + ")} · {b.symbols.join(" and ") || st.roles.join(" and ")}</p>
+          {who && <p className="character"><b>Looks:</b> {who.looks}<br /><b>Personality:</b> {who.personality}</p>}
           <p className="muted">{st.description}</p>
           <div className="actions"><StatusBadge status={b.status} extra={b.pause_reason} />
             <BotControls bot={id} status={b.status} hasOpen={b.open_positions.length > 0} onDone={reload} retire /></div>

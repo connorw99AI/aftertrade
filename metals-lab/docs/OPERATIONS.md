@@ -125,6 +125,8 @@ metals-lab research --strategy S08 --holdout                    # touches the fi
 
 - Downloads for different ranges are kept and merged per timeframe, so you can add an earlier year without losing the current one. Use this for out-of-sample checks: the Assessor's filters were chosen on Oct 2025 → Oct 2026, so test them on Oct 2024 → Oct 2025.
 - `metals-lab export-backtests --out reports/backtests.md` writes the latest result per bot.
+- When a backtest hits the 50% drawdown pause, it restarts the bot the next day with a fresh peak, as if you pressed Start, and lists each restart above the run's trades. Live, pressing Start on a drawdown-paused bot also measures the drawdown from that moment.
+- Every run's trades (entry, exit, stop, target, profit, R, and why it entered and exited) are on the Backtest page and on each bot's Trades tab under Backtest trades.
 - `--synthetic` runs the same commands on clearly labelled synthetic data. It only checks the machinery.
 - Reports are written to `reports/`. Every trial, including failures, is stored in the `experiments` table and shown on the Research page.
 - How much history you get is limited by the terminal's "Max bars in chart" setting and by the broker.

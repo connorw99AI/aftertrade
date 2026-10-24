@@ -152,7 +152,7 @@ class Backtester:
         diag = {"decisions": 0, "signals": 0, "rejected_random": 0, "partial_fills": 0, "rejected_margin": 0,
                 "rejected_stops": 0, "skipped_min_lot": 0, "skipped_no_stop": 0, "blocked_auditor": 0,
                 "blocked_risk_pause": 0, "blocked_max_positions": 0, "blocked_daily_entry_cap": 0, "gap_fills": 0, "ambiguous_bars_tick_resolved": 0,
-                "group_leg_failures": 0, "daily_pauses": 0, "daily_profit_stops": 0, "drawdown_pause_at": None, "swap_mode_unsupported": []}
+                "group_leg_failures": 0, "daily_pauses": 0, "daily_profit_stops": 0, "drawdown_pause_at": None, "drawdown_restarts": [], "swap_mode_unsupported": []}
         decisions: list[dict] = []
         peak = cash
         day_key, day_start_eq, paused_today, dd_paused = None, cash, False, False
@@ -356,6 +356,10 @@ class Backtester:
             if dk != day_key:
                 day_key, day_start_eq, paused_today = dk, eq, False
                 entries_day = set()
+                if dd_paused and cfg.restart_after_drawdown and eq > 0:
+                    # what a manual restart does live: running again, the drawdown measured from today's equity
+                    dd_paused, peak = False, eq
+                    diag["drawdown_restarts"].append({"at": str(dk.date()), "equity": round(eq, 2)})
             if not paused_today and eq < day_start_eq * (1 - cfg.risk.daily_loss_pause):
                 paused_today = True
                 diag["daily_pauses"] += 1
@@ -435,10 +439,16 @@ class Backtester:
         equity = pd.Series(eq_v, index=pd.DatetimeIndex(eq_t), name="equity")
         mets = M.summarize(trades_df, equity, cfg.initial_capital)
         mets["stopped_by_drawdown_at"] = diag["drawdown_pause_at"]
+        mets["drawdown_restarts"] = len(diag["drawdown_restarts"])
         rel = self._reliability(mets)
-        if diag["drawdown_pause_at"]:
+        rs = diag["drawdown_restarts"]
+        if rs:
+            rel.insert(0, f"DRAWDOWN_RESTARTS: the {cfg.risk.max_drawdown_pause:.0%} drawdown pause hit {len(rs)} time(s); each time the "
+                          f"bot was restarted the next day as if you pressed Start (first restart {rs[0]['at']} at "
+                          f"{rs[0]['equity']:.2f}). Without restarts it would have stopped on {diag['drawdown_pause_at'][:10]}.")
+        elif diag["drawdown_pause_at"]:
             rel.insert(0, f"DRAWDOWN_PAUSE: stopped opening trades on {diag['drawdown_pause_at'][:10]} after a "
-                          f"{cfg.risk.max_drawdown_pause:.0%} fall from its peak; live, the bot would wait for a manual restart")
+                          f"{cfg.risk.max_drawdown_pause:.0%} fall from its peak and was not restarted")
         assumptions = {"config": cfg.describe(), "price_model": "BID bars; ask=bid+spread; next-bar-open fills",
                        "intrabar": "stop assumed before target when both touched (unless tick-resolved)",
                        "margin": "notional/leverage approximation; live uses order_calc_margin",
