@@ -135,4 +135,4 @@ These are planning limits, not guarantees: gaps, slippage and weekend opens can 
 - Popups: a `TRADE_CLOSED` event fires only when a position or trade group is fully closed. It stays provisional until a settle window (default 5 min) passes with no further deals, then becomes `TRADE_FINALIZED`.
 - The following raise **blocking** alerts and stop new entries until an operator reviews them: manual or unknown trades, unknown positions, positions that vanished without a closing deal, and balance operations (deposits, withdrawals, credits).
 - Balance operations land in an unallocated pool and are never distributed automatically.
-- Retiring a half moves its allocation and realised P&L to the other half of the same strategy as one pair of ledger rows (`:out` / `:in`) with a `RETIRE_TRANSFER` audit record and the operator's name. A half with open trades cannot be retired.
+- Every half has its own allocation (5% of the starting balance) and its own ledger; retiring a half only stops new entries, its balance stays on its own book. Un-retiring returns any balance an older lab moved to the other half, as an audited `ALLOCATION_MOVE`.

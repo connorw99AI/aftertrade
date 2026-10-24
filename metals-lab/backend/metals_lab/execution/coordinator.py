@@ -102,6 +102,7 @@ class Coordinator:
         self.last_reconcile = None
         self._frame_cache: dict = {}
         self._prep_cache: dict = {}
+        self._last_tick_epoch: dict = {}
         self._cache_time = None
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -210,9 +211,6 @@ class Coordinator:
             raise RuntimeError("cannot arm: " + "; ".join(problems))
         self.db.arm(acct.fingerprint, acct.server)
         snap = self.ledger.initialize(acct.fingerprint, float(acct.balance), acct.currency or "", self.cfg["capital"]["bot_fraction"], BOT_IDS)
-        for r in self.db.q("SELECT bot_id, pause_reason FROM bots WHERE status='RETIRED'"):
-            if r["bot_id"] in BOT_IDS:  # halves retired before arming hand their new allocation on now
-                self._settle_retired(r["bot_id"], r["pause_reason"] or "retired", operator)
         self.db.x("INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
                   (None, "ARM", None, json.dumps({"fingerprint": acct.fingerprint[:12]}), operator, now_iso()))
         self.db.set_control("kill", "0")
@@ -281,46 +279,38 @@ class Coordinator:
     def sibling(bot_id: str) -> str:
         return bot_id[:3] + ("S" if bot_id[3] == "L" else "L")
 
-    def _settle_retired(self, bot_id: str, reason: str, operator: str) -> dict:
-        acct = check_account(self.ro)
-        if not (acct.fingerprint and self.ledger.snapshot(acct.fingerprint)):
-            return {"moved": 0.0, "to": None}
-        sib = self.sibling(bot_id)
-        sib_row = self.db.one("SELECT status FROM bots WHERE bot_id=?", (sib,))
-        to = sib if sib_row and sib_row["status"] != "RETIRED" else None
-        moved = self.ledger.transfer_equity(bot_id, to, reason, operator)
-        if moved:
-            self.db.event("BOT_RETIRED_TRANSFER", bot_id, {"amount": moved, "to": to or "unallocated pool", "reason": reason})
-        return {"moved": moved, "to": to}
-
     def retire(self, bot_id: str, reason: str, operator: str) -> dict:
-        """Retire one half: no new entries ever (until un-retired); its whole balance goes to the surviving half,
-        or to the unallocated pool if that half is retired too. The half must be flat first."""
+        """Retire one half: no new entries until un-retired. The halves are independent bots, so its balance stays on
+        its own book (it does not move to the other half). The half must be flat first."""
         if self.db.one("SELECT 1 FROM positions WHERE bot_id=? AND status='OPEN'", (bot_id,)):
             raise RuntimeError("close this bot's open trades first (Positions page), then retire it")
         self.set_bot_status(bot_id, "RETIRED", reason or "retired by operator", operator)
-        return {"bot_id": bot_id, **self._settle_retired(bot_id, reason or "retired by operator", operator)}
+        return {"bot_id": bot_id, "equity": round(self.ledger.allocation(bot_id) + self.ledger.realized(bot_id), 2)}
 
     def unretire(self, bot_id: str, operator: str) -> dict:
-        """Back to STOPPED with its normal starting allocation restored: taken back from the other half (which got it
-        on retirement) and, if that is not enough, from the unallocated pool. Every move is an audited ledger entry."""
+        """Back to STOPPED. Labs from before the halves were made independent moved a retired half's balance to the
+        other half; that amount is moved back (from the other half, or the unallocated pool if it no longer has it).
+        Every move is an audited ledger entry."""
         self.set_bot_status(bot_id, "STOPPED", "un-retired", operator)
         restored = {"from_other_half": 0.0, "from_pool": 0.0}
+        q = lambda sql, *a: float(self.db.one(sql, a)["s"])
+        moved_out = -q("SELECT COALESCE(SUM(amount),0) s FROM ledger WHERE bot_id=? AND kind='ALLOCATION' AND note LIKE 'retired:%'", bot_id)
+        back = q("SELECT COALESCE(SUM(amount),0) s FROM ledger WHERE bot_id=? AND kind='ALLOCATION' AND amount>0 AND note LIKE '%un-retire%'", bot_id)
+        need = round(moved_out - back, 2)
+        if need <= 0:
+            return {"bot_id": bot_id, "allocation": self.ledger.allocation(bot_id), **restored}
+        sib = self.sibling(bot_id)
+        got = q("SELECT COALESCE(SUM(amount),0) s FROM ledger WHERE bot_id=? AND kind='ALLOCATION' AND note LIKE ?", sib, f"from retired {bot_id}:%")
+        returned = -q("SELECT COALESCE(SUM(amount),0) s FROM ledger WHERE bot_id=? AND kind='ALLOCATION' AND note LIKE ?", sib, f"to {bot_id}: un-retire%")
+        amt = round(min(need, got - returned, self.ledger.allocation(sib)), 2)
+        if amt > 0:
+            self.ledger.move_allocation(sib, bot_id, amt, "un-retire: return the retired half's balance", operator)
+            restored["from_other_half"], need = amt, round(need - amt, 2)
         acct = check_account(self.ro)
-        snap = self.ledger.snapshot(acct.fingerprint) if acct.fingerprint else None
-        if snap:
-            base = round(snap["starting_balance"] * snap["bot_fraction"], 2)
-            need = round(base - (self.ledger.allocation(bot_id) + self.ledger.realized(bot_id)), 2)
-            sib = self.sibling(bot_id)
-            spare = round(self.ledger.allocation(sib) - base, 2)  # what the other half holds above its own share
-            if need > 0 and spare > 0:
-                amt = min(need, spare)
-                self.ledger.move_allocation(sib, bot_id, amt, "un-retire: return the retired half's share", operator)
-                restored["from_other_half"], need = amt, round(need - amt, 2)
-            pool = self.ledger.unallocated_pool(acct.fingerprint)
-            if need > 0 and pool > 0:
-                amt = min(need, pool)
-                self.ledger.change_allocation(acct.fingerprint, bot_id, amt, "un-retire: restore starting allocation", operator)
+        if need > 0 and acct.fingerprint and self.ledger.snapshot(acct.fingerprint):
+            amt = min(need, self.ledger.unallocated_pool(acct.fingerprint))
+            if amt > 0:
+                self.ledger.change_allocation(acct.fingerprint, bot_id, amt, "un-retire: restore the retired half's balance", operator)
                 restored["from_pool"] = amt
         return {"bot_id": bot_id, "allocation": self.ledger.allocation(bot_id), **restored}
 
@@ -431,9 +421,18 @@ class Coordinator:
             t = self.ro.symbol_info_tick(spec.symbol)
             if not t:
                 continue
-            measured = ServerClock.measure_offset_hours(int(t["time"]), now)
+            epoch = int(t["time"])
+            # Only a live price can measure the clock: the tick must have moved since the last cycle, and its time must sit
+            # within 2 minutes of a whole half-hour offset. A stale tick (market closed, e.g. Friday night) would otherwise
+            # read as a wrong offset, such as +2.5h when the last price is 30 minutes old.
+            prev = self._last_tick_epoch.get(spec.symbol)
+            self._last_tick_epoch[spec.symbol] = epoch
+            diff = epoch - now.timestamp()
+            if prev is None or epoch <= prev or abs(diff - round(diff / 1800.0) * 1800.0) > 120:
+                continue
+            measured = ServerClock.measure_offset_hours(epoch, now)
             if abs(measured) > 14:
-                return  # tick not fresh (market closed) - cannot verify now
+                return
             ok, msg = self.clock.verify_against_tick(int(t["time"]), now)
             if ok:
                 self.db.resolve_alert("CLOCK_MISMATCH")

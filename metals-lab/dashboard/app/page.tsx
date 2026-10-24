@@ -137,7 +137,7 @@ export default function Overview() {
   const active = sum.bots.filter((b: Any) => b.status !== "RETIRED");
   const retired = sum.bots.filter((b: Any) => b.status === "RETIRED");
   async function unretireAll() {
-    const name = confirmAction(`Un-retire all ${retired.length} retired halves? Each gets its starting share back from its other half.`);
+    const name = confirmAction(`Un-retire all ${retired.length} retired halves? Each comes back stopped with its own balance.`);
     if (!name) return;
     setBusy(true);
     try { await api.post("/api/bots-all/unretire", { operator: name, reason: "un-retire all from the Overview" }); }

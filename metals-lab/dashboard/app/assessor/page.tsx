@@ -48,7 +48,7 @@ export default function Assessor() {
     const name = confirmAction(`Retire ${CREATURES[bot]?.name} (${bot})? Its whole balance moves to the other half.`);
     if (!name) return;
     try { const r = await api.post<Any>(`/api/bots/${bot}/retire`, { operator: name, reason: `assessor: ${why}` });
-      setMsg(`${bot} retired; ${money(r.moved)} moved to ${r.to ?? "the unallocated pool"}.`); reload(); }
+      setMsg(`${bot} retired; it keeps its ${money(r.equity)} balance.`); reload(); }
     catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
 

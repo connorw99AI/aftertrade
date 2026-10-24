@@ -461,29 +461,26 @@ def test_missing_stop_and_target_are_restored(armed):
 
 
 
-def test_retiring_a_half_moves_its_balance_to_the_other_half(armed):
+def test_retiring_a_half_keeps_its_balance_on_its_own_book(armed):
     c = armed
-    before = c.bot_book("S08S").equity
     out = c.retire("S08L", "assessor says longs lose", "pytest")
-    assert out["to"] == "S08S" and out["moved"] == 10000.0
-    assert c.bot_book("S08L").equity == 0 and c.bot_book("S08S").equity == before + 10000.0
+    assert out["equity"] == 10000.0
+    assert c.bot_book("S08L").equity == c.bot_book("S08S").equity == 10000.0  # halves are independent
     assert c.db.one("SELECT status FROM bots WHERE bot_id='S08L'")["status"] == "RETIRED"
-    pool = c.ledger.unallocated_pool(check_account(c.ro).fingerprint)
-    out2 = c.retire("S08S", "both halves off", "pytest")  # nobody left: money goes back to the pool
-    assert out2["to"] is None and c.ledger.unallocated_pool(check_account(c.ro).fingerprint) == pool + 20000.0
-    out3 = c.unretire("S08L", "pytest")  # the other half is retired too, so its share comes from the pool
+    out2 = c.unretire("S08L", "pytest")
+    assert out2["from_other_half"] == out2["from_pool"] == 0.0 and c.bot_book("S08L").equity == 10000.0
     assert c.db.one("SELECT status FROM bots WHERE bot_id='S08L'")["status"] == "STOPPED"
-    assert out3["from_pool"] == 10000.0 and c.bot_book("S08L").equity == 10000.0
 
 
-def test_unretire_takes_its_share_back_from_the_other_half(armed):
+def test_unretire_returns_a_balance_moved_by_an_older_lab(armed):
     c = armed
     c.retire("S07S", "x", "pytest")
-    assert c.bot_book("S07L").equity == 20000.0
+    c.ledger.transfer_equity("S07S", "S07L", "x", "pytest")  # what retiring did before the halves were independent
+    assert c.bot_book("S07L").equity == 20000.0 and c.bot_book("S07S").equity == 0
     out = c.unretire_all("pytest")
     assert [o["bot_id"] for o in out] == ["S07S"] and out[0]["from_other_half"] == 10000.0
     assert c.bot_book("S07L").equity == c.bot_book("S07S").equity == 10000.0
-    assert c.db.one("SELECT 1 FROM config_audit WHERE action='ALLOCATION_MOVE' AND bot_id='S07S'")
+    assert c.unretire("S07S", "pytest")["from_other_half"] == 0.0  # nothing moved twice
 
 
 def test_cannot_retire_with_open_trades(armed):
@@ -504,5 +501,25 @@ def test_fresh_lab_starts_with_assessor_retirements(cfg, sim):
     c.arm("pytest")
     st = {r["bot_id"]: r["status"] for r in c.db.q("SELECT bot_id, status FROM bots")}
     assert st["S03S"] == "RETIRED" and st["S03L"] == "STOPPED" and st["S01L"] == st["S01S"] == "RETIRED"
-    assert c.bot_book("S03L").allocation == 20000.0 and c.bot_book("S03S").equity == 0
-    assert c.bot_book("S01L").equity == 0 and c.bot_book("S08L").allocation == 10000.0
+    assert all(c.bot_book(b).allocation == 10000.0 for b in ("S03L", "S03S", "S01L", "S08L"))  # every half its own 5%
+
+
+def test_clock_check_ignores_stale_prices_and_flags_a_real_mismatch(armed):
+    from datetime import datetime, timezone
+
+    from metals_lab.sessions import ServerClock
+    c = armed
+    c.clock = ServerClock("Europe/Athens")  # +3h on 23 Oct 2026 (summer time)
+    now = datetime(2026, 10, 23, 21, 15, tzinfo=timezone.utc)
+    stale = int(now.timestamp()) + 3 * 3600 - 30 * 60  # Friday night: last price 30 minutes old
+    c.ro.symbol_info_tick = lambda sym: {"time": stale}
+    c._last_tick_epoch.clear()
+    c._verify_clock(now)
+    c._verify_clock(now)  # tick did not move: market closed, nothing to measure
+    assert not c.db.one("SELECT 1 FROM alerts WHERE code='CLOCK_MISMATCH' AND resolved_at IS NULL")
+    t = {"v": int(now.timestamp()) + 2 * 3600}  # live prices, but the broker really is on +2h
+    c.ro.symbol_info_tick = lambda sym: {"time": t["v"]}
+    c._verify_clock(now)
+    t["v"] += 10
+    c._verify_clock(now.replace(second=10))
+    assert c.db.one("SELECT 1 FROM alerts WHERE code='CLOCK_MISMATCH' AND resolved_at IS NULL")

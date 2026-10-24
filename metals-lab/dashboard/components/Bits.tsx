@@ -60,8 +60,8 @@ export function BotControls({ bot, status, hasOpen, onDone, retire = false }: {
     e.preventDefault();
     e.stopPropagation();
     const q = { start: `Start ${bot}?`, pause: `Pause new entries for ${bot}?`, stop: `Stop ${bot}?`,
-      retire: `Retire ${bot}? It stops trading for good and its whole balance moves to the other half (or back to the pool).`,
-      unretire: `Un-retire ${bot}? It comes back stopped with no money until you allocate some.` }[action];
+      retire: `Retire ${bot}? It stops opening trades until you un-retire it. It keeps its own balance.`,
+      unretire: `Un-retire ${bot}? It comes back stopped with its own balance.` }[action];
     const name = confirmAction(q);
     if (!name) return;
     setBusy(true);
