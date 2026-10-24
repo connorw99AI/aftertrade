@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { BotControls, StatusBadge, VerdictPill } from "@/components/Bits";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Creature, CREATURES, Mood, SideIcon, StateSymbol, stateSymbol } from "@/components/Creature";
 import { useSummary } from "@/components/Shell";
 import { Any, api, confirmAction, money } from "@/lib/api";
@@ -105,9 +105,33 @@ function BulkControls({ kill }: { kill: boolean }) {
   );
 }
 
+/** Overview zoom: smaller cards fit more bots per row. Remembered per browser. */
+const ZOOMS = [1, 0.85, 0.7, 0.55, 0.45];
+const ZOOM_KEY = "metal-lab-overview-zoom";
+
+function ZoomControl({ zoom, setZoom }: { zoom: number; setZoom: (z: number) => void }) {
+  const i = ZOOMS.indexOf(zoom);
+  return (
+    <div className="zoom" role="group" aria-label="Card size">
+      <button onClick={() => setZoom(ZOOMS[Math.min(ZOOMS.length - 1, i + 1)])} disabled={i === ZOOMS.length - 1}
+              aria-label="Zoom out: smaller cards, more per row" title="Zoom out">−</button>
+      <button className="zoom-level" onClick={() => setZoom(1)} title="Reset to 100%">{Math.round(zoom * 100)}%</button>
+      <button onClick={() => setZoom(ZOOMS[Math.max(0, i - 1)])} disabled={i === 0} aria-label="Zoom in: bigger cards" title="Zoom in">+</button>
+    </div>
+  );
+}
+
 export default function Overview() {
   const sum = useSummary();
   const [busy, setBusy] = useState(false);
+  const [zoom, setZoomState] = useState(1);
+  useEffect(() => {
+    try { const z = Number(window.localStorage.getItem(ZOOM_KEY)); if (ZOOMS.includes(z)) setZoomState(z); } catch { /* not stored */ }
+  }, []);
+  function setZoom(z: number) {
+    setZoomState(z);
+    try { window.localStorage.setItem(ZOOM_KEY, String(z)); } catch { /* not stored */ }
+  }
   if (!sum) return <p className="empty">Loading…</p>;
   const shadow = sum.bots.some((b: Any) => b.shadow);
   const active = sum.bots.filter((b: Any) => b.status !== "RETIRED");
@@ -128,10 +152,10 @@ export default function Overview() {
           <p className="muted">Click a creature for its full view: live checklist, trades, review and settings.
             {shadow ? " Shadow mode: amounts are what each bot would get once you arm." : ""}</p>
         </div>
-        <BulkControls kill={!!sum.kill} />
+        <div className="head-tools"><ZoomControl zoom={zoom} setZoom={setZoom} /><BulkControls kill={!!sum.kill} /></div>
       </div>
       {sum.kill && <div className="warn danger">Kill switch is on: every bot is blocked. Clear it with <code>metals-lab clear-kill</code>, then arm and start again.</div>}
-      <div className="botgrid">
+      <div className={`botgrid ${zoom <= 0.7 ? "compact" : ""}`} style={{ zoom }}>
         {active.map((b: Any) => <BotCard key={b.bot_id} b={b} kill={!!sum.kill} />)}
       </div>
       {retired.length > 0 && (

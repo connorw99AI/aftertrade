@@ -489,3 +489,12 @@ button:disabled, .controls button:disabled { opacity: .32; filter: grayscale(.7)
 .retired-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .creature.sprite.headshot { border-radius: 50%; background: radial-gradient(circle at 50% 40%, #16303a, #07090c 70%); overflow: hidden; }
 .creature.sprite.scene-A { background: radial-gradient(ellipse 55% 12% at 50% 95%, #2fd3f055, transparent 70%), linear-gradient(180deg, #05090c, #0b1a22); }
+
+/* overview zoom */
+.head-tools { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.zoom { display: inline-flex; border: 1px solid #2a3540; border-radius: 4px; overflow: hidden; }
+.zoom button { border: 0; border-radius: 0; background: var(--ink-deep); min-width: 34px; padding: 6px 8px; font-size: 1rem; }
+.zoom button + button { border-left: 1px solid #2a3540; }
+.zoom .zoom-level { min-width: 58px; font-size: .86rem; color: var(--muted); }
+/* small cards keep the creature, name, money and controls; the checklist rows and strategy line are on the bot page */
+.botgrid.compact .botcard-verdicts, .botgrid.compact .botcard-name .muted { display: none; }
