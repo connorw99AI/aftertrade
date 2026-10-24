@@ -66,20 +66,24 @@ Until then, news status is UNKNOWN, and with the default policy every *opening* 
 
 ## 3. Start the lab
 
-```
-scripts\windows\start.bat
-```
+Double-click the **Metal Lab** icon on your desktop (setup creates it; to create it again run
+`powershell -ExecutionPolicy Bypass -File scripts\windows\install-shortcut.ps1`). The icon runs `scripts\windows\launch.ps1`, which:
 
-This starts the API and live loop on `http://127.0.0.1:8765` and opens the dashboard.
+1. fetches the latest version with `git pull` (if that fails, for example offline or with local edits to tracked files, it says so and starts the version you have);
+2. reinstalls the Python package only when its dependency files changed;
+3. starts the lab and opens `http://127.0.0.1:8765` once it answers. If the lab is already running it only opens the dashboard.
+
+Close the Metal Lab window to stop the lab. The icon never arms trading: the lab comes back in the state you left it (shadow mode unless you armed it with `metals-lab arm`). `scripts\windows\start.bat` still works if you prefer it (no update step).
 
 - Until you arm, the loop runs in **shadow mode**: signals, auditor and risk decisions are recorded, and no orders are sent.
 - Start, pause and stop bots from the dashboard or with `metals-lab bot S04L start`. Only RUNNING bots trade once armed.
+- The Overview has **Start all**, **Pause all** and **Kill all**. Each card shows ▶ running, ⏸ paused, ■ stopped, or a skull while the kill switch is on. Kill all asks you to type KILL, closes every bot trade, disarms and blocks new trades until `metals-lab clear-kill`.
 
 ### Dashboard pages
 
 | Page | What it is for |
 |---|---|
-| Overview | All 20 bots (long and short halves) as creature cards, retired halves greyed out at the end: status, what each sees on gold and silver now, open trade, today's P&L, trades today, start/pause/stop. Click a creature for its own page. |
+| Overview | All 20 bots (long and short halves) as creature cards with Start all / Pause all / Kill all; retired halves collapse to one line at the end: status, what each sees on gold and silver now, open trade, today's P&L, trades today, start/pause/stop. Click a creature for its own page. |
 | Bot page | Retire / un-retire. Tabs: Live (checklist, money, open trades, last decision), Trades, Review (the auditor's assessment of its trade outcomes, with suggestions you can test on history and then apply), Rules & settings. |
 | Live | Gold and silver charts updated from a live price stream (about once a second) plus every bot's verdict and how close it is to an entry. Bots decide in the backend on completed candles; the page only displays. |
 | Positions | Every open trade with live P&L, distance to stop and target, and whether the stop/target in MT5 match what the bot set. Close one trade, all of one bot's trades, or everything (each close goes through the auditor and risk checks). |

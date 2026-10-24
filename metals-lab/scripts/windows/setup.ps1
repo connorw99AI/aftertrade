@@ -1,9 +1,9 @@
-# Metals Creature Lab - guided Windows setup. Read-only: it never arms trading and never sends orders.
+# Metal Lab - guided Windows setup. Read-only: it never arms trading and never sends orders.
 # Run from PowerShell:  powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $Root
-Write-Host "Metals Creature Lab setup in $Root" -ForegroundColor Cyan
+Write-Host "Metal Lab setup in $Root" -ForegroundColor Cyan
 
 # 1. Python 3.10-3.14 (versions with official MetaTrader5 Windows wheels)
 $ErrorActionPreference = "Continue"
@@ -38,16 +38,19 @@ elseif (Get-Command node -ErrorAction SilentlyContinue) {
   Push-Location dashboard; npm ci; npm run build; Pop-Location
 } else { Write-Host "No dashboard build and no Node.js: install Node 20+ and run 'npm ci; npm run build' in dashboard\" -ForegroundColor Yellow }
 
-# 5. MT5 terminal
+# 5. Desktop and Start-menu icon (runs scripts\windows\launch.ps1: update, start, open the dashboard)
+& (Join-Path $PSScriptRoot "install-shortcut.ps1")
+
+# 6. MT5 terminal
 $term = Get-Process terminal64 -ErrorAction SilentlyContinue
 if (-not $term) {
   Write-Host "MetaTrader 5 is not running. Start it, log into your DEMO account (File > Login), enable Algo Trading, then re-run or run scripts\windows\check.bat." -ForegroundColor Yellow
   exit 0
 }
 
-# 6. Read-only demo checks
+# 7. Read-only demo checks
 & $vpy -m metals_lab.cli check
 Write-Host ""
 Write-Host "Setup finished. Trading is NOT armed." -ForegroundColor Green
-Write-Host "Start the lab:  scripts\windows\start.bat"
+Write-Host "Start the lab:  double-click the Metal Lab icon on your desktop (or scripts\windows\start.bat)"
 Write-Host "Arm demo trading later, manually:  .venv\Scripts\metals-lab arm --operator ""your name"""

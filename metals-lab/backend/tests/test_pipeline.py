@@ -471,8 +471,19 @@ def test_retiring_a_half_moves_its_balance_to_the_other_half(armed):
     pool = c.ledger.unallocated_pool(check_account(c.ro).fingerprint)
     out2 = c.retire("S08S", "both halves off", "pytest")  # nobody left: money goes back to the pool
     assert out2["to"] is None and c.ledger.unallocated_pool(check_account(c.ro).fingerprint) == pool + 20000.0
-    c.unretire("S08L", "pytest")
+    out3 = c.unretire("S08L", "pytest")  # the other half is retired too, so its share comes from the pool
     assert c.db.one("SELECT status FROM bots WHERE bot_id='S08L'")["status"] == "STOPPED"
+    assert out3["from_pool"] == 10000.0 and c.bot_book("S08L").equity == 10000.0
+
+
+def test_unretire_takes_its_share_back_from_the_other_half(armed):
+    c = armed
+    c.retire("S07S", "x", "pytest")
+    assert c.bot_book("S07L").equity == 20000.0
+    out = c.unretire_all("pytest")
+    assert [o["bot_id"] for o in out] == ["S07S"] and out[0]["from_other_half"] == 10000.0
+    assert c.bot_book("S07L").equity == c.bot_book("S07S").equity == 10000.0
+    assert c.db.one("SELECT 1 FROM config_audit WHERE action='ALLOCATION_MOVE' AND bot_id='S07S'")
 
 
 def test_cannot_retire_with_open_trades(armed):

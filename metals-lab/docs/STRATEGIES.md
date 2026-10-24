@@ -8,7 +8,7 @@ Full rules, parameters and per-strategy citations: [STRATEGY_REFERENCE.md](STRAT
 
 Every strategy runs as two bots: `S04L` only takes long entries and `S04S` only takes short ones. Each half has its own magic number (`7710000 + strategy*10 + 1` long, `+ 2` short), its own 5% allocation (£150 on a £3,000 account), its own ledger and its own record, so a side that loses can be retired without retiring the strategy. S10 is a two-leg pair, so its halves are split by direction of the trade rather than by a single side: `S10L` buys silver and sells gold when silver is cheap on the ratio, `S10S` does the opposite.
 
-**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. Its whole balance (allocation plus realised P&L) moves to the other half of the same strategy in one audited ledger transfer (`RETIRE_TRANSFER`). If the other half is already retired, the money goes back to the unallocated pool. Un-retiring brings a half back stopped with no money; give it some with `metals-lab allocate`.
+**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. Its whole balance (allocation plus realised P&L) moves to the other half of the same strategy in one audited ledger transfer (`RETIRE_TRANSFER`). If the other half is already retired, the money goes back to the unallocated pool. Un-retiring brings a half back stopped with its starting share (5% of the starting balance) taken back from the other half, or from the unallocated pool if the other half doesn't hold it; every move is an audited ledger entry. The Overview has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Overview.
 
 ## Assessor changes applied from the backtest review
 
@@ -25,7 +25,7 @@ The Assessor's ranked suggestions from the October 2025 → October 2026 backtes
 | S09 | 0-7 and 21-24 UTC | best hours; others near zero |
 | S10 | 21-24 UTC | only late hours were positive |
 
-Halves retired on a fresh lab (`capital.apply_assessor_retirements: true`): S01L, S01S, S02L, S02S (no edge on either side), S03S, S06S, S07S (shorts lost), S04L, S05L (longs lost). Each filter is a normal parameter (`sides`, `metals`, `hours_utc`) shown on the bot page, so you can change or remove it.
+No half is retired by default. The Assessor flagged S01L, S01S, S02L, S02S (no edge on either side), S03S, S06S, S07S (shorts lost), S04L and S05L (longs lost); set `capital.apply_assessor_retirements: true` to start a fresh lab with those retired. Retire them yourself once demo results agree. Each filter is a normal parameter (`sides`, `metals`, `hours_utc`) shown on the bot page, so you can change or remove it.
 
 No bot showed a statistically real edge (best t-stat about 1.1). Treat everything above as hypotheses to test, not improvements you have.
 

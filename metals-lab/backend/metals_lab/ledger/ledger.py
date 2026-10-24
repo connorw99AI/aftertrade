@@ -125,6 +125,25 @@ class Ledger:
                  json.dumps({"to": to_bot or "unallocated pool", "amount": amount, "reason": reason}), operator, now_iso()))
         return amount
 
+    def move_allocation(self, from_bot: str, to_bot: str, amount: float, reason: str, operator: str) -> float:
+        """Move part of one bot's allocation to another (e.g. giving a retired half its share back). Audited."""
+        if not reason or not operator:
+            raise ValueError("allocation moves require a reason and an operator name")
+        amount = round(amount, 2)
+        if amount <= 0 or amount > self.allocation(from_bot) + 1e-9:
+            raise ValueError("move must be positive and no more than the giving bot's allocation")
+        ref = f"op:{uuid.uuid4().hex}"
+        with self.db.tx():
+            self.db.conn.execute("INSERT INTO ledger(bot_id,ts,kind,amount,ref,note) VALUES(?,?,?,?,?,?)",
+                                 (from_bot, now_iso(), "ALLOCATION", -amount, ref + ":out", f"to {to_bot}: {reason}"))
+            self.db.conn.execute("INSERT INTO ledger(bot_id,ts,kind,amount,ref,note) VALUES(?,?,?,?,?,?)",
+                                 (to_bot, now_iso(), "ALLOCATION", amount, ref + ":in", f"from {from_bot}: {reason}"))
+            self.db.conn.execute(
+                "INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
+                (to_bot, "ALLOCATION_MOVE", json.dumps({"from": from_bot}),
+                 json.dumps({"from": from_bot, "amount": amount, "reason": reason}), operator, now_iso()))
+        return amount
+
     # ---------------------------------------------------------------- reading
     def allocation(self, bot_id: str) -> float:
         return self.db.one("SELECT COALESCE(SUM(amount),0) s FROM ledger WHERE bot_id=? AND kind='ALLOCATION'", (bot_id,))["s"]

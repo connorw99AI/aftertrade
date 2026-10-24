@@ -39,7 +39,7 @@ export function RoleThinking({ bot, th, role, compact = false }: { bot: string; 
   return (
     <div className={`thinking ${v.tone}`}>
       <button className="thinking-head" onClick={() => setOpen(!open)} aria-expanded={open}>
-        {compact && <Creature bot={bot} size={28} mood={th.bot_status === "RUNNING" ? "idle" : "asleep"} />}
+        {compact && <Creature bot={bot} size={28} mood={th.bot_status === "RETIRED" ? "asleep" : th.bot_status === "RUNNING" ? "idle" : "still"} />}
         <span className="thinking-who">
           {compact && <b>{CREATURES[bot]?.name} <span className="muted">{bot}, {th.timeframe}{th.bot_status !== "RUNNING" ? `, ${th.bot_status.toLowerCase()}` : ""}</span></b>}
           <span className="thinking-sum">{r.summary}</span>

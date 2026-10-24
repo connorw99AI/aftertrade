@@ -465,3 +465,27 @@ button:disabled, .controls button:disabled { opacity: .32; filter: grayscale(.7)
 .alert-list .alert-msg { flex: 1; min-width: 0; }
 .alert-items { margin: 6px 0 2px; padding-left: 18px; color: var(--muted); font-size: .86rem; display: grid; gap: 2px; }
 .alert-msg summary { color: var(--text); }
+
+/* state symbols, bulk controls, retired rows */
+.botcard-art { position: relative; }
+.state-symbol { display: inline-grid; place-items: center; flex: none; border-radius: 50%; background: #07090cdd; border: 1px solid #2a3540; }
+.state-symbol rect { fill: currentColor; }
+.state-symbol.st-run { color: var(--bull); border-color: #38e27d66; box-shadow: 0 0 10px -2px #38e27d88; }
+.state-symbol.st-pause { color: var(--gold); border-color: #e9b94966; }
+.state-symbol.st-stop { color: var(--silver); }
+.state-symbol.st-kill { color: var(--bear); border-color: #ff4b3e88; box-shadow: 0 0 12px -2px #ff4b3eaa; }
+.art-wrap { position: relative; }
+.botcard-art > .state-symbol, .art-wrap > .state-symbol { position: absolute; left: 8px; top: 8px; z-index: 3; }
+.creature.sprite.mood-still .creature-body { animation: none; }
+.bulk { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.bulk button { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; }
+.bulk .state-symbol { background: none; border: 0; box-shadow: none; }
+.btn-kill { background: #2a0806; border-color: var(--bear); color: #ffb9b1; font-weight: 700; }
+.btn-kill:hover:not(:disabled) { box-shadow: 0 0 14px #ff4b3e66; }
+.retired-list { margin-top: 26px; }
+.retired-row { display: grid; grid-template-columns: minmax(260px, 1fr) 2fr auto; gap: 12px; align-items: center; padding: 6px 10px;
+  border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 4px; background: var(--panel); margin-bottom: 6px; }
+.retired-row.bc-L { border-left-color: #38e27d55; } .retired-row.bc-S { border-left-color: #ff4b3e55; }
+.retired-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.creature.sprite.headshot { border-radius: 50%; background: radial-gradient(circle at 50% 40%, #16303a, #07090c 70%); overflow: hidden; }
+.creature.sprite.scene-A { background: radial-gradient(ellipse 55% 12% at 50% 95%, #2fd3f055, transparent 70%), linear-gradient(180deg, #05090c, #0b1a22); }

@@ -19,7 +19,7 @@ DEFAULTS: dict[str, Any] = {
     "instruments": {"gold": None, "silver": None, "reference_symbols": []},
     "sessions": {},                     # optional explicit session windows per role (server time)
     "capital": {"bot_fraction": 0.05,      # 20 bots (10 strategies x long/short halves), 5% each
-                "apply_assessor_retirements": True},  # a fresh lab starts with the assessor's flagged halves retired
+                "apply_assessor_retirements": False},  # true: a fresh lab starts with the assessor's flagged halves retired
     "risk": {
         "risk_per_trade": 0.03,             # default; a bot may override it with strategies.<id>.risk_per_trade
         "max_risk_per_trade_cap": 0.03,     # hard ceiling for any per-bot override

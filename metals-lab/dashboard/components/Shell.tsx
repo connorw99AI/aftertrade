@@ -89,7 +89,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <PopupCtx.Provider value={popups}>
         <div className="app">
           <header className="top">
-            <Link href="/" className="brand"><Creature bot="ASSESSOR" size={30} label="" /> <span>Metals creature lab</span></Link>
+            <Link href="/" className="brand"><img src="/brand/icon-64.png" width={38} height={38} alt="" /> <span>Metal Lab</span></Link>
             <nav aria-label="Sections">
               {NAV.map(([href, label]) => (
                 <Link key={href} href={href} className={(href === "/" ? path === "/" || path?.startsWith("/bot") : path?.startsWith(href)) ? "on" : ""}>{label}</Link>

@@ -68,7 +68,7 @@ export default function Assessor() {
   return (
     <>
       <div className="hero">
-        <div className="hero-art"><Creature bot="ASSESSOR" size={150} scene mood={busy ? "busy" : "idle"} /></div>
+        <div className="hero-art"><Creature bot="ASSESSOR" size={150} scene full mood={busy ? "busy" : "idle"} /></div>
         <div className="hero-text">
           <h1>The Assessor</h1>
           <p className="muted">Reviews every bot after each closed trade and each finished backtest: what worked, what lost, what got blocked,

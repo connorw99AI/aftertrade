@@ -120,7 +120,7 @@ class Coordinator:
         for sid in BOT_IDS:
             params = (self.cfg.get("strategies", {}).get(sid, {}) or {}).get("params", {})
             build(sid, params)  # validates
-            retired = ASSESSOR_RETIRED.get(sid) if self.cfg["capital"].get("apply_assessor_retirements", True) else None
+            retired = ASSESSOR_RETIRED.get(sid) if self.cfg["capital"].get("apply_assessor_retirements", False) else None
             self.db.x("INSERT OR IGNORE INTO bots(bot_id,enabled,status,pause_reason,params_json,updated_at) VALUES(?,?,?,?,?,?)",
                       (sid, int(bool((self.cfg.get("strategies", {}).get(sid, {}) or {}).get("enabled", False))),
                        "RETIRED" if retired else "STOPPED", f"assessor: {retired}" if retired else None, json.dumps(params), now_iso()))
@@ -302,9 +302,31 @@ class Coordinator:
         return {"bot_id": bot_id, **self._settle_retired(bot_id, reason or "retired by operator", operator)}
 
     def unretire(self, bot_id: str, operator: str) -> dict:
-        """Back to STOPPED. It has no money until the operator allocates some (metals-lab allocate)."""
-        self.set_bot_status(bot_id, "STOPPED", "un-retired; needs an allocation before it can trade", operator)
-        return {"bot_id": bot_id, "allocation": self.ledger.allocation(bot_id)}
+        """Back to STOPPED with its normal starting allocation restored: taken back from the other half (which got it
+        on retirement) and, if that is not enough, from the unallocated pool. Every move is an audited ledger entry."""
+        self.set_bot_status(bot_id, "STOPPED", "un-retired", operator)
+        restored = {"from_other_half": 0.0, "from_pool": 0.0}
+        acct = check_account(self.ro)
+        snap = self.ledger.snapshot(acct.fingerprint) if acct.fingerprint else None
+        if snap:
+            base = round(snap["starting_balance"] * snap["bot_fraction"], 2)
+            need = round(base - (self.ledger.allocation(bot_id) + self.ledger.realized(bot_id)), 2)
+            sib = self.sibling(bot_id)
+            spare = round(self.ledger.allocation(sib) - base, 2)  # what the other half holds above its own share
+            if need > 0 and spare > 0:
+                amt = min(need, spare)
+                self.ledger.move_allocation(sib, bot_id, amt, "un-retire: return the retired half's share", operator)
+                restored["from_other_half"], need = amt, round(need - amt, 2)
+            pool = self.ledger.unallocated_pool(acct.fingerprint)
+            if need > 0 and pool > 0:
+                amt = min(need, pool)
+                self.ledger.change_allocation(acct.fingerprint, bot_id, amt, "un-retire: restore starting allocation", operator)
+                restored["from_pool"] = amt
+        return {"bot_id": bot_id, "allocation": self.ledger.allocation(bot_id), **restored}
+
+    def unretire_all(self, operator: str) -> list[dict]:
+        return [self.unretire(b, operator) for b in BOT_IDS
+                if self.db.one("SELECT status FROM bots WHERE bot_id=?", (b,))["status"] == "RETIRED"]
 
     def update_params(self, bot_id: str, params: dict, operator: str) -> dict:
         row = self.db.one("SELECT * FROM bots WHERE bot_id=?", (bot_id,))

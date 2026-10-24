@@ -217,6 +217,28 @@ def create_app(state: State) -> FastAPI:
     def bot_ledger(bot: str):
         return db.q("SELECT * FROM ledger WHERE bot_id=? ORDER BY id DESC LIMIT 500", (bot,))
 
+    @app.post("/api/bots-all/{action}", dependencies=[Depends(auth)])
+    def bots_all(action: str, body: StatusBody):
+        """Start all / pause all (every non-retired half) and un-retire all, from the Overview."""
+        if action == "unretire":
+            return {"unretired": coord().unretire_all(body.operator)}
+        if action not in ("start", "pause"):
+            raise HTTPException(404)
+        if action == "start" and db.get_control("kill") == "1":
+            raise HTTPException(409, "kill switch is on; clear it first (metals-lab clear-kill), then start the bots")
+        changed = []
+        for b in BOT_IDS:
+            st = db.one("SELECT status FROM bots WHERE bot_id=?", (b,))["status"]
+            if action == "start" and st not in ("RUNNING", "RETIRED"):
+                coord().set_bot_status(b, "RUNNING", body.reason or "start all", body.operator)
+                changed.append(b)
+            elif action == "pause" and st == "RUNNING":
+                coord().set_bot_status(b, "PAUSED", body.reason or "pause all", body.operator)
+                changed.append(b)
+        if action == "start":
+            db.set_control("global_pause", "0")
+        return {"changed": changed}
+
     @app.post("/api/bots/{bot}/{action}", dependencies=[Depends(auth)])
     def bot_action(bot: str, action: str, body: StatusBody):
         if bot not in BOT_IDS or action not in ("start", "pause", "stop", "retire", "unretire"):

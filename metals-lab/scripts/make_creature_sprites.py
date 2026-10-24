@@ -60,7 +60,7 @@ def hsv2rgb(h, s, v):
 # Colour per half. None keeps the original art untouched. A number is a hue; a tuple is (hue, saturation x, brightness x)
 # for lighter or deeper shades. Longs are blues and greens, shorts are reds and oranges; within each side every
 # creature has its own shade.
-LONG = {1: 85, 2: None, 3: None, 4: 200, 5: (185, 0.75, 1.12), 6: 212, 7: (155, 0.6, 1.15), 8: 248, 9: 120, 10: None}
+LONG = {1: 85, 2: None, 3: None, 4: 200, 5: (185, 0.75, 1.12), 6: 212, 7: (155, 0.6, 1.15), 8: (226, 1.2, 0.72), 9: 120, 10: None}
 SHORT = {1: (8, 0.6, 1.15), 2: (348, 1.1, 0.9), 3: 28, 4: (0, 1.2, 0.8), 5: (22, 0.8, 1.12), 6: 22, 7: (0, 1.1, 1.05),
          8: (38, 1.25, 1.1), 9: 355, 10: (14, 1.2, 1.15)}
 

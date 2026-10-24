@@ -90,7 +90,7 @@ export default function Live() {
               const th = thinking?.[b];
               return (
                 <tr key={b} className={th?.bot_status !== "RUNNING" ? "dim" : ""}>
-                  <td><span className="who"><Creature bot={b} size={30} mood={th?.bot_status === "RUNNING" ? "idle" : "asleep"} /> {CREATURES[b].name} <span className="muted">{b}</span></span></td>
+                  <td><span className="who"><Creature bot={b} size={30} mood={th?.bot_status === "RETIRED" ? "asleep" : th?.bot_status === "RUNNING" ? "idle" : "still"} /> {CREATURES[b].name} <span className="muted">{b}</span></span></td>
                   <td>{th?.timeframe ?? "–"}</td>
                   {(["GOLD", "SILVER"] as const).map((role) => {
                     const r = th?.roles?.[role];

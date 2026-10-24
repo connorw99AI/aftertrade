@@ -138,6 +138,12 @@ def cmd_allocate(cfg, a):
     return 0
 
 
+def cmd_unretire_all(cfg, a):
+    c, _ = _coordinator(cfg, a.sim)
+    print(json.dumps(c.unretire_all(a.operator), indent=2))
+    return 0
+
+
 def cmd_bot(cfg, a):
     c, _ = _coordinator(cfg, a.sim)
     c.set_bot_status(a.bot, {"start": "RUNNING", "pause": "PAUSED", "stop": "STOPPED"}[a.action], a.reason, a.operator)
@@ -342,6 +348,8 @@ def main(argv=None) -> int:
     s.add_argument("--delta", type=float, required=True)
     s.add_argument("--reason", required=True)
     s.add_argument("--operator", required=True)
+    s = sub.add_parser("unretire-all", help="un-retire every retired half and give each its starting allocation back")
+    s.add_argument("--operator", required=True)
     s = sub.add_parser("bot")
     s.add_argument("bot")
     s.add_argument("action", choices=["start", "pause", "stop"])
@@ -376,7 +384,7 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
     cfg = config_mod.load(a.config)
     fn = {"check": cmd_check, "arm": cmd_arm, "disarm": cmd_disarm, "kill": cmd_kill, "clear-kill": cmd_clear_kill,
-          "allocate": cmd_allocate, "bot": cmd_bot, "fetch-history": cmd_fetch, "backtest": cmd_backtest,
+          "allocate": cmd_allocate, "unretire-all": cmd_unretire_all, "bot": cmd_bot, "fetch-history": cmd_fetch, "backtest": cmd_backtest,
           "research": cmd_research, "serve": cmd_serve, "export-backtests": cmd_export_backtests, "new-lab": cmd_new_lab}[a.cmd]
     return fn(cfg, a)
 

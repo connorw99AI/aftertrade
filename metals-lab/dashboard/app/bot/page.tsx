@@ -3,7 +3,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { BotControls, StatusBadge, Tabs } from "@/components/Bits";
-import { Creature, CREATURES, SideIcon } from "@/components/Creature";
+import { Creature, CREATURES, SideIcon, StateSymbol, stateSymbol } from "@/components/Creature";
+import { useSummary } from "@/components/Shell";
 import { RoleThinking } from "@/components/Thinking";
 import { Compare2 } from "@/components/TestResult";
 import { Any, api, confirmAction, minutes, money, pct, when } from "@/lib/api";
@@ -239,17 +240,18 @@ function RulesTab({ b, reload }: { b: Any; reload: () => void }) {
 function BotDetail({ id }: { id: string }) {
   const sp = useSearchParams();
   const { data: b, reload, error } = usePoll<Any>(`/api/bots/${id}`, 4000);
+  const sum = useSummary();
   const [tab, setTab] = useState(sp.get("tab") || "live");
   if (error) return <div className="warn danger">{error}</div>;
   if (!b) return <p className="empty">Loading…</p>;
   const st = b.strategy;
-  const mood = b.status === "RUNNING" ? (b.open_positions.length ? "busy" : "idle") : b.status === "PAUSED_RISK" ? "hurt" : "asleep";
+  const mood = b.status === "RUNNING" ? (b.open_positions.length ? "busy" : "idle") : b.status === "PAUSED_RISK" ? "hurt" : b.status === "RETIRED" ? "asleep" : "still";
   const side = id.endsWith("L") ? "▲ Bull · long half" : "▼ Bear · short half";
   return (
     <>
       <p className="crumbs"><Link href="/">← All bots</Link></p>
       <div className="hero">
-        <div className="hero-art"><Creature bot={id} size={190} mood={mood} scene /></div>
+        <div className="hero-art art-wrap"><Creature bot={id} size={190} mood={mood} scene />{b.status !== "RETIRED" && <StateSymbol state={stateSymbol(b.status, !!sum?.kill)} />}</div>
         <div className="hero-text">
           <h1 className="hero-title">{CREATURES[id]?.name} <SideIcon bot={id} size={52} /></h1>
           <p><b>{id} {st.name}</b> · <span className={`side-tag side-${id[3]}`}>{side}</span> · {st.timeframes.join(" + ")} · {b.symbols.join(" and ") || st.roles.join(" and ")}</p>

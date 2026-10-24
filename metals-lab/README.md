@@ -1,4 +1,4 @@
-# Metals creature lab
+# Metal Lab
 
 A demo-only MetaTrader 5 laboratory for gold and silver. Ten independently configurable strategy bots, each a pixel creature with its own virtual portfolio, share one MT5 **demo** account. Every trade goes strategy → independent market auditor → central risk engine → demo executor. Live accounts are technically blocked.
 

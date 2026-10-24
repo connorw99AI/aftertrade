@@ -1,36 +1,39 @@
 "use client";
 import Link from "next/link";
 import { BotControls, StatusBadge, VerdictPill } from "@/components/Bits";
-import { Creature, CREATURES, Mood, SideIcon } from "@/components/Creature";
+import { useState } from "react";
+import { Creature, CREATURES, Mood, SideIcon, StateSymbol, stateSymbol } from "@/components/Creature";
 import { useSummary } from "@/components/Shell";
-import { Any, money } from "@/lib/api";
+import { Any, api, confirmAction, money } from "@/lib/api";
 
-function mood(b: Any): Mood {
-  if (b.status === "STOPPED" || b.status === "PAUSED" || b.status === "RETIRED") return "asleep";
+function mood(b: Any, kill: boolean): Mood {
   if (b.status === "PAUSED_RISK" || b.stopped_for_day === "daily loss stop") return "hurt";
+  if (kill || b.status === "STOPPED" || b.status === "PAUSED") return "still";
   if (b.open_positions.length) return "busy";
   if (b.today_pnl > 0) return "happy";
   return "idle";
 }
 
-function BotCard({ b }: { b: Any }) {
+function BotCard({ b, kill }: { b: Any; kill: boolean }) {
   const inTrade = b.open_positions.length > 0;
   // only the metals this bot may trade (a gold-only bot has nothing to say about silver), plus any metal it is in a trade on
   const roles = Object.keys(b.verdicts || {}).filter((r) => b.metals === "both" || r.toLowerCase() === b.metals
     || b.open_positions.some((p: Any) => p.role === r));
-  const tone = b.status === "RETIRED" ? "card-retired" : b.stopped_for_day ? "card-stopped" : inTrade ? "card-trade" : b.status !== "RUNNING" ? "card-idle" : "";
+  const tone = b.stopped_for_day ? "card-stopped" : inTrade ? "card-trade" : "";
   return (
     <Link href={`/bot?id=${b.bot_id}`} className={`botcard bc-${b.side} ${tone}`}>
       <div className="botcard-top">
         <span className="botcard-tags"><span className="tf-tag">{b.timeframe}</span>{b.status !== "RUNNING" && <StatusBadge status={b.status} />}</span>
         <SideIcon bot={b.bot_id} />
       </div>
-      <div className="botcard-art"><Creature bot={b.bot_id} size={150} mood={mood(b)} scene /></div>
+      <div className="botcard-art">
+        <Creature bot={b.bot_id} size={150} mood={mood(b, kill)} scene />
+        <StateSymbol state={stateSymbol(b.status, kill)} />
+      </div>
       <div className="botcard-name">
         <b>{CREATURES[b.bot_id]?.name}</b>
         <span className="muted">{b.bot_id} · {b.name}</span>
       </div>
-      {b.status === "RETIRED" && <div className="retired-note">Retired{b.pause_reason ? `: ${b.pause_reason}` : ""}</div>}
       {b.stopped_for_day && <div className="daystop">Stopped for today: {b.stopped_for_day}</div>}
       <div className="botcard-verdicts">
         {roles.length === 0 && <span className="muted small">Waiting for the first bar…</span>}
@@ -56,20 +59,88 @@ function BotCard({ b }: { b: Any }) {
   );
 }
 
+/** A retired half collapses to one line: who it is, why it was retired, and a way back. */
+function RetiredRow({ b }: { b: Any }) {
+  return (
+    <div className={`retired-row bc-${b.side}`}>
+      <Link href={`/bot?id=${b.bot_id}`} className="who"><Creature bot={b.bot_id} size={34} mood="asleep" />
+        <span><b>{CREATURES[b.bot_id]?.name}</b> <span className="muted small">{b.bot_id} · {b.name}</span></span></Link>
+      <span className="muted small retired-why">{b.pause_reason || "retired"}</span>
+      <BotControls bot={b.bot_id} status={b.status} hasOpen={false} retire />
+    </div>
+  );
+}
+
+function BulkControls({ kill }: { kill: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function run(action: "start" | "pause" | "kill") {
+    const q = {
+      start: "Start every bot that isn't retired?",
+      pause: "Pause every running bot? Open trades keep their stops and exits.",
+      kill: "Kill switch: close every bot trade now, disarm, and block all new trades until you clear it. Continue?",
+    }[action];
+    const name = confirmAction(q);
+    if (!name) return;
+    if (action === "kill" && (window.prompt('Type KILL to confirm') || "").trim().toUpperCase() !== "KILL") return;
+    setBusy(true);
+    setErr(null);
+    try {
+      if (action === "kill") await api.post("/api/risk/kill", { operator: name, reason: "Kill all from the Overview" });
+      else await api.post(`/api/bots-all/${action}`, { operator: name, reason: `${action} all from the Overview` });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="bulk">
+      <button className="btn-go" disabled={busy || kill} title={kill ? "Clear the kill switch first" : ""} onClick={() => run("start")}>
+        <StateSymbol state="run" size={20} /> Start all</button>
+      <button className="btn-pause" disabled={busy} onClick={() => run("pause")}><StateSymbol state="pause" size={20} /> Pause all</button>
+      <button className="btn-kill" disabled={busy || kill} onClick={() => run("kill")}><StateSymbol state="kill" size={20} /> Kill all</button>
+      {err && <span className="err">{err}</span>}
+    </div>
+  );
+}
+
 export default function Overview() {
   const sum = useSummary();
+  const [busy, setBusy] = useState(false);
   if (!sum) return <p className="empty">Loading…</p>;
   const shadow = sum.bots.some((b: Any) => b.shadow);
+  const active = sum.bots.filter((b: Any) => b.status !== "RETIRED");
+  const retired = sum.bots.filter((b: Any) => b.status === "RETIRED");
+  async function unretireAll() {
+    const name = confirmAction(`Un-retire all ${retired.length} retired halves? Each gets its starting share back from its other half.`);
+    if (!name) return;
+    setBusy(true);
+    try { await api.post("/api/bots-all/unretire", { operator: name, reason: "un-retire all from the Overview" }); }
+    catch (e) { window.alert(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
   return (
     <>
-      <div className="page-head">
-        <h1>Overview</h1>
-        <p className="muted">Click a creature for its full view: live checklist, trades, review and settings.
-          {shadow ? " Shadow mode: amounts are what each bot would get once you arm." : ""}</p>
+      <div className="page-head row-between">
+        <div>
+          <h1>Overview</h1>
+          <p className="muted">Click a creature for its full view: live checklist, trades, review and settings.
+            {shadow ? " Shadow mode: amounts are what each bot would get once you arm." : ""}</p>
+        </div>
+        <BulkControls kill={!!sum.kill} />
       </div>
+      {sum.kill && <div className="warn danger">Kill switch is on: every bot is blocked. Clear it with <code>metals-lab clear-kill</code>, then arm and start again.</div>}
       <div className="botgrid">
-        {sum.bots.map((b: Any) => <BotCard key={b.bot_id} b={b} />)}
+        {active.map((b: Any) => <BotCard key={b.bot_id} b={b} kill={!!sum.kill} />)}
       </div>
+      {retired.length > 0 && (
+        <section className="retired-list">
+          <div className="row-between"><h2>Retired ({retired.length})</h2>
+            <button disabled={busy} onClick={unretireAll}>Un-retire all</button></div>
+          {retired.map((b: Any) => <RetiredRow key={b.bot_id} b={b} />)}
+        </section>
+      )}
     </>
   );
 }

@@ -2,8 +2,12 @@ import type { Metadata, Viewport } from "next";
 import Shell from "@/components/Shell";
 import "./globals.css";
 
-export const metadata: Metadata = { title: "Metals creature lab", description: "Demo-only MT5 gold and silver strategy laboratory" };
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#1B1A2E" };
+export const metadata: Metadata = {
+  title: "Metal Lab",
+  description: "Demo-only MT5 gold and silver strategy laboratory",
+  icons: { icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/brand/icon-192.png", type: "image/png" }], apple: "/apple-touch-icon.png" },
+};
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#06080A" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
