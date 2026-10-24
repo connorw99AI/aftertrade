@@ -188,3 +188,16 @@ def test_live_losing_streak_pauses_the_bot_until_start(armed):
     armed.set_bot_status("S01L", "RUNNING", operator="pytest")
     armed.db.set_control("streak_reset:S01L", "2099-12-31T00:00:00+00:00")  # Start clears the streak (the trades above are future-dated)
     assert armed.guard_state("S01L")["streak"] == 0
+
+
+def test_every_bot_trades_all_hours_while_the_switch_is_on(armed):
+    import json
+    from metals_lab.strategies import BOT_IDS, build
+    assert all(build(b).p["hours_utc"] == "all" for b in BOT_IDS)
+    assert all(build(b).p.get("use_session", "off") == "off" for b in BOT_IDS)
+    armed.db.x("UPDATE bots SET params_json=? WHERE bot_id='S03L'", (json.dumps({"hours_utc": "12-21", "use_session": "on"}),))
+    s = armed.strategy("S03L")
+    assert s.p["hours_utc"] == "all" and s.p["use_session"] == "off"       # saved session limits overridden
+    armed.cfg["trading"]["all_hours"] = False
+    s = armed.strategy("S03L")
+    assert s.p["hours_utc"] == "12-21" and s.p["use_session"] == "on"      # switch off: the bot's own settings apply

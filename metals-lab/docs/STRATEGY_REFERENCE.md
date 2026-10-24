@@ -14,7 +14,7 @@ Trades short M5 pullbacks to the 20-EMA in the direction of the M15 trend (M15 E
 
 **Invalidation.** M5 close through EMA50 against the position, or the M15 trend turning, invalidates the premise.
 
-**Spread, liquidity and volatility filters.** Hours 07:00-20:00 UTC; spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 to avoid dead and disorderly markets.
+**Spread, liquidity and volatility filters.** Any hour the market is open (07:00-20:00 UTC only when use_session is on); spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 to avoid dead and disorderly markets.
 
 **Limitations.** Generic trend-pullback logic, not a published metals-specific edge. On M5 OHLC the order of stop/target hits inside a bar is unknown; costs are still a real share of the target. Moved from one-minute to five-minute entries so years of history can be backtested (MT5 keeps far less one-minute history).
 
@@ -30,7 +30,8 @@ Trades short M5 pullbacks to the 20-EMA in the direction of the M15 trend (M15 E
 | `reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Target a multiple of the stop so it clears costs. |
 | `max_hold_bars` | 12 | 6, 12, 18 | Scalps that do not work quickly are closed (12 M5 bars = 1 hour). |
 | `max_spread_atr` | 0.2 | 0.15, 0.2, 0.3 | Skip when the spread exceeds 20% of ATR(14,M5), like the other M5 bots. |
-| `start_hour` | 7 | – | UTC start of liquid hours. |
+| `use_session` | off | – | on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now). |
+| `start_hour` | 7 | – | UTC start of liquid hours (used when use_session is on). |
 | `end_hour` | 20 | – | UTC end of liquid hours. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
 | `metals` | both | – | Which metals may open: both, gold or silver. No assessor change; trades every side, metal and hour. |
@@ -55,7 +56,7 @@ Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter
 
 **Invalidation.** ADX rising above adx_max+5 while in trade (range turning into trend) closes the position.
 
-**Spread, liquidity and volatility filters.** Spread <= max_spread_atr x ATR; no new entries after entry_end London (the window follows UK clock changes).
+**Spread, liquidity and volatility filters.** Spread <= max_spread_atr x ATR. Any hour the market is open; with use_session on, entries only in the Asian window (entry_start-entry_end London, following UK clock changes) and flat before the London open.
 
 **Limitations.** Asian-session spreads can be wide relative to the small target; mean reversion fails abruptly on news (e.g. Chinese data, geopolitical headlines). OHLC intrabar ordering unknown.
 
@@ -67,6 +68,7 @@ Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter
 | `adx_max` | 25 | 20, 25, 30 | Only trade when trend strength is low. |
 | `stop_atr` | 1.0 | 0.8, 1.0, 1.3 | Tight stop; ranges that break tend to run. |
 | `max_hold_bars` | 9 | 6, 9, 12 | 45 minutes. |
+| `use_session` | off | – | on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now). |
 | `tz` | Europe/London | – | Session clock (follows UK summer time). |
 | `entry_start` | 00:00 | – | London time: start of the quiet Asian hours. |
 | `entry_end` | 07:00 | – | London time: no new entries after this. |
@@ -95,7 +97,7 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 
 **Invalidation.** A new extreme beyond the breakout high/low (= the stop) invalidates the failure.
 
-**Spread, liquidity and volatility filters.** 08:00-21:00 London time (follows UK clock changes); skip expansion bars (>2.5 ATR, likely news); skip strong trends (ADX >= adx_max); spread guard.
+**Spread, liquidity and volatility filters.** Any hour the market is open (08:00-21:00 London only when use_session is on); skip expansion bars (>2.5 ATR, likely news); skip strong trends (ADX >= adx_max); spread guard.
 
 **Limitations.** Source pattern is daily and not metals-specific. M5 adaptation is a hypothesis; stop placement on OHLC is coarse.
 
@@ -107,11 +109,12 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 | `max_hold_bars` | 10 | 6, 10, 15 | Reversal should work quickly (50 min). |
 | `max_spread_atr` | 0.15 | 0.15, 0.2 | Cost guard: spread <= 15% of ATR(14,M5). |
 | `tz` | Europe/London | – | Session clock (follows UK summer time). |
+| `use_session` | off | – | on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now). |
 | `session_start` | 08:00 | – | London time: London open. |
 | `session_end` | 21:00 | – | London time: end of the New York afternoon. |
-| `sides` | long | – | Which sides may open: both, long or short. Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
-| `metals` | both | – | Which metals may open: both, gold or silver. Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
-| `hours_utc` | 12-21 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
+| `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 12-21 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
+| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 12-21 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
+| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 12-21 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
 
 **Sources.**
 
@@ -130,13 +133,14 @@ Builds the first half hour of the New York session (08:30-09:00 New York time, w
 
 **Invalidation.** Close back inside the opposite half of the range = stop; one breakout attempt per day.
 
-**Spread, liquidity and volatility filters.** Range width between min_range_atr and max_range_atr x ATR(14, M5); spread guard; entries only until entry_cutoff New York.
+**Spread, liquidity and volatility filters.** Range width between min_range_atr and max_range_atr x ATR(14, M5); spread guard. With use_session off (default for now) entries are allowed at any hour after the range is built, until the next day's range starts; on = only until entry_cutoff.
 
 **Limitations.** Spot metals trade almost 24h; the New York open is a liquidity and data event, not an exchange open, so ORB evidence from equities does not transfer automatically. The 08:30 data release can make the range unusually wide.
 
 | Parameter | Default | Research grid | Rationale |
 |---|---|---|---|
 | `tz` | America/New_York | – | Session clock (follows US daylight saving). |
+| `use_session` | off | – | on = entries only in the session window and flat by the time exit; off = after the range is built, entries at any hour until the next range starts, exits by stop, target or max hold. |
 | `or_start` | 08:30 | – | US data releases and the active New York gold session. |
 | `or_end` | 09:00 | 08:45, 09:00, 09:30 | Half-hour opening range (6 M5 bars). |
 | `entry_cutoff` | 11:30 | 11:00, 11:30, 12:30 | No new entries after late morning New York. |
@@ -172,12 +176,13 @@ Marks the London-morning range (08:00-13:00 London). After a decisive break duri
 
 **Invalidation.** Close back inside the range beyond the level by more than stop distance = stop; setup expires after retest_bars.
 
-**Spread, liquidity and volatility filters.** Range width 3-16 ATR(14, M5); spread guard; one setup per side per day.
+**Spread, liquidity and volatility filters.** Range width 3-16 ATR(14, M5); spread guard; one setup per side per range. With use_session off (default for now) a range stays tradable at any hour until the next range starts; on = only until 16:00 New York.
 
 **Limitations.** Pattern literature is mostly equities/discretionary; retests are subjective and here are encoded with fixed tolerances. Many US releases fall inside the setup window; the auditor will delay those.
 
 | Parameter | Default | Research grid | Rationale |
 |---|---|---|---|
+| `use_session` | off | – | on = entries only in the session window and flat by the time exit; off = after the range is built, entries at any hour until the next range starts, exits by stop, target or max hold. |
 | `range_start` | 08:00 | – | London. |
 | `range_end` | 13:00 | – | Before US data/NY open. |
 | `breakout_atr` | 0.1 | 0.05, 0.1, 0.2 | Close beyond the level. |
@@ -224,9 +229,9 @@ Detects M15 volatility compression (Bollinger Bands inside Keltner Channels for 
 | `max_hold_bars` | 64 | 32, 64, 96 | 16 hours of M15 bars. |
 | `release_window` | 4 | 0, 2, 4, 8 | Bars after the release in which a breakout still counts (1 hour). |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are smaller than H1). |
-| `sides` | long | – | Which sides may open: both, long or short. Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
-| `metals` | both | – | Which metals may open: both, gold or silver. Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
-| `hours_utc` | 0-7,16-24 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
+| `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 0-7,16-24 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
+| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 0-7,16-24 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
+| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 0-7,16-24 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
 
 **Sources.**
 
@@ -260,9 +265,9 @@ Buys sharp M15 pullbacks only when the hourly regime is up (H1 close > H1 SMA200
 | `adx_max` | 40 | 35, 40, 50 | Skip runaway trends. |
 | `max_hold_bars` | 32 | 16, 32, 48 | 8 hours of M15 bars. |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
-| `sides` | long | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
-| `metals` | both | – | Which metals may open: both, gold or silver. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
-| `hours_utc` | 12-24 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
+| `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 12-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
+| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 12-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
+| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 12-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
 
 **Sources.**
 
@@ -293,9 +298,9 @@ Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-
 | `max_hold_bars` | 96 | 48, 96 | One day of M15 bars (safety cap). |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
 | `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
-| `sides` | both | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
-| `metals` | both | – | Which metals may open: both, gold or silver. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
-| `hours_utc` | 7-12,16-24 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
+| `sides` | both | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 7-12,16-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
+| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 7-12,16-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
+| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 7-12,16-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
 
 **Sources.**
 
@@ -329,9 +334,9 @@ Each metal is held long or short according to the sign of its own volatility-sca
 | `max_hold_bars` | 48 | 24, 48, 96 | 12 hours of M15 bars. |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
 | `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
-| `sides` | both | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
-| `metals` | both | – | Which metals may open: both, gold or silver. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
-| `hours_utc` | 0-7,21-24 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
+| `sides` | both | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 0-7,21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
+| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 0-7,21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
+| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 0-7,21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
 
 **Sources.**
 
@@ -364,9 +369,9 @@ Intraday relative-value strategy on the log gold/silver ratio (M15). When the ra
 | `min_corr` | 0.5 | 0.3, 0.5 | Relationship filter. |
 | `leg_stop_atr` | 3.0 | 3.0, 4.0 | Per-leg protective server stop. |
 | `max_hold_bars` | 96 | 48, 96, 192 | One day of M15 bars. |
-| `sides` | both | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair. |
-| `metals` | both | – | Which metals may open: both, gold or silver. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair. |
-| `hours_utc` | 21-24 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair. |
+| `sides` | both | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair. |
+| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair. |
+| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair. |
 
 **Sources.**
 

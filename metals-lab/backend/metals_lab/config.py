@@ -20,7 +20,8 @@ DEFAULTS: dict[str, Any] = {
     "sessions": {},                     # optional explicit session windows per role (server time)
     "capital": {"bot_fraction": 0.05,      # 20 bots (10 strategies x long/short halves), 5% each
                 "apply_assessor_retirements": False},  # true: a fresh lab starts with the assessor's flagged halves retired
-    "trading": {"all_metals": True},       # True: every bot trades gold and silver, whatever metal filter it has saved
+    "trading": {"all_metals": True,        # True: every bot trades gold and silver, whatever metal filter it has saved
+                "all_hours": True},        # True: no hour filter and no session window, whatever a bot has saved (S04/S05 still build their range in session)
     "risk": {
         "risk_per_trade": 0.03,             # default; a bot may override it with strategies.<id>.risk_per_trade
         "max_risk_per_trade_cap": 0.03,     # hard ceiling for any per-bot override

@@ -37,7 +37,7 @@ from ..sessions import ServerClock, calendar_from_config, calendar_from_mql5_exp
 from ..store import Store, now_iso
 from ..risk.daily import TEXT as DAILY_TEXT, daily_stop
 from ..risk.guard import LOSS_LIMITS, loss_streak, week_start, weekly_stop
-from ..strategies import ASSESSOR_RETIRED, BOT_IDS, STRATEGY_CLASSES, Strategy, build, magic_for, strategy_for_magic  # noqa: F401
+from ..strategies import ASSESSOR_RETIRED, BOT_IDS, STRATEGY_CLASSES, Strategy, bot_class, build, magic_for, strategy_for_magic  # noqa: F401
 from ..strategies.base import StrategyContext
 from .approvals import ApprovalAuthority, Proposal
 from .executor import Executor
@@ -133,6 +133,10 @@ class Coordinator:
         params = json.loads(row["params_json"] or "{}")
         if self.cfg.get("trading", {}).get("all_metals"):
             params["metals"] = "both"  # operator switch: every bot trades both metals for now
+        if self.cfg.get("trading", {}).get("all_hours"):
+            params["hours_utc"] = "all"  # operator switch: every hour the market is open
+            if "use_session" in bot_class(bot_id).param_defs():
+                params["use_session"] = "off"
         return build(bot_id, params)
 
     def connect(self) -> AccountCheck:

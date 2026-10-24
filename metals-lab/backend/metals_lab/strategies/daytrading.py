@@ -19,6 +19,15 @@ def _hhmm(s: str) -> int:
     return int(h) * 60 + int(m)
 
 
+def _range_day(dates: pd.Series, mins: pd.Series, start: int, sessions: bool) -> pd.Series:
+    """Which day's range a bar belongs to. With sessions on, its own local date; with them off, a range lasts until
+    the next day's range starts, so bars before ``start`` belong to the previous day's range."""
+    if sessions:
+        return dates
+    prev = (pd.to_datetime(dates) - pd.Timedelta(days=1)).dt.date
+    return pd.Series(np.where(mins >= start, dates, prev), index=dates.index)
+
+
 class NewYorkOpeningRangeBreakout(Strategy):
     strategy_id = "S04"
     # The London-open version lost in the London hours and only made money 12-16 UTC (assessor, in-sample), so the range
@@ -37,7 +46,8 @@ class NewYorkOpeningRangeBreakout(Strategy):
     exit_rules = ("Stop at the opposite side of the range (or range midpoint if the range is wider than wide_range_atr x ATR); "
                   "target tp_range_mult x range width; time exit at exit_time New York.")
     invalidation_rules = "Close back inside the opposite half of the range = stop; one breakout attempt per day."
-    filters = "Range width between min_range_atr and max_range_atr x ATR(14, M5); spread guard; entries only until entry_cutoff New York."
+    filters = ("Range width between min_range_atr and max_range_atr x ATR(14, M5); spread guard. With use_session off (default for now) "
+               "entries are allowed at any hour after the range is built, until the next day's range starts; on = only until entry_cutoff.")
     citations = (
         "Crabel, T. (1990) Day Trading with Short Term Price Patterns and Opening Range Breakout, Traders Press.",
         "Zarattini, C. & Aziz, A. (2023) 'Can Day Trading Really Be Profitable? Evidence of Sustainable Long-term Profits "
@@ -49,6 +59,7 @@ class NewYorkOpeningRangeBreakout(Strategy):
                    "evidence from equities does not transfer automatically. The 08:30 data release can make the range unusually wide.")
     PARAMS = {
         "tz": Param("America/New_York", "Session clock (follows US daylight saving).", ()),
+        "use_session": Param("off", "on = entries only in the session window and flat by the time exit; off = after the range is built, entries at any hour until the next range starts, exits by stop, target or max hold.", ()),
         "or_start": Param("08:30", "US data releases and the active New York gold session.", ()),
         "or_end": Param("09:00", "Half-hour opening range (6 M5 bars).", ("08:45", "09:00", "09:30")),
         "entry_cutoff": Param("11:30", "No new entries after late morning New York.", ("11:00", "11:30", "12:30")),
@@ -64,10 +75,14 @@ class NewYorkOpeningRangeBreakout(Strategy):
 
     @property
     def session_text(self):
-        return f"{self.p['or_end']}-{self.p['entry_cutoff']} New York"
+        if self.p["use_session"] == "on":
+            return f"{self.p['or_end']}-{self.p['entry_cutoff']} New York"
+        return f"any time except while the range is built ({self.p['or_start']}-{self.p['or_end']} New York)"
 
     def session_windows(self, day):
-        return [local_window(day, self.p["tz"], self.p["or_end"], self.p["entry_cutoff"])]
+        if self.p["use_session"] == "on":
+            return [local_window(day, self.p["tz"], self.p["or_end"], self.p["entry_cutoff"])]
+        return [local_window(day, self.p["tz"], "00:00", self.p["or_start"]), local_window(day, self.p["tz"], self.p["or_end"], "00:00")]
 
     def prepare(self, frames):
         out = {}
@@ -75,25 +90,28 @@ class NewYorkOpeningRangeBreakout(Strategy):
             df = df.copy()
             df["atr"] = ind.atr(df, 14)
             d, mins = _local_minutes(df, self.p["tz"])
-            df["ldate"], df["lmin"] = d, mins
+            sessions = self.p["use_session"] == "on"
             s, e, cut, ex = (_hhmm(self.p[k]) for k in ("or_start", "or_end", "entry_cutoff", "exit_time"))
+            rday = _range_day(d, mins, s, sessions)
+            df["ldate"], df["lmin"] = rday, mins
             in_or = (mins >= s) & (mins < e)
-            or_hi = df["high"].where(in_or).groupby(df["ldate"]).cummax()
-            or_lo = df["low"].where(in_or).groupby(df["ldate"]).cummin()
-            # Range is only known after its last bar completes: forward-fill within the day from bars >= OR end.
-            after = mins >= e
-            df["or_high"] = or_hi.groupby(df["ldate"]).ffill().where(after)
-            df["or_low"] = or_lo.groupby(df["ldate"]).ffill().where(after)
+            or_hi = df["high"].where(in_or).groupby(rday).cummax()
+            or_lo = df["low"].where(in_or).groupby(rday).cummin()
+            # Range is only known after its last bar completes: forward-fill from bars >= OR end (and, with sessions off,
+            # through the night until the next day's range starts).
+            after = (mins >= e) | (pd.Series(d.values, index=d.index) != rday)
+            df["or_high"] = or_hi.groupby(rday).ffill().where(after)
+            df["or_low"] = or_lo.groupby(rday).ffill().where(after)
             buf = self.p["buffer_atr"] * df["atr"]
-            window = after & (mins < cut)
+            window = after & (mins < cut) if sessions else after
             up = window & (df["close"] > df["or_high"] + buf)
             dn = window & (df["close"] < df["or_low"] - buf)
             brk = (up | dn)
-            first = brk & (brk.astype(int).groupby(df["ldate"]).cumsum() == 1)
+            first = brk & (brk.astype(int).groupby(rday).cumsum() == 1)
             df["orb_dir"] = np.where(first & up, 1, np.where(first & dn, -1, 0))
             df["in_window"] = window
-            df["brk_before"] = (brk.astype(int).groupby(df["ldate"]).cumsum() - brk.astype(int)) > 0
-            df["time_exit"] = mins >= ex
+            df["brk_before"] = (brk.astype(int).groupby(rday).cumsum() - brk.astype(int)) > 0
+            df["time_exit"] = (mins >= ex) if sessions else False
             out[key] = df
         return out
 
@@ -129,6 +147,8 @@ class NewYorkOpeningRangeBreakout(Strategy):
         out = []
         for pos in ctx.positions:
             r = ctx.last(pos.role, "M5")
+            if self.p["use_session"] != "on":
+                continue  # exits by stop, target or max hold only
             if r["time_exit"] or r["ldate"] != pd.Timestamp(pos.opened_at).tz_convert(self.p["tz"]).date():
                 out.append(self.close_signal(ctx, pos, f"day-trade time exit ({self.p['exit_time']} New York)", {"close": r["close"]}))
         return out
@@ -153,8 +173,9 @@ class NewYorkOpeningRangeBreakout(Strategy):
                 "filters": [
                     chk(f"Opening range complete ({self.p['or_start']}-{self.p['or_end']} New York)", done,
                         "range not built yet today" if not done else f"{fmt(r['or_low'], d)} - {fmt(r['or_high'], d)}"),
-                    chk(f"Before entry cut-off ({self.p['entry_cutoff']} New York)", bool(r["in_window"]), ""),
-                    chk("No breakout taken yet today", not bool(r["brk_before"]), ""),
+                    *([chk(f"Before entry cut-off ({self.p['entry_cutoff']} New York)", bool(r["in_window"]), "")]
+                      if self.p["use_session"] == "on" else []),
+                    chk("No breakout taken from this range yet", not bool(r["brk_before"]), ""),
                     chk(f"Range width {self.p['min_range_atr']}-{self.p['max_range_atr']} ATR",
                         done and self.p["min_range_atr"] * r["atr"] <= width <= self.p["max_range_atr"] * r["atr"],
                         f"width {fmt(width, d)} = {fmt(width / r['atr'] if r['atr'] else float('nan'), 1)} ATR"),
@@ -184,7 +205,8 @@ class BreakoutRetest(Strategy):
     short_rules = "Mirror for a break below range low and a failed retest from below."
     exit_rules = "Stop = min(retest low, level) - stop_atr x ATR; target reward_risk x risk; time exit 16:00 New York."
     invalidation_rules = "Close back inside the range beyond the level by more than stop distance = stop; setup expires after retest_bars."
-    filters = "Range width 3-16 ATR(14, M5); spread guard; one setup per side per day."
+    filters = ("Range width 3-16 ATR(14, M5); spread guard; one setup per side per range. With use_session off (default for now) "
+               "a range stays tradable at any hour until the next range starts; on = only until 16:00 New York.")
     citations = (
         "Bulkowski, T. (2005) Encyclopedia of Chart Patterns, 2nd ed., Wiley - breakout pullback/throwback behaviour.",
         "Kaufman (2013) Trading Systems and Methods - breakout confirmation techniques.",
@@ -194,6 +216,7 @@ class BreakoutRetest(Strategy):
     limitations = ("Pattern literature is mostly equities/discretionary; retests are subjective and here are encoded with "
                    "fixed tolerances. Many US releases fall inside the setup window; the auditor will delay those.")
     PARAMS = {
+        "use_session": Param("off", "on = entries only in the session window and flat by the time exit; off = after the range is built, entries at any hour until the next range starts, exits by stop, target or max hold.", ()),
         "range_start": Param("08:00", "London.", ()),
         "range_end": Param("13:00", "Before US data/NY open.", ()),
         "breakout_atr": Param(0.1, "Close beyond the level.", (0.05, 0.1, 0.2)),
@@ -207,9 +230,14 @@ class BreakoutRetest(Strategy):
 
     @property
     def session_text(self):
-        return f"{self.p['range_end']} London - 16:00 New York"
+        if self.p["use_session"] == "on":
+            return f"{self.p['range_end']} London - 16:00 New York"
+        return f"any time except while the range is built ({self.p['range_start']}-{self.p['range_end']} London)"
 
     def session_windows(self, day):
+        if self.p["use_session"] != "on":
+            return [local_window(day, "Europe/London", "00:00", self.p["range_start"]),
+                    local_window(day, "Europe/London", self.p["range_end"], "00:00")]
         start = local_window(day, "Europe/London", self.p["range_end"], "23:59")[0]
         end = local_window(day, "America/New_York", "16:00", "16:01")[0]
         return [(start, end)] if end > start else []
@@ -221,13 +249,15 @@ class BreakoutRetest(Strategy):
             df["atr"] = ind.atr(df, 14)
             d, mins = _local_minutes(df, "Europe/London")
             ny = df["time"].dt.tz_convert("America/New_York")
-            df["ny_exit"] = (ny.dt.hour * 60 + ny.dt.minute) >= 16 * 60
-            df["ldate"] = d
+            sessions = self.p["use_session"] == "on"
+            df["ny_exit"] = ((ny.dt.hour * 60 + ny.dt.minute) >= 16 * 60) if sessions else False
             s, e = _hhmm(self.p["range_start"]), _hhmm(self.p["range_end"])
+            rday = _range_day(d, mins, s, sessions)
+            df["ldate"] = rday
             in_r = (mins >= s) & (mins < e)
-            after = mins >= e
-            df["lvl_hi"] = df["high"].where(in_r).groupby(d).cummax().groupby(d).ffill().where(after)
-            df["lvl_lo"] = df["low"].where(in_r).groupby(d).cummin().groupby(d).ffill().where(after)
+            after = (mins >= e) | (pd.Series(d.values, index=d.index) != rday)
+            df["lvl_hi"] = df["high"].where(in_r).groupby(rday).cummax().groupby(rday).ffill().where(after)
+            df["lvl_lo"] = df["low"].where(in_r).groupby(rday).cummin().groupby(rday).ffill().where(after)
             # Sequential state machine (causal: only past bars of the same day).
             n = len(df)
             sig = np.zeros(n, dtype=int)
@@ -318,7 +348,7 @@ class BreakoutRetest(Strategy):
                 "levels": [x for x in (level("London range high", r["lvl_hi"]), level("London range low", r["lvl_lo"])) if x],
                 "filters": [
                     chk(f"London range complete ({self.p['range_start']}-{self.p['range_end']})", done, ""),
-                    chk("Before 16:00 New York", not bool(r["ny_exit"]), ""),
+                    *([chk("Before 16:00 New York", not bool(r["ny_exit"]), "")] if self.p["use_session"] == "on" else []),
                     chk("Range width 3-16 ATR", done and 3 * r["atr"] <= width <= 16 * r["atr"],
                         f"{fmt(width / r['atr'] if r['atr'] else float('nan'), 1)} ATR"),
                     chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
@@ -341,7 +371,7 @@ class BreakoutRetest(Strategy):
 
 class VolatilityCompressionBreakout(Strategy):
     strategy_id = "S06"
-    ASSESSOR_FILTERS = {"sides": "long", "metals": "both", "hours_utc": "0-7,16-24", "evidence": "Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125."}
+    ASSESSOR_FILTERS = {"sides": "long", "metals": "both", "hours_utc": "all", "evidence": "All hours trade for now (operator choice; the backtest preferred 0-7,16-24 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125."}
     name = "Volatility Compression Breakout"
     style = Style.DAY
     timeframes = ("M15",)

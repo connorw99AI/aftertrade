@@ -308,6 +308,13 @@ class Strategy(ABC):
                 if lo < hi:
                     eff.append((lo, hi))
         eff.sort()
+        merged: list = []
+        for a, b in eff:  # windows that touch (within a minute) read as one
+            if merged and a <= merged[-1][1] + timedelta(minutes=1):
+                merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+            else:
+                merged.append((a, b))
+        eff = [(a, min(b, d0 + timedelta(days=1))) for a, b in merged]
         txt = lambda iv: ", ".join(f"{a:%H:%M}-{'24:00' if b == d0 + timedelta(days=1) else f'{b:%H:%M}'}" for a, b in iv)
         return {"built_in": self.session_text or "any time", "filter_utc": self.p["hours_utc"],
                 "effective_utc": txt(eff) + " UTC" if eff else "none: the built-in session and the hour filter do not overlap",

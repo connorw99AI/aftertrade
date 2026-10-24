@@ -14,16 +14,25 @@ Every strategy runs as two independent bots: `S04L` only takes long entries and 
 
 The Assessor's ranked suggestions from the October 2025 → October 2026 backtest were applied as defaults. They are **in-sample**: they were chosen on the same year they are judged on, so they will look better on that year than they really are. Validate them on an earlier year (download e.g. 2024-10 → 2025-10 on the Research page and run all 20 bots on that range) before trusting them.
 
-| Strategy | Filter now on by default | Why (backtest evidence) |
+| Strategy | Filter the backtest suggested (now off: every bot trades all hours) | Why (backtest evidence) |
 |---|---|---|
-| S03 | 12-21 UTC (both metals for now) | silver and Asian/London hours lost |
-| S04 | none (now trades the New York open) | the London-open version lost in London hours and only made money 12-16 UTC, so the range was moved to 08:30-09:00 New York; re-test it |
+| S03 | 12-21 UTC | silver and Asian/London hours lost |
+| S04 | none (now trades the New York open) | the London-open version lost in London hours |
 | S05 | (short half only trades) | longs lost |
-| S06 | 0-7 and 16-24 UTC (both metals for now) | silver and London hours lost |
+| S06 | 0-7 and 16-24 UTC | silver and London hours lost |
 | S07 | 12-24 UTC | early hours lost |
 | S08 | 7-12 and 16-24 UTC | the 12-16 window lost |
 | S09 | 0-7 and 21-24 UTC | best hours; others near zero |
 | S10 | 21-24 UTC | only late hours were positive |
+
+**Every bot trades every hour the market is open for now** (`trading.all_hours: true`). The hour filters above and the
+built-in session windows are off: S01 (07-20 UTC), S02 (Asian hours, flat before the London open) and S03 (08:00-21:00
+London) trade at any hour. S04 and S05 still build their range in session (08:30-09:00 New York; 08:00-13:00 London) and
+then may enter at any hour until the next day's range starts, with no forced afternoon close: they exit by stop, target or
+maximum holding time. Each strategy keeps its session logic behind `use_session: on`. Still in force: the Friday close
+from 20:00 UTC (S06 also stops entering at 18:00 on Fridays) and the broker's own closed hours, checked by the market
+auditor. Expect more losing trades in the hours the backtest flagged, and wider spreads in quiet hours (the spread
+guards stay).
 
 **Every bot trades both metals for now** (`trading.all_metals: true`), including S03 and S06, where the backtest found silver lost. The switch also overrides any metal filter saved on a bot; set it to `false` to let each bot's own `metals` setting apply again.
 

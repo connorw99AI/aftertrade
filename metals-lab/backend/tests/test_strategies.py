@@ -235,13 +235,17 @@ def test_min_lot_per_metal(specs):
 def test_trading_window_combines_session_and_hour_filter_and_follows_clock_changes():
     from datetime import datetime, timezone
     winter, summer = datetime(2026, 12, 7, 12, tzinfo=timezone.utc), datetime(2026, 7, 6, 12, tzinfo=timezone.utc)
-    s03 = build("S03L", {})  # 08:00-21:00 London, hour filter 12-21 UTC
+    s03 = build("S03L", {"use_session": "on", "hours_utc": "12-21"})  # 08:00-21:00 London, hour filter 12-21 UTC
     assert s03.trading_window(winter)["effective_utc"] == "12:00-21:00 UTC"
     assert s03.trading_window(summer)["effective_utc"] == "12:00-20:00 UTC"
-    s04 = build("S04L", {})  # New York opening range: entries 09:00-11:30 New York
+    s04 = build("S04L", {"use_session": "on"})  # New York opening range: entries 09:00-11:30 New York
     assert s04.trading_window(winter)["effective_utc"] == "14:00-16:30 UTC"
     assert s04.trading_window(summer)["effective_utc"] == "13:00-15:30 UTC"
-    clash = build("S03L", {"hours_utc": "0-6"})
+    # default for now: every hour the market is open; S04 only pauses while its range is built
+    assert build("S03L", {}).trading_window(summer)["effective_utc"] == "00:00-24:00 UTC"
+    assert build("S04L", {}).trading_window(summer)["effective_utc"] == "00:00-12:30, 13:00-24:00 UTC"
+    assert build("S05S", {}).trading_window(winter)["effective_utc"] == "00:00-08:00, 13:00-24:00 UTC"
+    clash = build("S03L", {"use_session": "on", "hours_utc": "0-6"})
     assert clash.trading_window(winter)["effective_utc"].startswith("none")
 
 
@@ -252,3 +256,20 @@ def test_trend_bots_read_the_slower_chart():
 
 def test_old_saved_session_params_are_ignored_not_fatal():
     build("S02L", {"entry_start_hour": 0, "entry_end_hour": 6, "flat_hour": 7})
+
+
+def test_range_bots_keep_their_range_until_the_next_one_when_sessions_are_off():
+    import numpy as np
+    t = pd.date_range("2026-07-06 12:00", periods=24 * 12, freq="5min", tz="UTC")  # 12:00 UTC Monday to 12:00 Tuesday
+    price = np.full(len(t), 2000.0)
+    i_range = (t >= pd.Timestamp("2026-07-06 12:30", tz="UTC")) & (t < pd.Timestamp("2026-07-06 13:00", tz="UTC"))
+    price[i_range] = np.linspace(1995, 2005, i_range.sum())                 # Monday's opening range ~1995-2005
+    late = t >= pd.Timestamp("2026-07-07 02:00", tz="UTC")                   # 22:00 New York: well past 11:30
+    price[late] = 2030.0                                                     # breaks out overnight
+    df = pd.DataFrame({"time": t, "open": price, "high": price + 0.5, "low": price - 0.5, "close": price,
+                       "tick_volume": 1, "spread": 10, "real_volume": 0})
+    off = build("S04L", {}).prepare({("GOLD", "M5"): df})[("GOLD", "M5")]
+    on = build("S04L", {"use_session": "on"}).prepare({("GOLD", "M5"): df})[("GOLD", "M5")]
+    assert (off.loc[late, "orb_dir"] == 1).any()                             # overnight breakout of Monday's range counts
+    assert not (on.loc[late, "orb_dir"] != 0).any()                          # with sessions on it is past the cut-off
+    assert not off["time_exit"].any()

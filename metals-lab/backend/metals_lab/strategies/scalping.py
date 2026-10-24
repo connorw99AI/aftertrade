@@ -26,7 +26,7 @@ class TrendPullbackScalper(Strategy):
     exit_rules = ("Server-side stop at entry -/+ stop_atr x ATR(14, M5); target at reward_risk x stop distance; "
                   "close early if the M5 close crosses the M5 EMA50 against the trade or the M15 trend flips; max hold 12 bars (1 hour).")
     invalidation_rules = "M5 close through EMA50 against the position, or the M15 trend turning, invalidates the premise."
-    filters = ("Hours 07:00-20:00 UTC; spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 "
+    filters = ("Any hour the market is open (07:00-20:00 UTC only when use_session is on); spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 "
                "to avoid dead and disorderly markets.")
     citations = (
         "Kaufman, P. (2013) Trading Systems and Methods, 5th ed., Wiley - trend filters and moving-average pullbacks.",
@@ -48,7 +48,8 @@ class TrendPullbackScalper(Strategy):
         "reward_risk": Param(2.0, "Target a multiple of the stop so it clears costs.", (1.5, 2.0, 2.5)),
         "max_hold_bars": Param(12, "Scalps that do not work quickly are closed (12 M5 bars = 1 hour).", (6, 12, 18)),
         "max_spread_atr": Param(0.2, "Skip when the spread exceeds 20% of ATR(14,M5), like the other M5 bots.", (0.15, 0.2, 0.3)),
-        "start_hour": Param(7, "UTC start of liquid hours.", ()),
+        "use_session": Param("off", "on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now).", ()),
+        "start_hour": Param(7, "UTC start of liquid hours (used when use_session is on).", ()),
         "end_hour": Param(20, "UTC end of liquid hours.", ()),
     }
 
@@ -81,9 +82,13 @@ class TrendPullbackScalper(Strategy):
             return -1, t
         return 0, t
 
-    session_text = "07:00-20:00 UTC"
+    @property
+    def session_text(self):
+        return f"{self.p['start_hour']:02d}:00-{self.p['end_hour']:02d}:00 UTC" if self.p["use_session"] == "on" else ""
 
     def session_windows(self, day):
+        if self.p["use_session"] != "on":
+            return None
         d0 = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
         return [(d0 + timedelta(hours=self.p["start_hour"]), d0 + timedelta(hours=self.p["end_hour"]))]
 
@@ -96,7 +101,7 @@ class TrendPullbackScalper(Strategy):
             trend, t = self._trend(ctx, role)
             spec = ctx.specs[role]
             hour = ctx.now.hour
-            if not (self.p["start_hour"] <= hour < self.p["end_hour"]):
+            if self.p["use_session"] == "on" and not (self.p["start_hour"] <= hour < self.p["end_hour"]):
                 continue
             if pd.isna(r["atr_pct"]) or not (20 <= r["atr_pct"] <= 90):
                 continue
@@ -148,8 +153,9 @@ class TrendPullbackScalper(Strategy):
                 "levels": [x for x in (level("M5 EMA20", r["ema_f"]), level("M5 EMA50", r["ema_m"]), level("M15 EMA50", t["t_fast"]),
                                        level(f"M15 EMA{self.p['ema_slow']}", t["t_slow"])) if x],
                 "filters": [
-                    chk(f"Liquid hours ({self.p['start_hour']:02d}-{self.p['end_hour']:02d} UTC)",
-                        self.p["start_hour"] <= ctx.now.hour < self.p["end_hour"], f"now {ctx.now:%H:%M} UTC"),
+                    *([chk(f"Liquid hours ({self.p['start_hour']:02d}-{self.p['end_hour']:02d} UTC)",
+                           self.p["start_hour"] <= ctx.now.hour < self.p["end_hour"], f"now {ctx.now:%H:%M} UTC")]
+                      if self.p["use_session"] == "on" else []),
                     chk("Volatility normal (ATR percentile 20-90)", 20 <= (r["atr_pct"] if not pd.isna(r["atr_pct"]) else -1) <= 90,
                         f"percentile {fmt(r['atr_pct'], 0)}"),
                     chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
@@ -190,7 +196,8 @@ class AsianRangeReversion(Strategy):
     exit_rules = ("Exit at the 20-period mean (strategy close when close crosses SMA20; server TP at the mean at entry time); "
                   "stop stop_atr x ATR beyond entry; max hold 9 bars; flatten at flat_time London, before the 08:00 London open.")
     invalidation_rules = "ADX rising above adx_max+5 while in trade (range turning into trend) closes the position."
-    filters = "Spread <= max_spread_atr x ATR; no new entries after entry_end London (the window follows UK clock changes)."
+    filters = ("Spread <= max_spread_atr x ATR. Any hour the market is open; with use_session on, entries only in the Asian "
+               "window (entry_start-entry_end London, following UK clock changes) and flat before the London open.")
     citations = (
         "Bollinger, J. (2001) Bollinger on Bollinger Bands, McGraw-Hill - band construction and mean-reversion use in ranges.",
         "Wilder (1978) - ADX as trend-strength filter.",
@@ -205,6 +212,7 @@ class AsianRangeReversion(Strategy):
         "adx_max": Param(25, "Only trade when trend strength is low.", (20, 25, 30)),
         "stop_atr": Param(1.0, "Tight stop; ranges that break tend to run.", (0.8, 1.0, 1.3)),
         "max_hold_bars": Param(9, "45 minutes.", (6, 9, 12)),
+        "use_session": Param("off", "on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now).", ()),
         "tz": Param("Europe/London", "Session clock (follows UK summer time).", ()),
         "entry_start": Param("00:00", "London time: start of the quiet Asian hours.", ()),
         "entry_end": Param("07:00", "London time: no new entries after this.", ()),
@@ -230,14 +238,16 @@ class AsianRangeReversion(Strategy):
 
     @property
     def session_text(self):
-        return f"{self.p['entry_start']}-{self.p['entry_end']} London"
+        return f"{self.p['entry_start']}-{self.p['entry_end']} London" if self.p["use_session"] == "on" else ""
 
     def session_windows(self, day):
+        if self.p["use_session"] != "on":
+            return None
         return [local_window(day, self.p["tz"], self.p["entry_start"], self.p["entry_end"])]
 
     def entry_signals(self, ctx):
         sigs = []
-        if not in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["entry_end"]):
+        if self.p["use_session"] == "on" and not in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["entry_end"]):
             return sigs
         for role in self.roles:
             if ctx.position(role) or not ctx.has(role, "M5", 2):
@@ -264,7 +274,7 @@ class AsianRangeReversion(Strategy):
         for pos in ctx.positions:
             r = ctx.last(pos.role, "M5")
             vals = {"close": r["close"], "bb_mid": r["bb_m"], "adx": r["adx"], "time_utc": f"{ctx.now:%H:%M}"}
-            if not in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["flat_time"]):
+            if self.p["use_session"] == "on" and not in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["flat_time"]):
                 out.append(self.close_signal(ctx, pos, "session time stop before London open", vals))
             elif pos.side == "LONG" and r["close"] >= r["bb_m"]:
                 out.append(self.close_signal(ctx, pos, "reverted to the mean", vals))
@@ -289,8 +299,9 @@ class AsianRangeReversion(Strategy):
                 "price": float(r["close"]),
                 "levels": [x for x in (level("Upper band", r["bb_u"]), level("Mean (SMA20)", r["bb_m"]), level("Lower band", r["bb_l"])) if x],
                 "filters": [
-                    chk(f"Asian session ({self.p['entry_start']}-{self.p['entry_end']} London)",
-                        in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["entry_end"]), f"now {ctx.now:%H:%M} UTC"),
+                    *([chk(f"Asian session ({self.p['entry_start']}-{self.p['entry_end']} London)",
+                           in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["entry_end"]), f"now {ctx.now:%H:%M} UTC")]
+                      if self.p["use_session"] == "on" else []),
                     chk(f"Ranging: ADX below {self.p['adx_max']}", r["adx"] < self.p["adx_max"], f"ADX {fmt(r['adx'], 1)}"),
                     chk("Bands not wide (width percentile < 50)", r["bbw_pct"] < 50, f"percentile {fmt(r['bbw_pct'], 0)}"),
                     chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
@@ -310,7 +321,7 @@ class AsianRangeReversion(Strategy):
 
 class FailedBreakoutReversal(Strategy):
     strategy_id = "S03"
-    ASSESSOR_FILTERS = {"sides": "long", "metals": "both", "hours_utc": "12-21", "evidence": "Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58."}
+    ASSESSOR_FILTERS = {"sides": "long", "metals": "both", "hours_utc": "all", "evidence": "All hours trade for now (operator choice; the backtest preferred 12-21 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58."}
     name = "Failed Breakout Reversal"
     style = Style.SCALP
     timeframes = ("M5",)
@@ -324,7 +335,7 @@ class FailedBreakoutReversal(Strategy):
     short_rules = "Mirror: high of last two bars > prior N-bar high, close back below it with bearish body."
     exit_rules = "Stop beyond the failed-breakout extreme + 0.2 ATR; target reward_risk x risk; max hold 10 bars (50 minutes)."
     invalidation_rules = "A new extreme beyond the breakout high/low (= the stop) invalidates the failure."
-    filters = ("08:00-21:00 London time (follows UK clock changes); skip expansion bars (>2.5 ATR, likely news); "
+    filters = ("Any hour the market is open (08:00-21:00 London only when use_session is on); skip expansion bars (>2.5 ATR, likely news); "
                "skip strong trends (ADX >= adx_max); spread guard.")
     citations = (
         "Connors, L. & Raschke, L.B. (1995) Street Smarts: High Probability Short-Term Trading Strategies, M. Gordon Publishing "
@@ -338,19 +349,22 @@ class FailedBreakoutReversal(Strategy):
         "max_hold_bars": Param(10, "Reversal should work quickly (50 min).", (6, 10, 15)),
         "max_spread_atr": Param(0.15, "Cost guard: spread <= 15% of ATR(14,M5).", (0.15, 0.2)),
         "tz": Param("Europe/London", "Session clock (follows UK summer time).", ()),
+        "use_session": Param("off", "on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now).", ()),
         "session_start": Param("08:00", "London time: London open.", ()),
         "session_end": Param("21:00", "London time: end of the New York afternoon.", ()),
     }
 
     @property
     def session_text(self):
-        return f"{self.p['session_start']}-{self.p['session_end']} London"
+        return f"{self.p['session_start']}-{self.p['session_end']} London" if self.p["use_session"] == "on" else ""
 
     def session_windows(self, day):
+        if self.p["use_session"] != "on":
+            return None
         return [local_window(day, self.p["tz"], self.p["session_start"], self.p["session_end"])]
 
     def _in_session(self, now) -> bool:
-        return in_local_window(now, self.p["tz"], self.p["session_start"], self.p["session_end"])
+        return self.p["use_session"] != "on" or in_local_window(now, self.p["tz"], self.p["session_start"], self.p["session_end"])
 
     def prepare(self, frames):
         out = {}
@@ -409,7 +423,8 @@ class FailedBreakoutReversal(Strategy):
                 "price": float(r["close"]),
                 "levels": [x for x in (level(f"Prior {n}-bar high", r["ph"]), level(f"Prior {n}-bar low", r["pl"])) if x],
                 "filters": [
-                    chk(f"Session {self.session_text}", self._in_session(ctx.now), f"now {ctx.now:%H:%M} UTC"),
+                    *([chk(f"Session {self.session_text}", self._in_session(ctx.now), f"now {ctx.now:%H:%M} UTC")]
+                      if self.p["use_session"] == "on" else []),
                     chk(f"Not a strong trend (ADX < {self.p['adx_max']})", r["adx"] < self.p["adx_max"], f"ADX {fmt(r['adx'], 1)}"),
                     chk("Breakout bar not a news spike (< 2.5 ATR)", (b["high"] - b["low"]) <= 2.5 * r["atr"],
                         f"range {fmt(b['high'] - b['low'], d)} vs ATR {fmt(r['atr'], d)}"),

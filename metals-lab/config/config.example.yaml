@@ -23,6 +23,7 @@ capital:
 
 trading:
   all_metals: true               # every bot trades gold and silver, whatever metal filter it has saved
+  all_hours: true                # no hour filters or session windows (S04/S05 still build their range in session)
 
 risk:
   risk_per_trade: 0.03             # sizing target: trade more than min_lot only when 3% of the bot allows it
