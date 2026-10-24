@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { CREATURES } from "./Creature";
 import { Any } from "@/lib/api";
 
 type Candle = { t: string; o: number; h: number; l: number; c: number; forming?: boolean };
@@ -67,7 +66,7 @@ export function CandleChart({ data, overlay = [] }: { data: Any; overlay?: { lab
         );
       })}
       {pos.map((p, i) => {
-        const name = CREATURES[p.bot_id]?.name.split(" ")[0] ?? p.bot_id;
+        const name = p.bot_id;
         const lines: [string, number | null, string][] = [["entry", p.entry, `${name} ${p.side.toLowerCase()} ${p.volume}`],
           ["sl", p.sl, `${name} stop`], ["tp", p.tp, `${name} target`]];
         return lines.filter(([, v]) => v && v > 0).map(([k, v, label]) => (
