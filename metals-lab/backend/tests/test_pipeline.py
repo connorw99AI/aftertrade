@@ -424,17 +424,17 @@ def _setup_audit(c, p):
 
 def test_auditor_checks_trade_setup(armed):
     c = armed
-    good = _setup_audit(c, make_open_proposal(c, volume=0.04))
+    good = _setup_audit(c, make_open_proposal(c, volume=0.1))
     assert good.decision == Decision.APPROVED and good.evidence["setup"]["stop_distance"] > 0
-    assert "R19_NO_STOP" in _setup_audit(c, dataclasses.replace(make_open_proposal(c, volume=0.04), sl=None)).triggered
+    assert "R19_NO_STOP" in _setup_audit(c, dataclasses.replace(make_open_proposal(c, volume=0.1), sl=None)).triggered
     tk = c.ro.symbol_info_tick("XAUUSD")
-    wrong = dataclasses.replace(make_open_proposal(c, volume=0.04), sl=tk["ask"] + 5.0)
+    wrong = dataclasses.replace(make_open_proposal(c, volume=0.1), sl=tk["ask"] + 5.0)
     assert "R20_STOP_WRONG_SIDE" in _setup_audit(c, wrong).triggered
-    bad_tp = dataclasses.replace(make_open_proposal(c, volume=0.04), tp=tk["ask"] - 5.0)
+    bad_tp = dataclasses.replace(make_open_proposal(c, volume=0.1), tp=tk["ask"] - 5.0)
     assert "R23_TARGET_WRONG_SIDE" in _setup_audit(c, bad_tp).triggered
-    assert "R18_BELOW_MIN_LOT" in _setup_audit(c, make_open_proposal(c, volume=0.01)).triggered
-    assert "R17_VOLUME_INVALID" in _setup_audit(c, make_open_proposal(c, volume=0.043)).triggered
-    far = dataclasses.replace(make_open_proposal(c, volume=0.04), sl=tk["ask"] - 10000 * c.specs["GOLD"].point * 100)
+    assert "R18_BELOW_MIN_LOT" in _setup_audit(c, make_open_proposal(c, volume=0.04)).triggered  # below the 0.1 gold minimum
+    assert "R17_VOLUME_INVALID" in _setup_audit(c, make_open_proposal(c, volume=0.103)).triggered
+    far = dataclasses.replace(make_open_proposal(c, volume=0.1), sl=tk["ask"] - 10000 * c.specs["GOLD"].point * 100)
     assert "R22_STOP_ABNORMAL" in _setup_audit(c, far).triggered
 
 
