@@ -11,10 +11,9 @@ import re
 from typing import Optional
 
 from . import review as R
-from .strategies import STRATEGY_CLASSES, build
+from .strategies import BOT_IDS, bot_name, build
 from .store import now_iso
 
-BOT_IDS = list(STRATEGY_CLASSES)
 
 
 def _range(dataset_key: str) -> Optional[str]:
@@ -47,7 +46,7 @@ def build_report(db, cfg: dict) -> tuple[str, dict]:
         run = runs.get(b)
         if not run:
             data["bots"][b] = None
-            summary.append(f"| {b} | {STRATEGY_CLASSES[b].name} | no run | | | | | | |")
+            summary.append(f"| {b} | {bot_name(b)} | no run | | | | | | |")
             continue
         m = json.loads(run["metrics_json"])
         rel = json.loads(run["reliability_json"] or "[]")
@@ -59,7 +58,7 @@ def build_report(db, cfg: dict) -> tuple[str, dict]:
         synthetic = run["dataset_key"] == "synthetic"
         data["bots"][b] = {"run_id": run["id"], "data": "synthetic" if synthetic else "MT5 history", "period": _range(run["dataset_key"]),
                            "params": params, "metrics": m, "reliability": rel, "review": rv}
-        summary.append(f"| {b} | {STRATEGY_CLASSES[b].name} | {'synthetic' if synthetic else (_range(run['dataset_key']) or 'MT5')} | "
+        summary.append(f"| {b} | {bot_name(b)} | {'synthetic' if synthetic else (_range(run['dataset_key']) or 'MT5')} | "
                        f"{m.get('n_trades')} | {m.get('net_pnl', 0):+.2f} | {m.get('total_return', 0) * 100:.1f}% | "
                        f"{m.get('max_drawdown', 0) * 100:.1f}% | {m.get('profit_factor')} | {m.get('win_rate', 0) * 100:.0f}% |")
     lines += ["| Bot | Strategy | Data | Trades | Net | Return | Max DD | PF | Win |", "|---|---|---|---|---|---|---|---|---|", *summary, ""]
@@ -68,7 +67,7 @@ def build_report(db, cfg: dict) -> tuple[str, dict]:
         if not d:
             continue
         st = d["review"]["stats"]
-        lines += [f"## {b} {STRATEGY_CLASSES[b].name}", "",
+        lines += [f"## {b} {bot_name(b)}", "",
                   f"Run #{d['run_id']}, {d['data']}{', ' + d['period'] if d['period'] else ''}. "
                   f"Costs: {d['metrics'].get('total_spread_slippage_cost')} spread/slippage, {d['metrics'].get('total_commission')} commission, "
                   f"{d['metrics'].get('total_swap')} swap. Stopped by drawdown: {d['metrics'].get('stopped_by_drawdown_at') or 'no'}.", ""]

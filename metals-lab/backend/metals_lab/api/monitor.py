@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from ..execution.coordinator import BOT_IDS
 from ..store import now_iso
-from ..strategies import STRATEGY_CLASSES
+from ..strategies import bot_class, bot_name, is_bot
 from ..timeutil import utc_now
 
 
@@ -62,7 +62,7 @@ def register(app: FastAPI, state, auth) -> None:
         bots, today_total = [], 0.0
         thinking = c.thinking() if c else {}
         for b in BOT_IDS:
-            cls = STRATEGY_CLASSES[b]
+            cls = bot_class(b)
             row = db.one("SELECT status, pause_reason FROM bots WHERE bot_id=?", (b,))
             book = c.bot_book(b) if c else None
             ds = db.one("SELECT equity FROM bot_day_start WHERE bot_id=? AND day=?", (b, day))
@@ -83,7 +83,7 @@ def register(app: FastAPI, state, auth) -> None:
             for o in opens:  # the checklist is per completed bar; an open trade is known immediately
                 verdicts[o["role"]] = {"verdict": f"IN_TRADE_{o['side']}", "summary": f"in a {o['side'].lower()} trade"}
             bots.append({
-                "bot_id": b, "name": cls.name, "timeframe": cls.primary_timeframe, "style": cls.style.value,
+                "bot_id": b, "name": bot_name(b), "side": b[3], "timeframe": cls.primary_timeframe, "style": cls.style.value,
                 "status": row["status"], "pause_reason": row["pause_reason"],
                 "equity": round(eq, 2), "allocation": round(book.allocation, 2) if book else 0.0,
                 "unrealized": round(book.unrealized, 2) if book else 0.0, "shadow": bool(book.shadow) if book else False,
@@ -93,13 +93,14 @@ def register(app: FastAPI, state, auth) -> None:
                 "open_positions": opens, "verdicts": verdicts, "thinking_as_of": th.get("bar_time"),
             })
         alerts = db.q("SELECT * FROM alerts WHERE resolved_at IS NULL ORDER BY id DESC")
+        bots.sort(key=lambda x: x["status"] == "RETIRED")  # retired halves go last (stable: otherwise in bot order)
         return {
             "account": {k: info.get(k) for k in ("balance", "equity", "margin", "margin_free", "margin_level", "currency")},
             "armed": db.active_activation() is not None,
             "kill": db.get_control("kill") == "1", "global_pause": db.get_control("global_pause") == "1",
             "today_pnl": round(today_total, 2),
             "open_trades": sum(len(b["open_positions"]) for b in bots),
-            "counts": {s: sum(1 for b in bots if b["status"] == s) for s in ("RUNNING", "PAUSED", "PAUSED_RISK", "STOPPED")},
+            "counts": {s: sum(1 for b in bots if b["status"] == s) for s in ("RUNNING", "PAUSED", "PAUSED_RISK", "STOPPED", "RETIRED")},
             "stopped_for_day": sum(1 for b in bots if b["stopped_for_day"]),
             "alerts": alerts, "bots": bots, "server_time": now_iso(),
         }
@@ -120,7 +121,7 @@ def register(app: FastAPI, state, auth) -> None:
                 price = tk.get("bid") if long else tk.get("ask")
                 d = {k: r[k] for k in ("position_key", "bot_id", "ticket", "symbol", "role", "side", "volume_open", "entry_price",
                                        "sl", "tp", "opened_at", "group_id", "planned_risk")}
-                d["bot_name"] = STRATEGY_CLASSES[r["bot_id"]].name
+                d["bot_name"] = bot_name(r["bot_id"])
                 d["price"] = price
                 d["profit"] = lp.get("profit")
                 d["swap"] = lp.get("swap")
@@ -150,7 +151,7 @@ def register(app: FastAPI, state, auth) -> None:
         if body.scope == "position":
             rows = db.q("SELECT * FROM positions WHERE status='OPEN' AND position_key=?", (body.target,))
         elif body.scope == "bot":
-            if body.target not in STRATEGY_CLASSES:
+            if body.target not in BOT_IDS:
                 raise HTTPException(404, "unknown bot")
             rows = db.q("SELECT * FROM positions WHERE status='OPEN' AND bot_id=?", (body.target,))
         else:
@@ -210,7 +211,7 @@ def register(app: FastAPI, state, auth) -> None:
                     k = r["outcome"].replace("SKIPPED: ", "").split(" ")[0]
                     reasons[k] = reasons.get(k, 0) + 1
             top = sorted(reasons.items(), key=lambda kv: -kv[1])[:5]
-            out.append({"bot_id": b, "name": STRATEGY_CLASSES[b].name, **stages, "top_reasons": top})
+            out.append({"bot_id": b, "name": bot_name(b), **stages, "top_reasons": top})
         return out
 
     # ------------------------------------------------------------- history
@@ -222,9 +223,24 @@ def register(app: FastAPI, state, auth) -> None:
                 args.append(v)
         rows = db.q(q + " ORDER BY exit_time DESC LIMIT 5000", tuple(args))
         rk = _planned_risk_by_key(db)
+        pos = {p["position_key"]: p for p in db.q("SELECT * FROM positions")}
         for r in rows:
             r["r_multiple"] = trade_r(r, rk)
-            r["bot_name"] = STRATEGY_CLASSES[r["bot_id"]].name if r["bot_id"] in STRATEGY_CLASSES else r["bot_id"]
+            legs = []
+            for key in json.loads(r.get("position_keys_json") or "[]"):
+                p = pos.get(key)
+                if not p:
+                    continue
+                ex = db.one("SELECT SUM(price*volume)/SUM(volume) px FROM deals WHERE position_id=? AND entry IN (1,3)", (p["ticket"],))
+                exit_px = ex["px"] if ex and ex["px"] is not None else None
+                move = None
+                if exit_px is not None and p["entry_price"] is not None:
+                    move = (exit_px - p["entry_price"]) if p["side"] == "LONG" else (p["entry_price"] - exit_px)
+                legs.append({"symbol": p["symbol"], "side": p["side"], "volume": p["volume_initial"], "entry_price": p["entry_price"],
+                             "exit_price": exit_px, "sl": p["sl"], "tp": p["tp"], "opened_at": p["opened_at"], "closed_at": p["closed_at"],
+                             "price_move": round(move, 5) if move is not None else None, "planned_risk": p["planned_risk"]})
+            r["legs"] = legs
+            r["bot_name"] = bot_name(r["bot_id"]) if is_bot(r["bot_id"]) else r["bot_id"]
             if r.get("entry_time") and r.get("exit_time"):
                 r["minutes_held"] = int((datetime.fromisoformat(r["exit_time"]) - datetime.fromisoformat(r["entry_time"])).total_seconds() // 60)
         return rows

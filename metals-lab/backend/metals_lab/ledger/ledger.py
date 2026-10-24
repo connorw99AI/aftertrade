@@ -106,6 +106,25 @@ class Ledger:
                  json.dumps({"allocation": book_alloc + delta, "reason": reason}), operator, now_iso()))
         return {"bot_id": bot_id, "allocation": self.allocation(bot_id), "ref": ref}
 
+    def transfer_equity(self, from_bot: str, to_bot: Optional[str], reason: str, operator: str) -> float:
+        """Move a flat bot's whole equity (allocation + realized) to another bot, or back to the unallocated
+        pool when ``to_bot`` is None. Audited; returns the amount moved (0 if the bot has nothing left)."""
+        amount = round(self.allocation(from_bot) + self.realized(from_bot), 2)
+        if amount <= 0:
+            return 0.0
+        ref = f"op:{uuid.uuid4().hex}"
+        with self.db.tx():
+            self.db.conn.execute("INSERT INTO ledger(bot_id,ts,kind,amount,ref,note) VALUES(?,?,?,?,?,?)",
+                                 (from_bot, now_iso(), "ALLOCATION", -amount, ref + ":out", f"retired: {reason}"))
+            if to_bot:
+                self.db.conn.execute("INSERT INTO ledger(bot_id,ts,kind,amount,ref,note) VALUES(?,?,?,?,?,?)",
+                                     (to_bot, now_iso(), "ALLOCATION", amount, ref + ":in", f"from retired {from_bot}: {reason}"))
+            self.db.conn.execute(
+                "INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
+                (from_bot, "RETIRE_TRANSFER", json.dumps({"equity": amount}),
+                 json.dumps({"to": to_bot or "unallocated pool", "amount": amount, "reason": reason}), operator, now_iso()))
+        return amount
+
     # ---------------------------------------------------------------- reading
     def allocation(self, bot_id: str) -> float:
         return self.db.one("SELECT COALESCE(SUM(amount),0) s FROM ledger WHERE bot_id=? AND kind='ALLOCATION'", (bot_id,))["s"]

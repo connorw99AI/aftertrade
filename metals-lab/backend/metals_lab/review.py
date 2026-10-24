@@ -23,7 +23,6 @@ MIN_N = 10
 STOP_PARAMS = {"S01": "stop_atr", "S02": "stop_atr", "S05": "stop_atr", "S06": "stop_atr", "S07": "stop_atr",
                "S08": "stop_n", "S09": "stop_atr", "S10": "leg_stop_atr"}
 TARGET_PARAMS = {"S01": "reward_risk", "S03": "reward_risk", "S05": "reward_risk", "S06": "reward_risk", "S04": "tp_range_mult"}
-HOUR_PARAMS = {"S01": ("start_hour", "end_hour"), "S02": ("entry_start_hour", "entry_end_hour")}
 
 SESSIONS = (("Asia 00-07", 0, 7), ("London 07-12", 7, 12), ("London/NY 12-16", 12, 16), ("New York 16-21", 16, 21), ("Late 21-24", 21, 24))
 
@@ -164,49 +163,56 @@ def summarise(df: pd.DataFrame) -> dict:
 # ------------------------------------------------------------- suggestions
 def suggest(bot: str, df: pd.DataFrame, stats: dict, params: dict) -> list[dict]:
     out: list[dict] = []
+    sid = bot[:3]  # bot ids are strategy id + L/S
     n = stats.get("n", 0)
     if n < MIN_N:
         return [{"id": "sample", "title": f"Only {n} closed trades: too few to judge", "kind": "info",
                  "evidence": f"Suggestions start at {MIN_N} trades and are only reliable well beyond 30.", "change": None}]
     conf = "low" if n < 30 else ("medium" if n < 100 else "higher")
 
-    def add(sid, title, evidence, change=None, rule=None):
-        out.append({"id": sid, "title": title, "evidence": evidence, "confidence": conf,
+    def add(sid, title, evidence, change=None, rule=None, strength=None):
+        out.append({"id": sid, "title": title, "evidence": evidence, "confidence": conf, "strength": strength,
                      "kind": "parameter" if change else ("rule" if rule else "info"), "change": change, "rule_change": rule})
 
     total = stats["expectancy"]
+    pair = sid == "S10"
     # one side, metal or session losing while the rest wins
-    for col, label, rule_fmt in (("by_side", "side", "trade {other} only"), ("by_metal", "metal", "stop trading {key}"),
+    for col, field, rule_fmt in (("by_side", "side", "trade {other} only"), ("by_metal", "role", "stop trading {key}"),
                                  ("by_session", "session", "skip the {key} session")):
+        if pair and col != "by_session":
+            continue  # a pair always holds one long and one short leg, one in each metal
         groups = [g for g in stats[col] if g["n"] >= MIN_N]
         bad = [g for g in groups if g["net"] < 0]
         good = [g for g in groups if g["net"] > 0]
         for g in bad:
-            if good:
-                other = ", ".join(x["key"] for x in good)
-                change = None
-                if col == "by_session" and bot in HOUR_PARAMS:
-                    a, b = next((s, e) for name, s, e in SESSIONS if name == g["key"])
-                    hp = HOUR_PARAMS[bot]
-                    cur = (params.get(hp[0]), params.get(hp[1]))
-                    if cur[0] is not None and cur[1] is not None and cur[0] < b and a < cur[1]:
-                        if a <= cur[0] < b:
-                            change = {hp[0]: b}
-                        elif a < cur[1] <= b:
-                            change = {hp[1]: a}
-                add(f"{col}:{g['key']}", f"{g['key']} loses while {other} wins",
-                    f"{g['key']}: {g['n']} trades, net {g['net']:+.2f}, win rate {g['win_rate']}%. Rest: net "
-                    f"{sum(x['net'] for x in good):+.2f}.", change=change,
-                    rule=None if change else rule_fmt.format(key=g["key"], other=other))
+            if not good:
+                continue
+            other = ", ".join(x["key"] for x in good)
+            t = _tstat(df.loc[df[field].astype(str) == g["key"], "net"])
+            strength = "weak" if t > -1 else ("moderate" if t > -2 else "strong")
+            change = None
+            if col == "by_side":
+                change = None  # each bot is one side already: the fix for a losing side is retiring that half
+            elif col == "by_metal" and len(good) == 1:
+                change = {"metals": good[0]["key"].lower()}
+            elif col == "by_session":
+                a, b = next((s0, e0) for name, s0, e0 in SESSIONS if name == g["key"])
+                hours = _hours_minus(params.get("hours_utc", "all"), a, b)
+                if hours:
+                    change = {"hours_utc": hours}
+            add(f"{col}:{g['key']}", f"{g['key']} loses while {other} wins",
+                f"{g['key']}: {g['n']} trades, net {g['net']:+.2f}, win rate {g['win_rate']}%. Rest: net "
+                f"{sum(x['net'] for x in good):+.2f}. Strength {strength} (t = {t:.1f}); found on these same trades.",
+                change=change, rule=None if change else rule_fmt.format(key=g["key"], other=other), strength=strength)
     ex = stats.get("excursions") or {}
-    sp = STOP_PARAMS.get(bot)
+    sp = STOP_PARAMS.get(sid)
     # stops too tight: winners often came close to the stop, or many stopped trades first went 1R our way
     if ex.get("winners_near_stop_pct") is not None and ex["winners_near_stop_pct"] >= 40 and sp and params.get(sp):
         add("stop_tight", "Stop looks tight: many winners nearly hit it first",
             f"{ex['winners_near_stop_pct']}% of winning trades went at least 0.8R against you before winning.",
             change={sp: round(float(params[sp]) * 1.25, 2)})
     if ex.get("stopped_after_reaching_1r_pct") is not None and ex["stopped_after_reaching_1r_pct"] >= 30:
-        tp = TARGET_PARAMS.get(bot)
+        tp = TARGET_PARAMS.get(sid)
         losers_mfe = ex.get("avg_mfe_r_losers")
         if tp and params.get(tp) and float(params[tp]) > 1.0:
             add("give_back_target", "Trades often reach 1R and then get stopped: target may be too far",
@@ -241,6 +247,28 @@ def suggest(bot: str, df: pd.DataFrame, stats: dict, params: dict) -> list[dict]
                 "evidence": "Each suggestion is a hypothesis. Test it on downloaded history before applying; most small tweaks "
                             "found by looking at past trades will not hold up (multiple testing)."})
     return out
+
+
+def _tstat(x: pd.Series) -> float:
+    x = x.dropna()
+    if len(x) < 2 or float(x.std(ddof=1)) == 0:
+        return 0.0
+    return float(x.mean() / (x.std(ddof=1) / math.sqrt(len(x))))
+
+
+def _hours_minus(spec: Optional[str], a: int, b: int) -> Optional[str]:
+    """Remove UTC hours [a, b) from an hours spec; returns the new spec, or None if nothing changes or nothing is left."""
+    from .strategies.filters import parse_hours
+    allowed = {h for lo, hi in parse_hours(spec) for h in range(lo, hi)}
+    left = sorted(allowed - set(range(a, b)))
+    if not left or len(left) == len(allowed):
+        return None
+    ranges, start = [], left[0]
+    for prev, h in zip(left, left[1:] + [None]):
+        if h != prev + 1:
+            ranges.append(f"{start}-{prev + 1}")
+            start = h
+    return ",".join(ranges)
 
 
 def review(bot: str, df: pd.DataFrame, params: dict, bars: Optional[dict] = None) -> dict:

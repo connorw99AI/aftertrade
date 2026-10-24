@@ -19,7 +19,7 @@ instruments:
 #   silver: {windows: [{days: [0,1,2,3,4], start: "01:00", end: "24:00"}], closures: ["2026-12-25"]}
 
 capital:
-  bot_fraction: 0.10             # each of 10 bots gets 10% of the starting balance snapshot
+  bot_fraction: 0.05             # 20 bots (10 strategies x long and short halves), 5% each of the starting balance
 
 risk:
   risk_per_trade: 0.03             # sizing target: trade more than min_lot only when 3% of the bot allows it

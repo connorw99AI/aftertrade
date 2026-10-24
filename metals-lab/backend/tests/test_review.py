@@ -30,7 +30,7 @@ def test_review_finds_losing_session_and_maps_to_hour_param():
     sess = {g["key"]: g for g in st["by_session"]}
     assert sess["Asia 00-07"]["net"] < 0 < sess["London 07-12"]["net"]
     s = next(x for x in out["suggestions"] if x["id"] == "by_session:Asia 00-07")
-    assert s["kind"] == "parameter" and s["change"] == {"start_hour": 7}
+    assert s["kind"] == "parameter" and s["change"] == {"hours_utc": "7-24"} and s["strength"] in ("weak", "moderate", "strong")
 
 
 def test_excursions_flag_give_back():
@@ -63,16 +63,16 @@ def test_review_and_test_change_via_api(armed, cfg, tmp_path, monkeypatch):
     monkeypatch.delenv("METALS_LAB_API_TOKEN", raising=False)
     cfg["storage"]["cache_dir"] = str(tmp_path / "cache")
     client = TestClient(create_app(State(cfg, armed.db, armed, "SIMULATED")))
-    r = client.post("/api/backtests", json={"strategy_id": "S01", "dataset": "synthetic", "synthetic_days": 30}).json()
+    r = client.post("/api/backtests", json={"strategy_id": "S01L", "dataset": "synthetic", "synthetic_days": 30}).json()
     for _ in range(600):
         b = client.get(f"/api/backtests/{r['id']}").json()
         if b["status"] != "RUNNING":
             break
         time.sleep(0.1)
-    rv = client.get(f"/api/review/S01?source=backtest:{r['id']}").json()
+    rv = client.get(f"/api/review/S01L?source=backtest:{r['id']}").json()
     assert rv["source"].startswith("backtest") and rv["stats"]["n"] == b["metrics"]["n_trades"]
-    assert client.get("/api/review/S01").json()["stats"]["n"] == 0
-    t = client.post("/api/review/S01/test", json={"change": {"stop_atr": 1.5}, "dataset": "synthetic"}).json()
+    assert client.get("/api/review/S01L").json()["stats"]["n"] == 0
+    t = client.post("/api/review/S01L/test", json={"change": {"stop_atr": 1.5}, "dataset": "synthetic"}).json()
     assert t["candidate_id"] != t["baseline_id"]
     for _ in range(900):
         rows = {x["id"]: x for x in client.get("/api/backtests").json()}
@@ -80,7 +80,7 @@ def test_review_and_test_change_via_api(armed, cfg, tmp_path, monkeypatch):
             break
         time.sleep(0.1)
     assert rows[t["candidate_id"]]["params"]["stop_atr"] == 1.5 and rows[t["baseline_id"]]["params"]["stop_atr"] == 1.2
-    assert client.post("/api/review/S01/test", json={"change": {"nope": 1}}).status_code == 400
+    assert client.post("/api/review/S01L/test", json={"change": {"nope": 1}}).status_code == 400
 
 
 def test_export_report_has_runs_and_no_identifiers(armed, cfg):
@@ -88,9 +88,9 @@ def test_export_report_has_runs_and_no_identifiers(armed, cfg):
     from metals_lab.report import build_report
     trades = _trades(20)
     armed.db.x("INSERT INTO backtests(created_at,strategy_id,dataset_key,params_json,metrics_json,reliability_json,trades_json) "
-               "VALUES(?,?,?,?,?,?,?)", ("2026-01-01", "S01", "GOLD-M1-20250101-20251231-abc|GOLD-M5-20250101-20251231-def", "{}",
+               "VALUES(?,?,?,?,?,?,?)", ("2026-01-01", "S01L", "GOLD-M1-20250101-20251231-abc|GOLD-M5-20250101-20251231-def", "{}",
                                          _json.dumps({"n_trades": 20, "net_pnl": 100.0, "total_return": 0.1, "max_drawdown": -0.05,
                                                       "profit_factor": 2.0, "win_rate": 0.5}), "[]", _json.dumps(trades)))
     md, data = build_report(armed.db, cfg)
-    assert "2025-01-01 to 2025-12-31" in md and data["bots"]["S01"]["review"]["stats"]["n"] == 20
-    assert "fingerprint" not in md.lower() and data["bots"]["S02"] is None
+    assert "2025-01-01 to 2025-12-31" in md and data["bots"]["S01L"]["review"]["stats"]["n"] == 20
+    assert "fingerprint" not in md.lower() and data["bots"]["S02L"] is None

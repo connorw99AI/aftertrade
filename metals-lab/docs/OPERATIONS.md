@@ -73,20 +73,21 @@ scripts\windows\start.bat
 This starts the API and live loop on `http://127.0.0.1:8765` and opens the dashboard.
 
 - Until you arm, the loop runs in **shadow mode**: signals, auditor and risk decisions are recorded, and no orders are sent.
-- Start, pause and stop bots from the dashboard or with `metals-lab bot S04 start`. Only RUNNING bots trade once armed.
+- Start, pause and stop bots from the dashboard or with `metals-lab bot S04L start`. Only RUNNING bots trade once armed.
 
 ### Dashboard pages
 
 | Page | What it is for |
 |---|---|
-| Overview | All ten bots as creature cards: status, what each sees on gold and silver now, open trade, today's P&L, trades today, start/pause/stop. Click a creature for its own page. |
-| Bot page | Tabs: Live (checklist, money, open trades, last decision), Trades, Review (the auditor's assessment of its trade outcomes, with suggestions you can test on history and then apply), Rules & settings. |
+| Overview | All 20 bots (long and short halves) as creature cards, retired halves greyed out at the end: status, what each sees on gold and silver now, open trade, today's P&L, trades today, start/pause/stop. Click a creature for its own page. |
+| Bot page | Retire / un-retire. Tabs: Live (checklist, money, open trades, last decision), Trades, Review (the auditor's assessment of its trade outcomes, with suggestions you can test on history and then apply), Rules & settings. |
 | Live | Gold and silver charts updated from a live price stream (about once a second) plus every bot's verdict and how close it is to an entry. Bots decide in the backend on completed candles; the page only displays. |
 | Positions | Every open trade with live P&L, distance to stop and target, and whether the stop/target in MT5 match what the bot set. Close one trade, all of one bot's trades, or everything (each close goes through the auditor and risk checks). |
 | Activity | Open alerts, per-bot counts of entry signals and where they stopped (sizing, auditor, risk, filled) with the main reasons, and the decision feed. |
-| History | All closed trades with filters, result in money and in R, exit reason; CSV download. |
+| Assessor | Reviews each bot's closed trades automatically after every trade closes and after every backtest. Shows suggestions ranked by strength (test on history, apply, or retire; nothing is applied automatically), a report card per bot, what the auditor and risk engine blocked in the last 7 days, and stops/targets it put back. |
+| History | All closed trades with entry and exit price, profit, time and date; click a trade for each leg's stop-loss, take-profit, price move, and why it entered and exited. CSV download. |
 | Compare | Equity curves of all bots, the live-candidate ranking, latest backtest next to demo results. |
-| Backtest | Download price history from MT5, run one bot or all ten with your live risk settings, results in account currency, clear old results. |
+| Backtest | Download price history from MT5, run one bot or all 20 over a date range you choose with your live risk settings, results in account currency, clear old results. |
 | System | Risk settings and kill switch, auditor rules, MT5 connection, research records. |
 
 ## 4. Manual demo activation (the only way to enable trading)
@@ -96,7 +97,7 @@ This starts the API and live loop on `http://127.0.0.1:8765` and opens the dashb
 ```
 
 1. The command re-verifies DEMO, hedging, Algo Trading, instruments and clock.
-2. It shows the starting balance snapshot and the per-bot allocation (10% each).
+2. It shows the starting balance snapshot and the per-bot allocation (5% each; retired halves get nothing).
 3. It asks you to type `ARM DEMO <6-char fingerprint>`.
 
 On the first activation for an account, the balance is snapshotted once and the allocations are created. Re-arming later never resets them.
@@ -104,11 +105,11 @@ On the first activation for an account, the balance is snapshotted once and the 
 - Switching the terminal to another account disarms the system and revokes approvals.
 - Disarm: `metals-lab disarm`, or the Risk centre.
 - Kill everything: the Risk centre kill switch, or `metals-lab kill --reason "..."`.
-- Allocation changes (audited, funded only from unallocated money): `metals-lab allocate --bot S03 --delta -200 --reason "..." --operator "..."`.
+- Allocation changes (audited, funded only from unallocated money): `metals-lab allocate --bot S03L --delta -200 --reason "..." --operator "..."`.
 
 ## 5. Historical data and research
 
-The Backtest page does the common steps from the dashboard: **Download history from MT5** (M1, M5, M15, H1 for both metals), **Run all 10 bots**, **Clear old results**. Backtests run in a separate process, so the dashboard and the trading loop stay responsive while they run. A year of M1 data makes the M1 bot's backtest take a few minutes. The command line does the same and more:
+The Backtest page does the common steps from the dashboard: **Download history from MT5** for a From/To date range (M1, M5, M15, H1 for both metals), **Run all 20 bots** over a date range, **Clear old results**. Backtests run in a separate process, so the dashboard and the trading loop stay responsive while they run. A year of M1 data makes the M1 bot's backtest take a few minutes. The command line does the same and more:
 
 ```
 metals-lab fetch-history --days 730 --tf M1 M5 M15 H1        # Parquet cache + manifest + quality report
@@ -118,11 +119,24 @@ metals-lab research --strategy S08 --trials 20                  # train/validati
 metals-lab research --strategy S08 --holdout                    # touches the final holdout ONCE per strategy+dataset
 ```
 
+- Downloads for different ranges are kept and merged per timeframe, so you can add an earlier year without losing the current one. Use this for out-of-sample checks: the Assessor's filters were chosen on Oct 2025 → Oct 2026, so test them on Oct 2024 → Oct 2025.
+- `metals-lab export-backtests --out reports/backtests.md` writes the latest result per bot.
 - `--synthetic` runs the same commands on clearly labelled synthetic data. It only checks the machinery.
 - Reports are written to `reports/`. Every trial, including failures, is stored in the `experiments` table and shown on the Research page.
 - How much history you get is limited by the terminal's "Max bars in chart" setting and by the broker.
 
-## 6. Moving to a server later
+## 6. Upgrading to the long/short split (one-off)
+
+Old databases have ten bots with the old magic numbers. The new loop does not recognise those, so:
+
+1. Close every open trade first (the command refuses while any are open).
+2. Stop the lab (Ctrl+C), then `git pull`.
+3. In `config\config.yaml` set `capital: bot_fraction: 0.05`.
+4. `.venv\Scripts\metals-lab new-lab --confirm "NEW LAB"`. This moves the old database to `data\archive\` (nothing is deleted) and starts a fresh one with 20 bots.
+5. `scripts\windows\start.bat`, then `metals-lab arm --operator "Your Name"`. The balance is snapshotted again and allocations are created.
+6. Start the halves you want from the Overview.
+
+## 7. Moving to a server later
 
 The MetaTrader5 package needs a Windows host with a logged-in terminal, so use a Windows VPS or server.
 
@@ -130,7 +144,7 @@ The MetaTrader5 package needs a Windows host with a logged-in terminal, so use a
 - A new account fingerprint means new allocations.
 - If you must expose the API beyond localhost, set `METALS_LAB_API_TOKEN`, put HTTPS in front with a reverse proxy, and set `api.host`. The server refuses non-local binding without a token.
 
-## 7. Database
+## 8. Database
 
 SQLite schema: `backend/metals_lab/store/schema.sql`.
 
@@ -140,7 +154,7 @@ SQLite schema: `backend/metals_lab/store/schema.sql`.
 | Per-bot accounting | ledger (allocations, P&L, commission, swap, fees, unique per MT5 deal), bots, config_audit |
 | Execution | intents (durable, before send), approvals (single use), positions, deals (MT5 mirror), trades (closed groups, provisional or final) |
 | Decisions | audit_decisions, risk_decisions, signals_log |
-| Research | experiments, holdout_usage, backtests |
+| Research | experiments, holdout_usage, backtests, reviews (Assessor) |
 | UI and safety | events (popups/alerts feed), alerts, control |
 
 Historical datasets live in `data/cache/<source>/<symbol>/<tf>/<version>.parquet`, each with a JSON manifest holding provenance, a SHA-256 hash and a quality report.

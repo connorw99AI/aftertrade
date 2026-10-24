@@ -19,7 +19,7 @@ from ..jsonutil import dumps as jdumps
 from ..mt5.guard import check_account
 from ..mt5.sim import default_symbols
 from ..store import now_iso
-from ..strategies import STRATEGY_CLASSES, build
+from ..strategies import BOT_IDS as _BOTS, bot_class, bot_name, build  # noqa: F401
 from ..timeutil import utc_now
 
 DATA_TFS = ("M1", "M5", "M15", "H1")
@@ -34,11 +34,15 @@ class BacktestBody(BaseModel):
     slippage_multiplier: float = 1.0
     commission_per_lot_side: float = 0.0
     synthetic_days: int = 180
+    start: Optional[str] = None        # YYYY-MM-DD (UTC); None = from the start of the downloaded history
+    end: Optional[str] = None          # YYYY-MM-DD (UTC, inclusive); None = to its end
 
 
 class RunAllBody(BaseModel):
     dataset: str = "mt5"
     synthetic_days: int = 180
+    start: Optional[str] = None
+    end: Optional[str] = None
     initial_capital: Optional[float] = None
     spread_multiplier: float = 1.0
     slippage_multiplier: float = 1.0
@@ -48,11 +52,20 @@ class RunAllBody(BaseModel):
 class TestChangeBody(BaseModel):
     change: dict[str, Any]
     dataset: str = "mt5"
+    start: Optional[str] = None
+    end: Optional[str] = None
 
 
 class FetchBody(BaseModel):
     days: int = 365
+    start: Optional[str] = None        # YYYY-MM-DD; when given, overrides days
+    end: Optional[str] = None          # YYYY-MM-DD inclusive; default today
     timeframes: list[str] = list(DATA_TFS)
+
+
+def pd_ts(day: str):
+    import pandas as pd
+    return pd.Timestamp(day, tz="UTC")
 
 
 def fx_from_spec(spec: InstrumentSpec) -> float:
@@ -74,12 +87,19 @@ def _load_frames(datasets, cls, body: BacktestBody):
     if missing:
         raise RuntimeError("no downloaded MT5 history for " + ", ".join(missing) +
                            ". Use 'Download history from MT5' on the Backtest page first.")
+    import pandas as pd
     for r in cls.roles:
         for tf in cls.timeframes:
-            v = datasets.latest("MT5_TERMINAL", r, tf)
-            df, m = datasets.load(v)
-            frames[(r, tf)] = df
-            meta[v] = m["provenance"]
+            parts = []
+            for m in datasets.manifests():  # every download of this metal/timeframe, merged; newest wins on overlap
+                pv = m["provenance"]
+                if pv["source"] == "MT5_TERMINAL" and pv["role"] == r and pv["timeframe"] == tf:
+                    df, mm = datasets.load(m["version"])
+                    parts.append((pv.get("retrieved_at", ""), df))
+                    meta[m["version"]] = mm["provenance"]
+            parts.sort(key=lambda x: x[0])
+            frames[(r, tf)] = (pd.concat([p for _, p in parts]).drop_duplicates("time", keep="last")
+                               .sort_values("time").reset_index(drop=True))
     specs = {}
     for r in cls.roles:
         snap = next(p for p in meta.values() if p["role"] == r)["spec_snapshot"]
@@ -92,9 +112,10 @@ def compute_backtest(body: dict, cfg: dict, cache_dir: str, capital: float, curr
     from pathlib import Path
     from ..data.store import DatasetStore
     b = BacktestBody(**body)
-    cls = STRATEGY_CLASSES[b.strategy_id]
+    cls = bot_class(b.strategy_id)
     frames, specs, meta, fx = _load_frames(DatasetStore(Path(cache_dir)), cls, b)
-    bcfg = BacktestConfig(initial_capital=b.initial_capital or capital, risk=RiskParams.from_live(cfg),
+    end = (pd_ts(b.end) + __import__("datetime").timedelta(days=1)).strftime("%Y-%m-%d") if b.end else None
+    bcfg = BacktestConfig(initial_capital=b.initial_capital or capital, risk=RiskParams.from_live(cfg), start=b.start, end=end,
                           costs=CostModel(commission_per_lot_side=b.commission_per_lot_side, fx_to_account=fx,
                                           spread_multiplier=b.spread_multiplier, slippage_multiplier=b.slippage_multiplier))
     res = Backtester(build(b.strategy_id, b.params), frames, specs, bcfg, data_meta=meta).run()
@@ -144,18 +165,21 @@ def register(app: FastAPI, state, auth) -> None:
     @app.get("/api/data/status")
     def data_status():
         rows = []
+        mans = state.datasets.manifests()
         for role in ("GOLD", "SILVER"):
             for tf in DATA_TFS:
-                v = state.datasets.latest("MT5_TERMINAL", role, tf)
-                m = next((x for x in state.datasets.manifests() if x.get("version") == v), None) if v else None
-                rows.append({"role": role, "timeframe": tf, "version": v,
-                             "rows": (m or {}).get("quality", {}).get("rows"),
-                             "start": (m or {}).get("quality", {}).get("start"), "end": (m or {}).get("quality", {}).get("end"),
-                             "retrieved_at": (m or {}).get("provenance", {}).get("retrieved_at")})
+                ms = [m for m in mans if m["provenance"]["source"] == "MT5_TERMINAL" and m["provenance"]["role"] == role
+                      and m["provenance"]["timeframe"] == tf]
+                q = [m.get("quality", {}) for m in ms]
+                rows.append({"role": role, "timeframe": tf, "version": ms[-1]["version"] if ms else None, "downloads": len(ms),
+                             "rows": sum(x.get("rows", 0) for x in q) if q else None,
+                             "start": min((x["start"] for x in q if x.get("start")), default=None),
+                             "end": max((x["end"] for x in q if x.get("end")), default=None),
+                             "retrieved_at": max((m["provenance"].get("retrieved_at", "") for m in ms), default=None)})
         have = {(r["role"], r["timeframe"]) for r in rows if r["version"]}
         bots = []
         for b in BOT_IDS:
-            cls = STRATEGY_CLASSES[b]
+            cls = bot_class(b)
             missing = [f"{r} {tf}" for r in cls.roles for tf in cls.timeframes if (r, tf) not in have]
             bots.append({"bot_id": b, "timeframes": list(cls.timeframes), "ready": not missing, "missing": missing})
         return {"datasets": rows, "bots": bots, "fetch": fetch_job}
@@ -173,13 +197,20 @@ def register(app: FastAPI, state, auth) -> None:
             raise HTTPException(409, "connected account is not a verified demo account")
         tfs = [t for t in body.timeframes if t in DATA_TFS]
         days = max(7, min(int(body.days), 3650))
+        try:
+            rng_end = (pd_ts(body.end) + timedelta(days=1)).to_pydatetime() if body.end else None
+            rng_start = pd_ts(body.start).to_pydatetime() if body.start else None
+        except ValueError:
+            raise HTTPException(400, "dates must be YYYY-MM-DD")
+        if rng_start and rng_end and rng_start >= rng_end:
+            raise HTTPException(400, "start must be before end")
         fetch_job.clear()
-        fetch_job.update({"state": "RUNNING", "started_at": now_iso(), "days": days, "done": [], "failed": [],
+        fetch_job.update({"state": "RUNNING", "started_at": now_iso(), "days": days, "start": body.start, "end": body.end, "done": [], "failed": [],
                           "total": len(tfs) * len(c.specs)})
 
         def run():
-            end = utc_now()
-            start = end - timedelta(days=days)
+            end = min(rng_end, utc_now()) if rng_end else utc_now()
+            start = rng_start or (end - timedelta(days=days))
             for role, spec in c.specs.items():
                 for tf in tfs:
                     try:
@@ -202,6 +233,12 @@ def register(app: FastAPI, state, auth) -> None:
             db.x("UPDATE backtests SET metrics_json=?, diagnostics_json=?, reliability_json=?, trades_json=?, equity_json=?, config_json=?, "
                  "dataset_key=? WHERE id=?", (out["metrics"], out["diagnostics"], out["reliability"], out["trades"], out["equity"],
                                              out["config"], out["dataset_key"], job_id))
+            try:
+                from .. import assessor
+                assessor.store_review(db, body.strategy_id, f"backtest:{job_id}", "backtest finished",
+                                      assessor.review_backtest(db, body.strategy_id, job_id, state.datasets))
+            except Exception as e:  # a failed review never fails the backtest
+                db.event("ASSESSOR_ERROR", body.strategy_id, {"backtest": job_id, "error": str(e)})
             state.jobs[job_id] = "DONE"
         except Exception as e:
             db.x("UPDATE backtests SET diagnostics_json=? WHERE id=?",
@@ -216,7 +253,7 @@ def register(app: FastAPI, state, auth) -> None:
 
     @app.post("/api/backtests", dependencies=[Depends(auth)])
     def start_backtest(body: BacktestBody):
-        if body.strategy_id not in STRATEGY_CLASSES:
+        if body.strategy_id not in BOT_IDS:
             raise HTTPException(404)
         jid = create_job(body)
         state.jobs[jid] = "RUNNING"
@@ -228,6 +265,7 @@ def register(app: FastAPI, state, auth) -> None:
         jobs = []
         for b in BOT_IDS:
             jb = BacktestBody(strategy_id=b, dataset=body.dataset, initial_capital=body.initial_capital, synthetic_days=body.synthetic_days,
+                              start=body.start, end=body.end,
                               spread_multiplier=body.spread_multiplier, slippage_multiplier=body.slippage_multiplier,
                               commission_per_lot_side=body.commission_per_lot_side)
             jobs.append((create_job(jb), jb))
@@ -260,50 +298,70 @@ def register(app: FastAPI, state, auth) -> None:
 
     @app.get("/api/review/{bot}")
     def review_bot(bot: str, source: str = "demo"):
-        from .. import review as R
-        if bot not in STRATEGY_CLASSES:
+        from .. import assessor
+        if bot not in BOT_IDS:
             raise HTTPException(404)
-        cls = STRATEGY_CLASSES[bot]
-        bars: dict = {}
         if source == "demo":
-            trades = db.q("SELECT * FROM trades WHERE bot_id=? ORDER BY entry_time", (bot,))
-            positions = {r["position_key"]: r for r in db.q("SELECT * FROM positions WHERE bot_id=?", (bot,))}
-            df = R.from_demo(trades, positions)
-            c = state.coord
-            if c and not df.empty:
-                from ..data.history import fetch_bars
-                for role in set(df["role"]):
-                    if role in c.specs:
-                        start = df["entry_time"].min().to_pydatetime() - timedelta(hours=1)
-                        end = df["exit_time"].max().to_pydatetime() + timedelta(hours=1)
-                        try:
-                            with c._lock:
-                                bars[role] = fetch_bars(c.ro, c.clock, c.specs[role], cls.primary_timeframe, start, end)
-                        except Exception:
-                            pass
-            label = "forward demo trades"
-        elif source.startswith("backtest:"):
-            bid = int(source.split(":", 1)[1])
-            row = db.one("SELECT strategy_id, dataset_key, trades_json FROM backtests WHERE id=?", (bid,))
-            if not row or row["strategy_id"] != bot:
-                raise HTTPException(404, "no such backtest for this bot")
-            df = R.from_backtest(json.loads(row["trades_json"] or "[]"))
-            if row["dataset_key"] != "synthetic":
-                for role in cls.roles:
-                    v = state.datasets.latest("MT5_TERMINAL", role, cls.primary_timeframe)
-                    if v:
-                        bars[role], _ = state.datasets.load(v)
-            label = f"backtest #{bid} ({'synthetic data' if row['dataset_key'] == 'synthetic' else 'MT5 history'})"
-        else:
-            raise HTTPException(400, "source must be 'demo' or 'backtest:<id>'")
-        out = R.review(bot, df, current_params(bot), bars or None)
-        out["source"] = label
-        return out
+            return assessor.review_demo(db, bot, state.coord)
+        if source.startswith("backtest:"):
+            try:
+                return assessor.review_backtest(db, bot, int(source.split(":", 1)[1]), state.datasets)
+            except KeyError as e:
+                raise HTTPException(404, str(e))
+        raise HTTPException(400, "source must be 'demo' or 'backtest:<id>'")
+
+    @app.get("/api/assessor")
+    def assessor_view():
+        from .. import assessor
+        since = (utc_now() - timedelta(days=7)).isoformat()
+        blocks: dict[str, dict] = {}
+        for r in db.q("SELECT bot_id, triggered_json, reasons_json FROM audit_decisions WHERE ts>=? AND decision!='APPROVED' "
+                      "AND intent LIKE 'OPEN%'", (since,)):
+            for code, why in zip(json.loads(r["triggered_json"] or "[]"), json.loads(r["reasons_json"] or "[]")):
+                g = blocks.setdefault(code, {"code": code, "by": "auditor", "count": 0, "bots": set(), "example": why})
+                g["count"] += 1
+                g["bots"].add(r["bot_id"])
+        for r in db.q("SELECT bot_id, reasons_json FROM risk_decisions WHERE ts>=? AND decision='REJECTED' AND intent LIKE 'OPEN%'", (since,)):
+            for why in json.loads(r["reasons_json"] or "[]"):
+                code = str(why).split(" ")[0].split(":")[0]
+                g = blocks.setdefault(code, {"code": code, "by": "risk", "count": 0, "bots": set(), "example": why})
+                g["count"] += 1
+                g["bots"].add(r["bot_id"])
+        cards = []
+        for b in BOT_IDS:
+            row = db.one("SELECT status, pause_reason FROM bots WHERE bot_id=?", (b,))
+            demo, bt = assessor.latest(db, b, "demo"), assessor.latest(db, b, "backtest")
+            cards.append({"bot_id": b, "name": bot_name(b), "status": row["status"] if row else None,
+                          "pause_reason": row["pause_reason"] if row else None,
+                          "demo": {"grade": assessor.grade(demo), "stats": (demo or {}).get("stats"), "at": (demo or {}).get("created_at")},
+                          "backtest": {"grade": assessor.grade(bt), "stats": (bt or {}).get("stats"), "source": (bt or {}).get("source"),
+                                       "at": (bt or {}).get("created_at")}})
+        last = db.one("SELECT created_at FROM reviews ORDER BY id DESC LIMIT 1")
+        return {"suggestions": assessor.suggestions_ranked(db), "cards": cards,
+                "blocks": sorted(({**g, "bots": sorted(g["bots"])} for g in blocks.values()), key=lambda g: -g["count"]),
+                "protection": db.q("SELECT ts, kind, bot_id, payload_json FROM events WHERE kind IN ('PROTECTION_RESTORED','PROTECTION_FAILED') "
+                                   "ORDER BY id DESC LIMIT 30"),
+                "recent_reviews": db.q("SELECT id, created_at, bot_id, source, trigger FROM reviews ORDER BY id DESC LIMIT 30"),
+                "last_review_at": last["created_at"] if last else None}
+
+    @app.post("/api/assessor/run", dependencies=[Depends(auth)])
+    def assessor_run():
+        """Re-review every bot now: demo trades plus its latest finished backtest."""
+        from .. import assessor
+        n = 0
+        for b in BOT_IDS:
+            assessor.store_review(db, b, "demo", "manual", assessor.review_demo(db, b, state.coord))
+            n += 1
+            bt = db.one("SELECT id FROM backtests WHERE strategy_id=? AND metrics_json IS NOT NULL ORDER BY id DESC LIMIT 1", (b,))
+            if bt:
+                assessor.store_review(db, b, f"backtest:{bt['id']}", "manual", assessor.review_backtest(db, b, bt["id"], state.datasets))
+                n += 1
+        return {"reviews": n}
 
     @app.post("/api/review/{bot}/test", dependencies=[Depends(auth)])
     def test_change(bot: str, body: TestChangeBody):
         """Backtest the bot as it is now and with the suggested change, on the same data, for a side-by-side comparison."""
-        if bot not in STRATEGY_CLASSES:
+        if bot not in BOT_IDS:
             raise HTTPException(404)
         base = current_params(bot)
         try:
@@ -312,7 +370,7 @@ def register(app: FastAPI, state, auth) -> None:
             raise HTTPException(400, f"invalid change: {e}")
         jobs = []
         for params in (base, {**base, **body.change}):
-            jb = BacktestBody(strategy_id=bot, params=params, dataset=body.dataset)
+            jb = BacktestBody(strategy_id=bot, params=params, dataset=body.dataset, start=body.start, end=body.end)
             jobs.append((create_job(jb), jb))
 
         def run():

@@ -25,7 +25,7 @@ from ..execution.coordinator import BOT_IDS, Coordinator
 from ..jsonutil import dumps as jdumps
 from ..mt5.guard import check_account
 from ..store import Store, now_iso
-from ..strategies import STRATEGY_CLASSES, build, magic_for
+from ..strategies import BOT_IDS as _ALL_BOTS, bot_class, bot_name, build, magic_for  # noqa: F401
 
 
 class CleanJSONResponse(JSONResponse):
@@ -142,7 +142,7 @@ def create_app(state: State) -> FastAPI:
 
     # -------------------------------------------------------------------- bots
     def bot_summary(bot: str) -> dict:
-        cls = STRATEGY_CLASSES[bot]
+        cls = bot_class(bot)
         row = db.one("SELECT * FROM bots WHERE bot_id=?", (bot,))
         book = state.coord.bot_book(bot) if state.coord else None
         trades = db.q("SELECT * FROM trades WHERE bot_id=? ORDER BY exit_time", (bot,))
@@ -192,7 +192,7 @@ def create_app(state: State) -> FastAPI:
 
     @app.get("/api/bots/{bot}")
     def bot(bot: str):
-        if bot not in STRATEGY_CLASSES:
+        if bot not in BOT_IDS:
             raise HTTPException(404)
         d = bot_summary(bot)
         row = db.one("SELECT params_json FROM bots WHERE bot_id=?", (bot,))
@@ -219,8 +219,15 @@ def create_app(state: State) -> FastAPI:
 
     @app.post("/api/bots/{bot}/{action}", dependencies=[Depends(auth)])
     def bot_action(bot: str, action: str, body: StatusBody):
-        if bot not in STRATEGY_CLASSES or action not in ("start", "pause", "stop"):
+        if bot not in BOT_IDS or action not in ("start", "pause", "stop", "retire", "unretire"):
             raise HTTPException(404)
+        if action in ("retire", "unretire"):
+            try:
+                return coord().retire(bot, body.reason, body.operator) if action == "retire" else coord().unretire(bot, body.operator)
+            except RuntimeError as e:
+                raise HTTPException(409, str(e))
+        if db.one("SELECT status FROM bots WHERE bot_id=?", (bot,))["status"] == "RETIRED" and action == "start":
+            raise HTTPException(409, "this half is retired; un-retire it first")
         st = {"start": "RUNNING", "pause": "PAUSED", "stop": "STOPPED"}[action]
         if action == "stop" and db.one("SELECT 1 FROM positions WHERE bot_id=? AND status='OPEN'", (bot,)):
             raise HTTPException(409, "bot has open positions; pause it (exits keep running) or close them first")
@@ -314,7 +321,7 @@ def create_app(state: State) -> FastAPI:
     # -------------------------------------------------------------- research
     @app.get("/api/strategies")
     def strategies():
-        return [STRATEGY_CLASSES[s]().describe() for s in BOT_IDS]
+        return [bot_class(s)().describe() for s in BOT_IDS]
 
     @app.get("/api/datasets")
     def datasets():
@@ -335,7 +342,7 @@ def create_app(state: State) -> FastAPI:
         per = {}
         for b in BOT_IDS:
             book = state.coord.bot_book(b) if state.coord else None
-            per[b] = {"name": STRATEGY_CLASSES[b].name, "allocation": book.allocation if book else 0.0,
+            per[b] = {"name": bot_name(b), "allocation": book.allocation if book else 0.0,
                       "nets": [t["net"] for t in db.q("SELECT net FROM trades WHERE bot_id=? ORDER BY exit_time", (b,))]}
         n = int(state.cfg.get("selection", {}).get("min_trades", 50))
         return {"min_trades": n, "rule": f"at least {n} closed trades, profitable after costs, then smallest max drawdown",
@@ -348,7 +355,7 @@ def create_app(state: State) -> FastAPI:
             bt = db.one("SELECT id, dataset_key, metrics_json, reliability_json FROM backtests WHERE strategy_id=? AND metrics_json IS NOT NULL "
                         "ORDER BY id DESC LIMIT 1", (b,))
             fwd = db.q("SELECT net FROM trades WHERE bot_id=?", (b,))
-            out.append({"bot_id": b, "name": STRATEGY_CLASSES[b].name, "style": STRATEGY_CLASSES[b].style.value,
+            out.append({"bot_id": b, "name": bot_name(b), "style": bot_class(b).style.value,
                         "latest_backtest": {"id": bt["id"], "dataset": bt["dataset_key"], "metrics": json.loads(bt["metrics_json"]),
                                             "reliability": json.loads(bt["reliability_json"] or "[]")} if bt else None,
                         "forward_demo": {"closed_trades": len(fwd), "net": round(sum(t["net"] for t in fwd), 2)}})

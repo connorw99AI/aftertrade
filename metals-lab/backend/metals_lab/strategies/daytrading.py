@@ -21,6 +21,7 @@ def _hhmm(s: str) -> int:
 
 class LondonOpeningRangeBreakout(Strategy):
     strategy_id = "S04"
+    ASSESSOR_FILTERS = {"sides": "short", "metals": "silver", "hours_utc": "12-16", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -247 vs shorts +220; gold -133 vs silver +106; 07-12 UTC -118 vs 12-16 +91."}
     name = "London Opening Range Breakout"
     style = Style.DAY
     timeframes = ("M5",)
@@ -159,6 +160,7 @@ class LondonOpeningRangeBreakout(Strategy):
 
 class BreakoutRetest(Strategy):
     strategy_id = "S05"
+    ASSESSOR_FILTERS = {"sides": "short", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -81 vs shorts +190."}
     name = "London-Range Breakout & Retest"
     style = Style.DAY
     timeframes = ("M5",)
@@ -320,6 +322,7 @@ class BreakoutRetest(Strategy):
 
 class VolatilityCompressionBreakout(Strategy):
     strategy_id = "S06"
+    ASSESSOR_FILTERS = {"sides": "long", "metals": "gold", "hours_utc": "0-7,16-24", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125."}
     name = "Volatility Compression Breakout"
     style = Style.DAY
     timeframes = ("M15",)

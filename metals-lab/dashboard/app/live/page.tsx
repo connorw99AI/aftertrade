@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CloseBar, VerdictPill } from "@/components/Bits";
 import { CandleChart } from "@/components/CandleChart";
-import { Creature, CREATURES } from "@/components/Creature";
+import { BOTS, Creature, CREATURES } from "@/components/Creature";
 import { RoleThinking } from "@/components/Thinking";
 import { Any } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
@@ -62,7 +62,7 @@ export default function Live() {
   const { data: thinking } = usePoll<Any>("/api/thinking", 5000);
   const [tf, setTf] = useState<Record<string, string>>({ GOLD: "M15", SILVER: "M15" });
   const [focus, setFocus] = useState<{ bot: string; role: string } | null>(null);
-  const bots = Object.keys(CREATURES);
+  const bots = BOTS;
   const overlay = (role: string) => (focus && focus.role === role ? thinking?.[focus.bot]?.roles?.[role]?.levels ?? [] : []);
   function pick(bot: string, role: string) {
     const same = focus?.bot === bot && focus?.role === role;

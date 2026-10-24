@@ -14,7 +14,7 @@ const SummaryCtx = createContext<Any>(null);
 export const useSummary = () => useContext(SummaryCtx);
 
 const NAV: [string, string][] = [
-  ["/", "Overview"], ["/live", "Live"], ["/positions", "Positions"], ["/activity", "Activity"], ["/history", "History"],
+  ["/", "Overview"], ["/live", "Live"], ["/positions", "Positions"], ["/assessor", "Assessor"], ["/activity", "Activity"], ["/history", "History"],
   ["/compare", "Compare"], ["/backtest", "Backtest"], ["/system", "System"],
 ];
 
@@ -41,7 +41,7 @@ function AccountStrip({ sum, status }: { sum: Any; status: Any }) {
       <div className="acct-cell"><span>Balance</span><b className="num">{money(a.balance)}</b></div>
       <div className="acct-cell"><span>Today</span><b className={`num ${(sum?.today_pnl ?? 0) >= 0 ? "gain" : "loss"}`}>{money(sum?.today_pnl, true)}</b></div>
       <div className="acct-cell"><span>Open trades</span><b className="num">{sum?.open_trades ?? "–"}</b></div>
-      <div className="acct-cell"><span>Bots</span><b className="num">{c.RUNNING ?? 0} running · {(c.PAUSED ?? 0) + (c.PAUSED_RISK ?? 0)} paused · {c.STOPPED ?? 0} stopped</b></div>
+      <div className="acct-cell"><span>Bots</span><b className="num">{c.RUNNING ?? 0} running · {(c.PAUSED ?? 0) + (c.PAUSED_RISK ?? 0)} paused · {c.STOPPED ?? 0} stopped · {c.RETIRED ?? 0} retired</b></div>
       {sum?.stopped_for_day > 0 && <div className="acct-cell"><span>Stopped for today</span><b className="num">{sum.stopped_for_day}</b></div>}
       <div className="acct-cell grow">
         {alerts.length > 0 && <Link href="/activity" className="alert-pill">{alerts.length} alert{alerts.length > 1 ? "s" : ""}</Link>}
@@ -89,7 +89,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       <PopupCtx.Provider value={popups}>
         <div className="app">
           <header className="top">
-            <Link href="/" className="brand"><Creature bot="S10" size={30} label="" /> <span>Metals creature lab</span></Link>
+            <Link href="/" className="brand"><Creature bot="ASSESSOR" size={30} label="" /> <span>Metals creature lab</span></Link>
             <nav aria-label="Sections">
               {NAV.map(([href, label]) => (
                 <Link key={href} href={href} className={(href === "/" ? path === "/" || path?.startsWith("/bot") : path?.startsWith(href)) ? "on" : ""}>{label}</Link>

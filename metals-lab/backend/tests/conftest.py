@@ -70,13 +70,14 @@ def cfg():
     c = copy.deepcopy(config_mod.DEFAULTS)
     c["news"]["unknown_policy"] = "allow_with_flag"
     c["execution"]["loop_interval_seconds"] = 0
+    c["capital"]["apply_assessor_retirements"] = False  # tested on its own
     return c
 
 
 @pytest.fixture
 def sim():
     t = SimTerminal()
-    t.add_account(SimAccount(login=1001, server="Sim-Demo", balance=100000.0))
+    t.add_account(SimAccount(login=1001, server="Sim-Demo", balance=200000.0))  # 20 halves x 5% = 10,000 each
     t.switch_account(1001)
     replay = SimReplay(t, days=120, start_fraction=0.7, seed=4)
     set_provider(lambda: t._now)
@@ -101,7 +102,7 @@ def armed(coord):
     return coord
 
 
-def make_open_proposal(c: Coordinator, bot="S01", role="GOLD", intent=Intent.OPEN_LONG, volume=0.1, stop_dist=3.0, tp_dist=6.0,
+def make_open_proposal(c: Coordinator, bot="S01L", role="GOLD", intent=Intent.OPEN_LONG, volume=0.1, stop_dist=3.0, tp_dist=6.0,
                        group_id=None):
     spec = c.specs[role]
     tk = c.ro.symbol_info_tick(spec.symbol)

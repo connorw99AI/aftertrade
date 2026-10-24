@@ -40,11 +40,36 @@ def test_ten_distinct_strategies_with_full_metadata():
 
 
 def test_magic_numbers_unique_and_reversible():
-    mags = {magic_for(s) for s in STRATEGY_CLASSES}
-    assert len(mags) == 10
-    for s in STRATEGY_CLASSES:
-        assert strategy_for_magic(magic_for(s)) == s
+    from metals_lab.strategies import BOT_IDS
+    assert len(BOT_IDS) == 20
+    mags = {magic_for(b) for b in BOT_IDS}
+    assert len(mags) == 20
+    for b in BOT_IDS:
+        assert strategy_for_magic(magic_for(b)) == b
     assert strategy_for_magic(0) is None
+    assert strategy_for_magic(7710003) is None  # pre-split magic numbers are not claimed
+
+
+def test_bot_halves_trade_only_their_side(specs):
+    from metals_lab.strategies import bot_name
+    for sid in ("S03", "S08", "S09"):
+        fr = frames_for_strategy(STRATEGY_CLASSES[sid])
+        for half, want in (("L", Intent.OPEN_LONG), ("S", Intent.OPEN_SHORT)):
+            s = build(sid + half, {"metals": "both", "hours_utc": "all", **({"max_spread_atr": 5.0})})
+            found = scan_signals(s, fr, specs, {Intent.OPEN_LONG, Intent.OPEN_SHORT})
+            assert set(found) <= {want}, f"{sid}{half} opened {set(found)}"
+    assert bot_name("S03L") == "Failed Breakout Reversal (long)" and "silver cheap" in bot_name("S10L")
+    assert build("S03S", {"sides": "long"}).p["sides"] == "short"  # the half's side cannot be overridden
+
+
+def test_hour_and_metal_filters():
+    from metals_lab.strategies.filters import hour_allowed, parse_hours
+    assert parse_hours("0-7,21-24") == [(0, 7), (21, 24)] and parse_hours("all") == [(0, 24)]
+    assert hour_allowed(3, "0-7,21-24") and not hour_allowed(12, "0-7,21-24")
+    with pytest.raises(ValueError):
+        build("S03", {"hours_utc": "25-3"})
+    with pytest.raises(ValueError):
+        build("S03", {"metals": "copper"})
 
 
 def test_unknown_parameter_rejected():
@@ -54,7 +79,7 @@ def test_unknown_parameter_rejected():
 
 @pytest.mark.parametrize("sid", INTRADAY + SWING)
 def test_long_and_short_entries(sid, specs):
-    s = build(sid, SCAN_PARAMS.get(sid, {}))
+    s = build(sid, {**SCAN_PARAMS.get(sid, {}), "sides": "both", "metals": "both", "hours_utc": "all"})  # rules without the assessor filters
     frames = frames_for_strategy(type(s))
     found = scan_signals(s, frames, specs, {Intent.OPEN_LONG, Intent.OPEN_SHORT})
     assert Intent.OPEN_LONG in found, f"{sid} produced no OPEN_LONG on synthetic data"
@@ -158,7 +183,7 @@ def test_thinking_checklist_agrees_with_real_entries(sid, specs):
         T = times.iloc[i] + pd.Timedelta(minutes=TIMEFRAME_MINUTES[ptf])
         fr = {k: df.iloc[: np.searchsorted(close[k], T.as_unit("ns").value, side="right")] for k, df in prepared.items()}
         ctx = StrategyContext(T.to_pydatetime(), fr, [], specs)
-        sigs = s.entry_signals(ctx)
+        sigs = s.entries(ctx)
         th = s.think(ctx)
         assert "error" not in th, th.get("error")
         for role, r in th["roles"].items():

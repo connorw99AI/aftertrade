@@ -26,7 +26,7 @@
 - **Per-bot P&L includes only that bot's MT5 deals.** Account-level charges without a position (some fees) land in the unallocated pool.
 - **The approval mechanism** stops accidental bypass. It is not a defence against malicious code inside the process.
 - **Mobile access** is local-network only, with no auth beyond an optional token. Secure remote access is deferred.
-- **Performance:** a live cycle with all ten bots takes about 150-200 ms on the simulator. Real terminal I/O will add to that. Long M5 backtests take tens of seconds per year of data.
+- **Performance:** a live cycle with all 20 bots takes about 150-200 ms on the simulator. Real terminal I/O will add to that. Long M5 backtests take tens of seconds per year of data.
 
 ## Next priorities
 

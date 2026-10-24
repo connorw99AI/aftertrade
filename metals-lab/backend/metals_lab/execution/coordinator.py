@@ -35,14 +35,13 @@ from ..mt5.guard import AccountCheck, AccountState, check_account, execution_blo
 from ..risk import RiskContext, RiskEngine, risk_pct_for
 from ..sessions import ServerClock, calendar_from_config, calendar_from_mql5_export
 from ..store import Store, now_iso
-from ..strategies import STRATEGY_CLASSES, Strategy, build, magic_for, strategy_for_magic
+from ..strategies import ASSESSOR_RETIRED, BOT_IDS, STRATEGY_CLASSES, Strategy, build, magic_for, strategy_for_magic  # noqa: F401
 from ..strategies.base import StrategyContext
 from .approvals import ApprovalAuthority, Proposal
 from .executor import Executor
 from .reconciliation import Reconciler
 
 log = logging.getLogger("metals_lab")
-BOT_IDS = list(STRATEGY_CLASSES)
 
 
 class LiveMarketView:
@@ -102,6 +101,7 @@ class Coordinator:
         self.account: Optional[AccountCheck] = None
         self.last_reconcile = None
         self._frame_cache: dict = {}
+        self._prep_cache: dict = {}
         self._cache_time = None
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -112,12 +112,18 @@ class Coordinator:
 
     # ------------------------------------------------------------------ setup
     def _init_bots(self):
+        legacy = [r["bot_id"] for r in self.db.q("SELECT bot_id FROM bots") if r["bot_id"] not in BOT_IDS]
+        if legacy and self.db.one("SELECT 1 FROM capital_snapshot"):
+            self.db.alert("CRITICAL", "LAB_UPGRADE_NEEDED",
+                          "this database holds the old 10-bot layout; run 'metals-lab new-lab' to archive it and start the "
+                          "20-bot (long/short) lab", blocks_entries=True)
         for sid in BOT_IDS:
             params = (self.cfg.get("strategies", {}).get(sid, {}) or {}).get("params", {})
             build(sid, params)  # validates
-            self.db.x("INSERT OR IGNORE INTO bots(bot_id,enabled,status,params_json,updated_at) VALUES(?,?,?,?,?)",
-                      (sid, int(bool((self.cfg.get("strategies", {}).get(sid, {}) or {}).get("enabled", False))), "STOPPED",
-                       json.dumps(params), now_iso()))
+            retired = ASSESSOR_RETIRED.get(sid) if self.cfg["capital"].get("apply_assessor_retirements", True) else None
+            self.db.x("INSERT OR IGNORE INTO bots(bot_id,enabled,status,pause_reason,params_json,updated_at) VALUES(?,?,?,?,?,?)",
+                      (sid, int(bool((self.cfg.get("strategies", {}).get(sid, {}) or {}).get("enabled", False))),
+                       "RETIRED" if retired else "STOPPED", f"assessor: {retired}" if retired else None, json.dumps(params), now_iso()))
 
     def strategy(self, bot_id: str) -> Strategy:
         row = self.db.one("SELECT params_json FROM bots WHERE bot_id=?", (bot_id,))
@@ -204,6 +210,9 @@ class Coordinator:
             raise RuntimeError("cannot arm: " + "; ".join(problems))
         self.db.arm(acct.fingerprint, acct.server)
         snap = self.ledger.initialize(acct.fingerprint, float(acct.balance), acct.currency or "", self.cfg["capital"]["bot_fraction"], BOT_IDS)
+        for r in self.db.q("SELECT bot_id, pause_reason FROM bots WHERE status='RETIRED'"):
+            if r["bot_id"] in BOT_IDS:  # halves retired before arming hand their new allocation on now
+                self._settle_retired(r["bot_id"], r["pause_reason"] or "retired", operator)
         self.db.x("INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
                   (None, "ARM", None, json.dumps({"fingerprint": acct.fingerprint[:12]}), operator, now_iso()))
         self.db.set_control("kill", "0")
@@ -251,12 +260,51 @@ class Coordinator:
 
     # ------------------------------------------------------------- bot control
     def set_bot_status(self, bot_id: str, status: str, reason: str = "", operator: str = "operator") -> None:
-        assert status in ("RUNNING", "PAUSED", "STOPPED")
+        assert status in ("RUNNING", "PAUSED", "STOPPED", "RETIRED")
         old = self.db.one("SELECT status FROM bots WHERE bot_id=?", (bot_id,))
         self.db.x("UPDATE bots SET status=?, pause_reason=?, enabled=?, updated_at=? WHERE bot_id=?",
                   (status, reason, int(status == "RUNNING"), now_iso(), bot_id))
         self.db.x("INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
                   (bot_id, "STATUS", json.dumps(old), json.dumps({"status": status, "reason": reason}), operator, now_iso()))
+
+    def _assess_closed(self, trade_ids: list[str]) -> None:
+        """The assessor re-reviews every bot that just closed a trade. Never allowed to break the loop."""
+        from .. import assessor
+        bots = {r["bot_id"] for t in trade_ids for r in self.db.q("SELECT bot_id FROM trades WHERE trade_id=?", (t,))}
+        for b in sorted(bots):
+            try:
+                assessor.store_review(self.db, b, "demo", "trade closed", assessor.review_demo(self.db, b, self))
+            except Exception as e:  # pragma: no cover - defensive
+                log.warning("assessor review for %s failed: %s", b, e)
+
+    @staticmethod
+    def sibling(bot_id: str) -> str:
+        return bot_id[:3] + ("S" if bot_id[3] == "L" else "L")
+
+    def _settle_retired(self, bot_id: str, reason: str, operator: str) -> dict:
+        acct = check_account(self.ro)
+        if not (acct.fingerprint and self.ledger.snapshot(acct.fingerprint)):
+            return {"moved": 0.0, "to": None}
+        sib = self.sibling(bot_id)
+        sib_row = self.db.one("SELECT status FROM bots WHERE bot_id=?", (sib,))
+        to = sib if sib_row and sib_row["status"] != "RETIRED" else None
+        moved = self.ledger.transfer_equity(bot_id, to, reason, operator)
+        if moved:
+            self.db.event("BOT_RETIRED_TRANSFER", bot_id, {"amount": moved, "to": to or "unallocated pool", "reason": reason})
+        return {"moved": moved, "to": to}
+
+    def retire(self, bot_id: str, reason: str, operator: str) -> dict:
+        """Retire one half: no new entries ever (until un-retired); its whole balance goes to the surviving half,
+        or to the unallocated pool if that half is retired too. The half must be flat first."""
+        if self.db.one("SELECT 1 FROM positions WHERE bot_id=? AND status='OPEN'", (bot_id,)):
+            raise RuntimeError("close this bot's open trades first (Positions page), then retire it")
+        self.set_bot_status(bot_id, "RETIRED", reason or "retired by operator", operator)
+        return {"bot_id": bot_id, **self._settle_retired(bot_id, reason or "retired by operator", operator)}
+
+    def unretire(self, bot_id: str, operator: str) -> dict:
+        """Back to STOPPED. It has no money until the operator allocates some (metals-lab allocate)."""
+        self.set_bot_status(bot_id, "STOPPED", "un-retired; needs an allocation before it can trade", operator)
+        return {"bot_id": bot_id, "allocation": self.ledger.allocation(bot_id)}
 
     def update_params(self, bot_id: str, params: dict, operator: str) -> dict:
         row = self.db.one("SELECT * FROM bots WHERE bot_id=?", (bot_id,))
@@ -275,11 +323,20 @@ class Coordinator:
     def get_frame(self, role: str, tf: str, n: int, now: datetime) -> pd.DataFrame:
         key = (role, tf, n)
         if self._cache_time != now:
-            self._frame_cache, self._cache_time = {}, now
+            self._frame_cache, self._prep_cache, self._cache_time = {}, {}, now
         if key not in self._frame_cache:
             df = fetch_recent(self.ro, self.clock, self.specs[role], tf, n + 1)
             self._frame_cache[key] = completed_only(df, tf, pd.Timestamp(now)).reset_index(drop=True)
         return self._frame_cache[key]
+
+    def prepared(self, strat, frames: dict) -> dict:
+        """strat.prepare(frames), shared within one cycle by both halves of a strategy (and by _think and _run_bot).
+        The side/metal/hour filters only act in entries(), so they are left out of the key."""
+        key = (type(strat).__name__, json.dumps({k: v for k, v in strat.p.items() if k not in ("sides", "metals", "hours_utc")},
+                                                sort_keys=True, default=str), tuple(id(f) for f in frames.values()))
+        if key not in self._prep_cache:
+            self._prep_cache[key] = strat.prepare(frames)
+        return self._prep_cache[key]
 
     def reference_frames(self, now) -> dict:
         out = {}
@@ -320,6 +377,8 @@ class Coordinator:
                 self.connect()
             self._verify_clock(now)
             rep = self.reconciler.run(now)
+            if rep.closed_trades:
+                self._assess_closed(rep.closed_trades)
             self.last_reconcile = {"clean": rep.clean, "issues": rep.issues, "time": now.isoformat(), "new_deals": rep.new_deals,
                                    "closed_trades": rep.closed_trades}
             if not self.spread_baselines:
@@ -412,7 +471,7 @@ class Coordinator:
         key = f"thinkbar:{bot}"
         if self.db.get_control(key) == f"{last_bar}|{status}":
             return
-        prepared = strat.prepare(frames)
+        prepared = self.prepared(strat, frames)
         th = strat.think(StrategyContext(now, prepared, self._positions_view(bot, strat, prepared), self.specs))
         th["bar_time"] = last_bar
         th["bot_status"] = status
@@ -432,7 +491,7 @@ class Coordinator:
         row = self.db.one("SELECT * FROM bots WHERE bot_id=?", (bot,))
         status = row["status"]
         has_pos = self.db.one("SELECT 1 FROM positions WHERE bot_id=? AND status='OPEN'", (bot,)) is not None
-        if status == "STOPPED" and not has_pos:
+        if status in ("STOPPED", "RETIRED") and not has_pos:
             return {"status": status}
         strat = self.strategy(bot)
         if set(strat.roles) - set(self.specs):
@@ -458,7 +517,7 @@ class Coordinator:
         self.db.set_control(f"lastbar:{bot}", last_bar)
         if reassess_due:
             self.db.x("DELETE FROM control WHERE key=?", (f"reassess:{bot}",))
-        prepared = strat.prepare(frames)
+        prepared = self.prepared(strat, frames)
         ctx = StrategyContext(now, prepared, self._positions_view(bot, strat, prepared), self.specs,
                               weekend_flat_from=self.cfg["risk"].get("weekend_flat_from"))
         sigs = strat.generate_signals(ctx)

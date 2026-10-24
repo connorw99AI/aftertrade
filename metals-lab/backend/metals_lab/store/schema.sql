@@ -172,3 +172,9 @@ CREATE TABLE IF NOT EXISTS backtests (
   created_at TEXT, strategy_id TEXT, dataset_key TEXT, params_json TEXT, config_json TEXT,
   metrics_json TEXT, diagnostics_json TEXT, reliability_json TEXT, trades_json TEXT, equity_json TEXT
 );
+
+CREATE TABLE IF NOT EXISTS reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at TEXT NOT NULL, bot_id TEXT NOT NULL, source TEXT NOT NULL, trigger TEXT, review_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_reviews_bot ON reviews(bot_id, source, id);

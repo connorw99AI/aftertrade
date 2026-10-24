@@ -56,7 +56,7 @@ cd backend && pip install -e . && cd .. && metals-lab --sim serve
 
 | Item | Status |
 |---|---|
-| Backend, ten strategies, backtester, research, auditor, risk, ledgers, reconciliation, API, dashboard | Implemented; 91 automated tests pass against a simulated terminal |
+| Backend, ten strategies (20 long/short bots), Assessor, backtester, research, auditor, risk, ledgers, reconciliation, API, dashboard | Implemented; automated tests pass against a simulated terminal |
 | Real MT5 demo connection | **Not verified.** Built in a Linux container where the Windows-only MetaTrader5 package cannot run |
 | Demo execution against a real terminal | **Not operational until verified on your PC** |
 | Demo orders submitted | **None** |

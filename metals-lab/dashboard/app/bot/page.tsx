@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from "react";
 import { BotControls, StatusBadge, Tabs } from "@/components/Bits";
 import { Creature, CREATURES } from "@/components/Creature";
 import { RoleThinking } from "@/components/Thinking";
+import { Compare2 } from "@/components/TestResult";
 import { Any, api, confirmAction, minutes, money, pct, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
 
@@ -86,27 +87,6 @@ function GroupTable({ title, rows }: { title: string; rows: Any[] }) {
       <table><thead><tr><th /><th className="n">Trades</th><th className="n">Net</th><th className="n">Win</th><th className="n">Avg R</th></tr></thead>
         <tbody>{rows.map((g) => <tr key={g.key}><td>{g.key.replace(/_/g, " ").toLowerCase()}</td><td className="n">{g.n}</td>
           <td className={`n ${g.net >= 0 ? "gain" : "loss"}`}>{money(g.net, true)}</td><td className="n">{g.win_rate}%</td><td className="n">{g.avg_r ?? "–"}</td></tr>)}</tbody></table>
-    </div>
-  );
-}
-
-function Compare2({ ids }: { ids: { baseline_id: number; candidate_id: number; change: Any } }) {
-  const { data: runs } = usePoll<Any[]>("/api/backtests", 3000);
-  const a = runs?.find((r) => r.id === ids.baseline_id), c = runs?.find((r) => r.id === ids.candidate_id);
-  if (!a || !c || [a.status, c.status].some((s) => s === "RUNNING" || s === "QUEUED")) return <p className="muted">Testing on history…</p>;
-  if (a.status === "FAILED" || c.status === "FAILED") return <div className="warn danger">{a.error || c.error}</div>;
-  const row = (k: string, f: (m: Any) => string) => <tr><td>{k}</td><td className="n">{f(a.metrics)}</td><td className="n">{f(c.metrics)}</td></tr>;
-  const better = c.metrics.net_pnl > a.metrics.net_pnl && c.metrics.max_drawdown >= a.metrics.max_drawdown * 1.1;
-  return (
-    <div className="compare2">
-      <table><thead><tr><th /><th className="n">Now</th><th className="n">With change</th></tr></thead><tbody>
-        {row("Trades", (m) => String(m.n_trades))}
-        {row("Net", (m) => money(m.net_pnl, true))}
-        {row("Max drawdown", (m) => `${(m.max_drawdown * 100).toFixed(1)}%`)}
-        {row("Profit factor", (m) => String(m.profit_factor ?? "–"))}
-        {row("Win rate", (m) => `${((m.win_rate ?? 0) * 100).toFixed(1)}%`)}
-      </tbody></table>
-      <p className={better ? "gain" : "muted"}>{better ? "Better on this history without a much deeper drawdown." : "Not clearly better on this history."} Results on the same data the idea came from are optimistic.</p>
     </div>
   );
 }
@@ -264,17 +244,18 @@ function BotDetail({ id }: { id: string }) {
   if (!b) return <p className="empty">Loading…</p>;
   const st = b.strategy;
   const mood = b.status === "RUNNING" ? (b.open_positions.length ? "busy" : "idle") : b.status === "PAUSED_RISK" ? "hurt" : "asleep";
+  const side = id.endsWith("L") ? "▲ Bull · long half" : "▼ Bear · short half";
   return (
     <>
       <p className="crumbs"><Link href="/">← All bots</Link></p>
       <div className="hero">
-        <div className="hero-art"><Creature bot={id} size={168} mood={mood} /></div>
+        <div className="hero-art"><Creature bot={id} size={190} mood={mood} scene /></div>
         <div className="hero-text">
           <h1>{CREATURES[id]?.name}</h1>
-          <p><b>{id} {st.name}</b> · {st.timeframes.join(" + ")} · {b.symbols.join(" and ") || st.roles.join(" and ")}</p>
+          <p><b>{id} {st.name}</b> · <span className={`side-tag side-${id[3]}`}>{side}</span> · {st.timeframes.join(" + ")} · {b.symbols.join(" and ") || st.roles.join(" and ")}</p>
           <p className="muted">{st.description}</p>
           <div className="actions"><StatusBadge status={b.status} extra={b.pause_reason} />
-            <BotControls bot={id} status={b.status} hasOpen={b.open_positions.length > 0} onDone={reload} /></div>
+            <BotControls bot={id} status={b.status} hasOpen={b.open_positions.length > 0} onDone={reload} retire /></div>
         </div>
       </div>
       <Tabs tabs={[["live", "Live"], ["trades", "Trades"], ["review", "Review"], ["rules", "Rules & settings"]]} value={tab} onChange={setTab} />

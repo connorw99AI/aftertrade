@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Any, api, confirmAction } from "@/lib/api";
 
 export const STATUS_TEXT: Record<string, string> = {
-  RUNNING: "Running", PAUSED: "Paused", PAUSED_RISK: "Paused (drawdown)", STOPPED: "Stopped",
+  RUNNING: "Running", PAUSED: "Paused", PAUSED_RISK: "Paused (drawdown)", STOPPED: "Stopped", RETIRED: "Retired",
 };
 
 export function StatusBadge({ status, extra }: { status: string; extra?: string | null }) {
@@ -51,13 +51,18 @@ export function CloseBar({ r }: { r: Any }) {
 }
 
 /** Start / Pause / Stop, only the ones that change the current state, coloured by meaning. */
-export function BotControls({ bot, status, hasOpen, onDone }: { bot: string; status: string; hasOpen: boolean; onDone?: () => void }) {
+export function BotControls({ bot, status, hasOpen, onDone, retire = false }: {
+  bot: string; status: string; hasOpen: boolean; onDone?: () => void; retire?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  async function act(action: "start" | "pause" | "stop", e: React.MouseEvent) {
+  async function act(action: "start" | "pause" | "stop" | "retire" | "unretire", e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const name = confirmAction(`${action === "start" ? "Start" : action === "pause" ? "Pause new entries for" : "Stop"} ${bot}?`);
+    const q = { start: `Start ${bot}?`, pause: `Pause new entries for ${bot}?`, stop: `Stop ${bot}?`,
+      retire: `Retire ${bot}? It stops trading for good and its whole balance moves to the other half (or back to the pool).`,
+      unretire: `Un-retire ${bot}? It comes back stopped with no money until you allocate some.` }[action];
+    const name = confirmAction(q);
     if (!name) return;
     setBusy(true);
     setErr(null);
@@ -70,6 +75,14 @@ export function BotControls({ bot, status, hasOpen, onDone }: { bot: string; sta
       setBusy(false);
     }
   }
+  if (status === "RETIRED") {
+    return (
+      <div className="controls" onClick={(e) => e.stopPropagation()}>
+        {retire && <button disabled={busy} onClick={(e) => act("unretire", e)}>Un-retire</button>}
+        {err && <span className="err">{err}</span>}
+      </div>
+    );
+  }
   return (
     <div className="controls" onClick={(e) => e.stopPropagation()}>
       {status !== "RUNNING" && <button className="btn-go" disabled={busy} onClick={(e) => act("start", e)}>Start</button>}
@@ -78,6 +91,8 @@ export function BotControls({ bot, status, hasOpen, onDone }: { bot: string; sta
         <button className="btn-stop" disabled={busy || hasOpen} title={hasOpen ? "Close its trades first, or pause it" : ""}
                 onClick={(e) => act("stop", e)}>Stop</button>
       )}
+      {retire && <button className="btn-retire" disabled={busy || hasOpen} title={hasOpen ? "Close its trades first" : ""}
+                         onClick={(e) => act("retire", e)}>Retire</button>}
       {err && <span className="err">{err}</span>}
     </div>
   );

@@ -26,19 +26,19 @@ def test_api_contracts(client):
     assert s["terminal_kind"] == "SIMULATED" and s["account"]["state"] == "DEMO" and s["armed"] is True
     assert "login" not in json.dumps(s["account"])
     bots = client.get("/api/bots").json()
-    assert len(bots) == 10
+    assert len(bots) == 20
     for b in bots:
         for k in ("bot_id", "name", "style", "symbols", "status", "book", "risk_budget_per_trade", "open_positions",
                   "closed_net_pnl", "return_pct", "max_drawdown_closed_pct", "last_signal", "last_audit", "last_risk", "magic"):
             assert k in b
         assert b["book"]["allocation"] == 10000.0
-    d = client.get("/api/bots/S04").json()
+    d = client.get("/api/bots/S04L").json()
     assert d["strategy"]["citations"] and d["strategy"]["long_rules"]
     assert client.get("/api/strategies").status_code == 200
-    assert client.get("/api/risk").json()["capital_snapshot"]["bot_fraction"] == 0.10
+    assert client.get("/api/risk").json()["capital_snapshot"]["bot_fraction"] == 0.05
     assert client.get("/api/auditor/decisions").status_code == 200
     assert isinstance(client.get("/api/events?after=0").json(), list)
-    assert len(client.get("/api/compare").json()) == 10
+    assert len(client.get("/api/compare").json()) == 20
 
 
 def test_no_arm_endpoint_exists(client):
@@ -48,12 +48,12 @@ def test_no_arm_endpoint_exists(client):
 
 
 def test_bot_controls_and_param_change_rules(client):
-    assert client.post("/api/bots/S02/pause", json={"reason": "t"}).json()["status"] == "PAUSED"
-    r = client.put("/api/bots/S02/params", json={"params": {"rsi_low": 15}, "operator": "me"})
+    assert client.post("/api/bots/S02L/pause", json={"reason": "t"}).json()["status"] == "PAUSED"
+    r = client.put("/api/bots/S02L/params", json={"params": {"rsi_low": 15}, "operator": "me"})
     assert r.status_code == 200 and r.json()["config_version"] == 2
-    assert client.put("/api/bots/S02/params", json={"params": {"bogus": 1}, "operator": "me"}).status_code == 409
-    client.post("/api/bots/S02/start", json={})
-    assert client.put("/api/bots/S02/params", json={"params": {"rsi_low": 10}, "operator": "me"}).status_code == 409
+    assert client.put("/api/bots/S02L/params", json={"params": {"bogus": 1}, "operator": "me"}).status_code == 409
+    client.post("/api/bots/S02L/start", json={})
+    assert client.put("/api/bots/S02L/params", json={"params": {"rsi_low": 10}, "operator": "me"}).status_code == 409
 
 
 def test_token_required_when_configured(armed, cfg, monkeypatch):
@@ -64,7 +64,7 @@ def test_token_required_when_configured(armed, cfg, monkeypatch):
 
 
 def test_backtest_endpoint_labels_replay(client):
-    r = client.post("/api/backtests", json={"strategy_id": "S08", "dataset": "synthetic", "synthetic_days": 400}).json()
+    r = client.post("/api/backtests", json={"strategy_id": "S08L", "dataset": "synthetic", "synthetic_days": 400}).json()
     import time
     for _ in range(200):
         b = client.get(f"/api/backtests/{r['id']}").json()
@@ -169,6 +169,6 @@ def test_chart_endpoint_returns_separate_metals_and_positions(client, armed):
     assert all(c["l"] <= min(c["o"], c["c"]) and c["h"] >= max(c["o"], c["c"]) for c in g["candles"])
     assert g["bid"] is not None and s["positions"] == []
     if risk is not None and risk.approval is not None:
-        assert g["positions"] and g["positions"][0]["bot_id"] == "S01"
+        assert g["positions"] and g["positions"][0]["bot_id"] == "S01L"
     assert client.get("/api/chart?role=GOLD&tf=W9").status_code == 400
     assert client.get("/api/chart?role=PLATINUM").status_code == 404

@@ -6,6 +6,8 @@ from datetime import timedelta
 
 import pytest
 
+from metals_lab.mt5.guard import check_account
+
 from metals_lab.auditor.news import CsvCalendarProvider, FailingProvider
 from metals_lab.domain import Decision, Intent
 from metals_lab.execution.approvals import Approval
@@ -58,11 +60,11 @@ def test_risk_engine_rejects_without_audit(armed):
     p = make_open_proposal(c)
     from metals_lab.mt5.guard import check_account
     acct = check_account(c.ro)
-    book = c.bot_book("S01")
+    book = c.bot_book("S01L")
 
     class R:
         clean = True
-    rd = c.risk.evaluate(p, None, c._risk_ctx("S01", acct, book, book.equity, book.equity, R(), c.specs["GOLD"], c._tick(c.specs["GOLD"])))
+    rd = c.risk.evaluate(p, None, c._risk_ctx("S01L", acct, book, book.equity, book.equity, R(), c.specs["GOLD"], c._tick(c.specs["GOLD"])))
     assert rd.decision == Decision.REJECTED and "AUDIT_GATE" in rd.reasons[0]
 
 
@@ -122,7 +124,7 @@ def test_server_side_stop_attached_and_unprotected_closed(armed, sim):
     t = c.gw._b
     t.drop_sl_on_fill, t.fail_sltp = True, True
     for _ in range(50):  # step past any auditor delay caused by the replayed market (not under test here)
-        p2 = make_open_proposal(c, bot="S03", role="SILVER", volume=0.01, stop_dist=0.2, tp_dist=0.3)
+        p2 = make_open_proposal(c, bot="S03L", role="SILVER", volume=0.01, stop_dist=0.2, tp_dist=0.3)
         audit, risk = approve(c, p2)
         if risk is not None:
             break
@@ -151,7 +153,7 @@ def test_partial_fill_and_partial_close_no_popup_until_full_close(armed):
                 "magic": p.magic, "comment": "final"})
     c.reconciler.run(utc_now())
     ev = c.db.q("SELECT * FROM events WHERE kind='TRADE_CLOSED'")
-    assert len(ev) == 1 and ev[0]["bot_id"] == "S01"
+    assert len(ev) == 1 and ev[0]["bot_id"] == "S01L"
     pay = json.loads(ev[0]["payload_json"])
     deals = c.db.q("SELECT * FROM deals WHERE position_id=?", (r.position_ticket,))
     assert pay["net"] == pytest.approx(round(sum(d["profit"] + d["commission"] + d["swap"] + d["fee"] for d in deals), 2))
@@ -168,8 +170,8 @@ def test_popup_only_from_owning_bot_and_not_unrealized(armed):
     t.set_quote("XAUUSD", p.sl - 1)  # server stop executes
     c.reconciler.run(utc_now())
     ev = c.db.q("SELECT * FROM events WHERE kind='TRADE_CLOSED'")
-    assert len(ev) == 1 and ev[0]["bot_id"] == "S01"
-    assert all(c.ledger.book(b).equity == c.ledger.allocation(b) for b in BOT_IDS if b != "S01")
+    assert len(ev) == 1 and ev[0]["bot_id"] == "S01L"
+    assert all(c.ledger.book(b).equity == c.ledger.allocation(b) for b in BOT_IDS if b != "S01L")
 
 
 def test_manual_trade_and_deposit_block_entries(armed):
@@ -191,7 +193,7 @@ def test_manual_trade_and_deposit_block_entries(armed):
 def test_close_still_possible_while_paused_and_killed(armed):
     c = armed
     p, r = open_position(c)
-    c.set_bot_status("S01", "PAUSED")
+    c.set_bot_status("S01L", "PAUSED")
     c.db.set_control("global_pause", "1")
     out = c.kill("test")
     assert "EXEC_FILLED" in out["closed_attempts"][0]["outcome"]
@@ -208,7 +210,7 @@ def test_timeout_then_restart_recovery(cfg, sim):
     c = Coordinator(cfg, TradingGateway(t, is_simulated=True), store)
     c.connect()
     c.arm("pytest")
-    c.set_bot_status("S01", "RUNNING")
+    c.set_bot_status("S01L", "RUNNING")
     t.timeout_next = 1  # server executes, reply lost
     p = make_open_proposal(c)
     audit, risk = approve(c, p)
@@ -225,7 +227,7 @@ def test_timeout_then_restart_recovery(cfg, sim):
     it = store.one("SELECT * FROM intents WHERE intent_id=?", (r.intent_id,))
     assert it["state"] == "FILLED"
     pos = store.one("SELECT * FROM positions WHERE intent_id=?", (r.intent_id,))
-    assert pos and pos["bot_id"] == "S01" and pos["status"] == "OPEN"
+    assert pos and pos["bot_id"] == "S01L" and pos["status"] == "OPEN"
     assert not any(i.startswith("UNKNOWN_POSITION") for i in rep.issues)
 
 
@@ -318,10 +320,10 @@ def test_shadow_mode_records_decisions_without_orders(coord, sim):
 
 
 def test_shadow_mode_sizes_on_would_be_allocation(coord):
-    b = coord.bot_book("S08")
-    assert b.shadow and b.allocation == 10000.0  # 10% of the 100,000 simulated balance, not 0
+    b = coord.bot_book("S08L")
+    assert b.shadow and b.allocation == 10000.0  # 5% of the 200,000 simulated balance, not 0
     coord.arm("pytest")
-    real = coord.bot_book("S08")
+    real = coord.bot_book("S08L")
     assert not real.shadow and real.allocation == 10000.0
 
 
@@ -329,19 +331,19 @@ def test_per_bot_risk_override_and_cap(armed):
     from metals_lab.risk import risk_pct_for
     c = armed
     c.cfg["risk"]["risk_per_trade"] = 0.005
-    assert risk_pct_for(c.cfg, "S01") == 0.005
-    c.cfg["strategies"]["S01"] = {"risk_per_trade": 0.02}
-    assert risk_pct_for(c.cfg, "S01") == 0.02 and risk_pct_for(c.cfg, "S02") == 0.005
-    c.cfg["strategies"]["S01"] = {"risk_per_trade": 0.5}
-    assert risk_pct_for(c.cfg, "S01") == 0.03  # hard cap
+    assert risk_pct_for(c.cfg, "S01L") == 0.005
+    c.cfg["strategies"]["S01L"] = {"risk_per_trade": 0.02}
+    assert risk_pct_for(c.cfg, "S01L") == 0.02 and risk_pct_for(c.cfg, "S02L") == 0.005
+    c.cfg["strategies"]["S01L"] = {"risk_per_trade": 0.5}
+    assert risk_pct_for(c.cfg, "S01L") == 0.03  # hard cap
     # a trade risking ~1.5% of the bot is rejected at 0.5% but approved with a 2% override
     c.cfg["risk"]["pre_trade_limits"] = True
     c.cfg["risk"]["per_trade_limit_enabled"] = True
-    c.cfg["strategies"]["S01"] = {}
+    c.cfg["strategies"]["S01L"] = {}
     p = make_open_proposal(c, volume=0.5, stop_dist=3.0)
     _, r = approve(c, p)
     assert r is not None and "PLANNED_RISK_EXCEEDS_LIMIT" in r.reasons
-    c.cfg["strategies"]["S01"] = {"risk_per_trade": 0.02}
+    c.cfg["strategies"]["S01L"] = {"risk_per_trade": 0.02}
     p2 = make_open_proposal(c, volume=0.5, stop_dist=3.0)
     _, r2 = approve(c, p2)
     assert r2 is not None and "PLANNED_RISK_EXCEEDS_LIMIT" not in r2.reasons
@@ -350,15 +352,15 @@ def test_per_bot_risk_override_and_cap(armed):
 def test_daily_entry_cap(armed):
     from metals_lab.domain import Signal
     c = armed
-    assert c.entries_today("S01") == 0
+    assert c.entries_today("S01L") == 0
     for i in range(5):  # five shadow-approved opens today (a two-leg group would count once)
         sig = Signal("S01", utc_now() - timedelta(seconds=i), "GOLD", "XAUUSD", Intent.OPEN_LONG, f"t{i}", {})
         c.db.x("INSERT INTO signals_log(ts,bot_id,mode,outcome,signal_json,explanation) VALUES(?,?,?,?,?,?)",
-               (now_iso(), "S01", "SHADOW", "SHADOW_APPROVED", json.dumps(sig.to_dict(), default=str), ""))
-    assert c.entries_today("S01") == 5 and c.entries_today("S02") == 0
+               (now_iso(), "S01L", "SHADOW", "SHADOW_APPROVED", json.dumps(sig.to_dict(), default=str), ""))
+    assert c.entries_today("S01L") == 5 and c.entries_today("S02L") == 0
     _, r = approve(c, make_open_proposal(c))
     assert "MAX_ENTRIES_PER_DAY" in r.reasons
-    _, r2 = approve(c, make_open_proposal(c, bot="S02"))
+    _, r2 = approve(c, make_open_proposal(c, bot="S02L"))
     assert "MAX_ENTRIES_PER_DAY" not in r2.reasons
 
 
@@ -381,10 +383,10 @@ def test_exposure_caps_are_per_bot_and_in_account_currency(armed):
 
 def test_daily_profit_stop(armed):
     c = armed
-    up = c.bot_book("S01").equity / 1.35  # bot is up 35% on the day
+    up = c.bot_book("S01L").equity / 1.35  # bot is up 35% on the day
     _, r = approve(c, make_open_proposal(c), day_start=up)
     assert "DAILY_PROFIT_TARGET_REACHED" in r.reasons
-    _, r1 = approve(c, make_open_proposal(c), day_start=c.bot_book("S01").equity / 1.10)  # up 10%: still trading
+    _, r1 = approve(c, make_open_proposal(c), day_start=c.bot_book("S01L").equity / 1.10)  # up 10%: still trading
     assert "DAILY_PROFIT_TARGET_REACHED" not in r1.reasons
     c.cfg["risk"]["daily_profit_stop"] = 0
     _, r2 = approve(c, make_open_proposal(c), day_start=up)
@@ -456,3 +458,40 @@ def test_missing_stop_and_target_are_restored(armed):
     assert out and out[0]["restored"]
     assert pos.sl > 0 and pos.tp > 0
     assert c.executor.verify_protection(c.db.q("SELECT * FROM positions WHERE status='OPEN'"), c.specs) == []
+
+
+
+def test_retiring_a_half_moves_its_balance_to_the_other_half(armed):
+    c = armed
+    before = c.bot_book("S08S").equity
+    out = c.retire("S08L", "assessor says longs lose", "pytest")
+    assert out["to"] == "S08S" and out["moved"] == 10000.0
+    assert c.bot_book("S08L").equity == 0 and c.bot_book("S08S").equity == before + 10000.0
+    assert c.db.one("SELECT status FROM bots WHERE bot_id='S08L'")["status"] == "RETIRED"
+    pool = c.ledger.unallocated_pool(check_account(c.ro).fingerprint)
+    out2 = c.retire("S08S", "both halves off", "pytest")  # nobody left: money goes back to the pool
+    assert out2["to"] is None and c.ledger.unallocated_pool(check_account(c.ro).fingerprint) == pool + 20000.0
+    c.unretire("S08L", "pytest")
+    assert c.db.one("SELECT status FROM bots WHERE bot_id='S08L'")["status"] == "STOPPED"
+
+
+def test_cannot_retire_with_open_trades(armed):
+    c = armed
+    p = make_open_proposal(c, bot="S09L", volume=0.04)
+    audit, risk = approve(c, p)
+    assert c.executor.submit(p, c.specs["GOLD"], audit.approval, risk.approval).ok
+    with pytest.raises(RuntimeError):
+        c.retire("S09L", "x", "pytest")
+
+
+def test_fresh_lab_starts_with_assessor_retirements(cfg, sim):
+    t, _ = sim
+    cfg = copy.deepcopy(cfg)
+    cfg["capital"]["apply_assessor_retirements"] = True
+    c = Coordinator(cfg, TradingGateway(t, is_simulated=True), Store(":memory:"))
+    c.connect()
+    c.arm("pytest")
+    st = {r["bot_id"]: r["status"] for r in c.db.q("SELECT bot_id, status FROM bots")}
+    assert st["S03S"] == "RETIRED" and st["S03L"] == "STOPPED" and st["S01L"] == st["S01S"] == "RETIRED"
+    assert c.bot_book("S03L").allocation == 20000.0 and c.bot_book("S03S").equity == 0
+    assert c.bot_book("S01L").equity == 0 and c.bot_book("S08L").allocation == 10000.0

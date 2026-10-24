@@ -173,8 +173,8 @@ def _research_inputs(cfg, a):
     from .data.store import DatasetStore
     from .instruments import InstrumentSpec, spec_from_info
     from .mt5.sim import default_symbols
-    from .strategies import STRATEGY_CLASSES
-    cls = STRATEGY_CLASSES[a.strategy]
+    from .strategies import bot_class
+    cls = bot_class(a.strategy)
     if a.synthetic:
         days = min(a.days, 90) if cls.primary_timeframe == "M1" else a.days
         frames = synthetic.frames_for(cls.timeframes, days=days, seed=a.seed)
@@ -245,6 +245,36 @@ def cmd_research(cfg, a):
     print(json.dumps({"chosen_params": rep["chosen_params"], "test_metrics": rep["test_metrics"],
                       "deflated_sharpe": rep["deflated_sharpe_test"], "holdout": rep["holdout_metrics"],
                       "report": str(out)}, indent=2, default=str))
+    return 0
+
+
+def cmd_new_lab(cfg, a):
+    """Archive the current database (history kept) so the next start creates a fresh lab with new allocations."""
+    import shutil
+    p = Path(cfg["storage"]["db_path"])
+    if a.sim:
+        p = p.with_name("sim_" + p.name)
+    if not p.exists():
+        print(f"no database at {p}; nothing to archive")
+        return 0
+    st = Store(p)
+    open_n = st.one("SELECT COUNT(*) n FROM positions WHERE status='OPEN'")["n"]
+    st.conn.close()
+    if open_n and not a.force:
+        print(f"{open_n} bot positions are still open. Close them first (dashboard Positions page), or pass --force.")
+        return 2
+    if a.confirm != "NEW LAB":
+        print('This archives the database and starts a fresh lab: new balance snapshot and allocations on the next arm.')
+        print('Run again with --confirm "NEW LAB" to proceed.')
+        return 2
+    arch = p.parent / "archive"
+    arch.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    for suffix in ("", "-wal", "-shm"):
+        f = Path(str(p) + suffix)
+        if f.exists():
+            shutil.move(str(f), str(arch / f"{p.stem}-{stamp}{p.suffix}{suffix}"))
+    print(f"archived to {arch}; start the lab and arm again (metals-lab arm) to create the 20-bot allocations")
     return 0
 
 
@@ -335,6 +365,9 @@ def main(argv=None) -> int:
             s.add_argument("--wf-test", type=int, default=30)
             s.add_argument("--holdout", action="store_true", help="evaluate the final holdout ONCE")
             s.add_argument("--out", default=None)
+    s = sub.add_parser("new-lab", help="archive the database and start a fresh lab (needed after the long/short split)")
+    s.add_argument("--confirm", default=None)
+    s.add_argument("--force", action="store_true")
     s = sub.add_parser("export-backtests", help="write the latest backtest per bot + trade review to a shareable file")
     s.add_argument("--out", default="reports/backtest_review.md")
     s = sub.add_parser("serve")
@@ -344,7 +377,7 @@ def main(argv=None) -> int:
     cfg = config_mod.load(a.config)
     fn = {"check": cmd_check, "arm": cmd_arm, "disarm": cmd_disarm, "kill": cmd_kill, "clear-kill": cmd_clear_kill,
           "allocate": cmd_allocate, "bot": cmd_bot, "fetch-history": cmd_fetch, "backtest": cmd_backtest,
-          "research": cmd_research, "serve": cmd_serve, "export-backtests": cmd_export_backtests}[a.cmd]
+          "research": cmd_research, "serve": cmd_serve, "export-backtests": cmd_export_backtests, "new-lab": cmd_new_lab}[a.cmd]
     return fn(cfg, a)
 
 

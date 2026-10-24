@@ -11,6 +11,7 @@ from .base import Param, Strategy, StrategyContext, chk, fmt, level, spread_pric
 
 class RegimeRSI2Reversion(Strategy):
     strategy_id = "S07"
+    ASSESSOR_FILTERS = {"sides": "long", "hours_utc": "12-24", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56."}
     name = "Regime-Filtered RSI(2) Reversion"
     style = Style.DAY
     timeframes = ("M15", "H1")
@@ -128,6 +129,7 @@ class RegimeRSI2Reversion(Strategy):
 
 class DonchianChannelBreakout(Strategy):
     strategy_id = "S08"
+    ASSESSOR_FILTERS = {"hours_utc": "7-12,16-24", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4)."}
     name = "Donchian Channel Breakout"
     style = Style.DAY
     timeframes = ("M15",)
@@ -222,6 +224,7 @@ class DonchianChannelBreakout(Strategy):
 
 class TimeSeriesMomentum(Strategy):
     strategy_id = "S09"
+    ASSESSOR_FILTERS = {"hours_utc": "0-7,21-24", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320."}
     name = "Time-Series Momentum"
     style = Style.DAY
     timeframes = ("M15",)
@@ -329,6 +332,8 @@ class TimeSeriesMomentum(Strategy):
 
 class GoldSilverRatioReversion(Strategy):
     strategy_id = "S10"
+    ASSESSOR_FILTERS = {"hours_utc": "21-24", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair."}
+    pair_trades = True
     name = "Gold/Silver Ratio Reversion"
     style = Style.DAY
     timeframes = ("M15",)

@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Creature, CREATURES } from "@/components/Creature";
+import { BOTS, Creature, CREATURES } from "@/components/Creature";
 import { Tabs } from "@/components/Bits";
 import { Any, api, confirmAction, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
@@ -76,7 +76,7 @@ export default function Activity() {
         <h2>Decision feed</h2>
         <select value={bot} onChange={(e) => setBot(e.target.value)} aria-label="Filter by bot">
           <option value="">All bots</option>
-          {Object.keys(CREATURES).map((b) => <option key={b} value={b}>{CREATURES[b].name} ({b})</option>)}
+          {BOTS.map((b) => <option key={b} value={b}>{CREATURES[b].name} ({b})</option>)}
         </select>
       </div>
       <ul className="feed">

@@ -6,7 +6,7 @@ import { useSummary } from "@/components/Shell";
 import { Any, money } from "@/lib/api";
 
 function mood(b: Any): Mood {
-  if (b.status === "STOPPED" || b.status === "PAUSED") return "asleep";
+  if (b.status === "STOPPED" || b.status === "PAUSED" || b.status === "RETIRED") return "asleep";
   if (b.status === "PAUSED_RISK" || b.stopped_for_day === "daily loss stop") return "hurt";
   if (b.open_positions.length) return "busy";
   if (b.today_pnl > 0) return "happy";
@@ -16,18 +16,20 @@ function mood(b: Any): Mood {
 function BotCard({ b }: { b: Any }) {
   const inTrade = b.open_positions.length > 0;
   const roles = Object.keys(b.verdicts || {});
-  const tone = b.stopped_for_day ? "card-stopped" : inTrade ? "card-trade" : b.status !== "RUNNING" ? "card-idle" : "";
+  const tone = b.status === "RETIRED" ? "card-retired" : b.stopped_for_day ? "card-stopped" : inTrade ? "card-trade" : b.status !== "RUNNING" ? "card-idle" : "";
   return (
     <Link href={`/bot?id=${b.bot_id}`} className={`botcard ${tone}`}>
       <div className="botcard-top">
         <span className="tf-tag">{b.timeframe}</span>
+        <span className={`side-tag side-${b.side}`}>{b.side === "L" ? "▲ Bull · long" : "▼ Bear · short"}</span>
         <StatusBadge status={b.status} />
       </div>
-      <div className="botcard-art"><Creature bot={b.bot_id} size={132} mood={mood(b)} /></div>
+      <div className="botcard-art"><Creature bot={b.bot_id} size={150} mood={mood(b)} scene /></div>
       <div className="botcard-name">
         <b>{CREATURES[b.bot_id]?.name}</b>
         <span className="muted">{b.bot_id} · {b.name}</span>
       </div>
+      {b.status === "RETIRED" && <div className="retired-note">Retired{b.pause_reason ? `: ${b.pause_reason}` : ""}</div>}
       {b.stopped_for_day && <div className="daystop">Stopped for today: {b.stopped_for_day}</div>}
       <div className="botcard-verdicts">
         {roles.length === 0 && <span className="muted small">Waiting for the first bar…</span>}

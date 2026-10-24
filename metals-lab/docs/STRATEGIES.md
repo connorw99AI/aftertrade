@@ -1,8 +1,33 @@
 # Strategy research notes
 
-Ten explicit, rule-based hypotheses for spot/CFD gold and silver. None of them is a proven edge. The defaults are starting hypotheses taken from the cited sources or from common practice. Their job is to be tested on your broker's real data, not trusted.
+Ten explicit, rule-based hypotheses, each run as two bots (a long half and a short half, 20 bots in all), for spot/CFD gold and silver. None of them is a proven edge. The defaults are starting hypotheses taken from the cited sources or from common practice. Their job is to be tested on your broker's real data, not trusted.
 
 Full rules, parameters and per-strategy citations: [STRATEGY_REFERENCE.md](STRATEGY_REFERENCE.md) (generated from code).
+
+## Long and short halves
+
+Every strategy runs as two bots: `S04L` only takes long entries and `S04S` only takes short ones. Each half has its own magic number (`7710000 + strategy*10 + 1` long, `+ 2` short), its own 5% allocation (£150 on a £3,000 account), its own ledger and its own record, so a side that loses can be retired without retiring the strategy. S10 is a two-leg pair, so its halves are split by direction of the trade rather than by a single side: `S10L` buys silver and sells gold when silver is cheap on the ratio, `S10S` does the opposite.
+
+**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. Its whole balance (allocation plus realised P&L) moves to the other half of the same strategy in one audited ledger transfer (`RETIRE_TRANSFER`). If the other half is already retired, the money goes back to the unallocated pool. Un-retiring brings a half back stopped with no money; give it some with `metals-lab allocate`.
+
+## Assessor changes applied from the backtest review
+
+The Assessor's ranked suggestions from the October 2025 → October 2026 backtest were applied as defaults. They are **in-sample**: they were chosen on the same year they are judged on, so they will look better on that year than they really are. Validate them on an earlier year (download e.g. 2024-10 → 2025-10 on the Backtest page and run all 20 bots on that range) before trusting them.
+
+| Strategy | Filter now on by default | Why (backtest evidence) |
+|---|---|---|
+| S03 | gold only, 12-21 UTC | silver and Asian/London hours lost |
+| S04 | silver only, 12-16 UTC | gold and other hours lost |
+| S05 | (short half only trades) | longs lost |
+| S06 | gold only, 0-7 and 16-24 UTC | silver and London hours lost |
+| S07 | 12-24 UTC | early hours lost |
+| S08 | 7-12 and 16-24 UTC | the 12-16 window lost |
+| S09 | 0-7 and 21-24 UTC | best hours; others near zero |
+| S10 | 21-24 UTC | only late hours were positive |
+
+Halves retired on a fresh lab (`capital.apply_assessor_retirements: true`): S01L, S01S, S02L, S02S (no edge on either side), S03S, S06S, S07S (shorts lost), S04L, S05L (longs lost). Each filter is a normal parameter (`sides`, `metals`, `hours_utc`) shown on the bot page, so you can change or remove it.
+
+No bot showed a statistically real edge (best t-stat about 1.1). Treat everything above as hypotheses to test, not improvements you have.
 
 ## Distribution and why
 

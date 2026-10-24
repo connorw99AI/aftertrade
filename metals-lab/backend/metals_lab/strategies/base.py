@@ -94,14 +94,29 @@ class Strategy(ABC):
     limitations: str = ""
     PARAMS: dict[str, Param] = {}
     magic_offset: int = 0
+    # Assessor-derived defaults for the shared trade filters: {"sides", "metals", "hours_utc", "evidence"}.
+    ASSESSOR_FILTERS: dict = {}
+    pair_trades: bool = False      # two-leg groups: side/metal filters do not apply, only hours
+
+    @classmethod
+    def param_defs(cls) -> dict[str, Param]:
+        f = cls.ASSESSOR_FILTERS
+        why = f.get("evidence", "No assessor change; trades every side, metal and hour.")
+        return {**cls.PARAMS,
+                "sides": Param(f.get("sides", "both"), f"Which sides may open: both, long or short. {why}"),
+                "metals": Param(f.get("metals", "both"), f"Which metals may open: both, gold or silver. {why}"),
+                "hours_utc": Param(f.get("hours_utc", "all"), f"UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). {why}")}
 
     def __init__(self, params: Optional[dict] = None):
-        self.params = {k: p.default for k, p in self.PARAMS.items()}
+        defs = self.param_defs()
+        self.params = {k: p.default for k, p in defs.items()}
         if params:
-            unknown = set(params) - set(self.PARAMS)
+            unknown = set(params) - set(defs)
             if unknown:
                 raise ValueError(f"{self.strategy_id}: unknown parameters {sorted(unknown)}")
             self.params.update(params)
+        from .filters import validate
+        validate(self.params)
 
     @property
     def p(self) -> dict:
@@ -135,7 +150,34 @@ class Strategy(ABC):
         exits = exits + self._time_exits(ctx, already={s.position_key for s in exits})
         if exits:
             return exits
-        return self.entry_signals(ctx)
+        return self.entries(ctx)
+
+    def entries(self, ctx: StrategyContext) -> list[Signal]:
+        """The strategy's entry signals after the shared side / metal / trading-hours filters."""
+        from .filters import hour_allowed, metal_allowed, side_allowed
+        sigs = self.entry_signals(ctx)
+        if not sigs or not hour_allowed(ctx.now.hour, self.p["hours_utc"]):
+            return []
+        if self.pair_trades:  # the side of a pair is the side of its silver leg; both legs go or neither
+            silver = next((x for x in sigs if x.role == "SILVER"), None)
+            return sigs if silver is not None and side_allowed(silver.intent, self.p["sides"]) else []
+        return [s for s in sigs if side_allowed(s.intent, self.p["sides"]) and metal_allowed(s.role, self.p["metals"])]
+
+    def _filter_checks(self, ctx: StrategyContext, role: str) -> tuple[list, list, list]:
+        from .filters import hour_allowed
+        h = self.p["hours_utc"]
+        f = [chk(f"Inside allowed trading hours (UTC {h})", hour_allowed(ctx.now.hour, h), f"now {ctx.now:%H:%M} UTC")] if h not in ("all", "") else []
+        if self.pair_trades:
+            sd = self.p["sides"]
+            if sd == "both" or role != "SILVER":
+                return f, [], []
+            return (f, [chk("Silver-cheap direction allowed", sd == "long", "")],
+                    [chk("Gold-cheap direction allowed", sd == "short", "")])
+        if self.p["metals"] != "both":
+            f.append(chk(f"Metal allowed ({self.p['metals']} only)", self.p["metals"].upper() == role, ""))
+        lo = [chk("Long trades allowed", True, "")] if self.p["sides"] == "long" else ([chk("Long trades allowed", False, "short only")] if self.p["sides"] == "short" else [])
+        sh = [chk("Short trades allowed", True, "")] if self.p["sides"] == "short" else ([chk("Short trades allowed", False, "long only")] if self.p["sides"] == "long" else [])
+        return f, lo, sh
 
     def _time_exits(self, ctx: StrategyContext, already: set) -> list[Signal]:
         out = []
@@ -241,10 +283,13 @@ class Strategy(ABC):
         except Exception as e:  # never let an explanation break trading
             diag, out["error"] = {}, f"diagnosis failed: {e}"
         try:
-            entries = self.entry_signals(ctx)
+            entries = self.entries(ctx)
         except Exception as e:
             entries, out["error"] = [], f"entry check failed: {e}"
         for role, d in diag.items():
+            if "waiting" not in d:
+                f, lo, sh = self._filter_checks(ctx, role)
+                d = {**d, "filters": list(d.get("filters", [])) + f, "long": list(d.get("long", [])) + lo, "short": list(d.get("short", [])) + sh}
             pos = ctx.position(role)
             sig = next((x for x in entries if x.role == role), None)
             if "waiting" in d:
@@ -282,7 +327,8 @@ class Strategy(ABC):
             "invalidation_rules": self.invalidation_rules,
             "filters": self.filters,
             "params": {k: {"value": self.params[k], "default": p.default, "rationale": p.rationale, "grid": list(p.grid)}
-                       for k, p in self.PARAMS.items()},
+                       for k, p in self.param_defs().items()},
+            "assessor_filters": self.ASSESSOR_FILTERS,
             "citations": list(self.citations),
             "limitations": self.limitations,
             "risk_metadata": self.risk_metadata(),

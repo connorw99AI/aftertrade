@@ -292,3 +292,40 @@ svg.multi-eq .axis { fill: var(--muted); font-size: 11px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: .86rem; }
 .legend i { display: inline-block; width: 12px; height: 3px; vertical-align: middle; margin-right: 4px; }
 .system-body h1 { display: none; }
+
+/* creature moods v2 */
+.mood-happy .creature-body { animation: hop .9s ease-in-out infinite; }
+@keyframes hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-2px); } }
+.mood-hurt .creature-body { animation: shake .5s steps(2) infinite; }
+@keyframes shake { 50% { transform: translateX(.6px); } }
+.sparkle rect { animation: twinkle 1.2s steps(2) infinite; }
+.star { animation: twinkle 3s steps(2) infinite; }
+@keyframes twinkle { 50% { opacity: .2; } }
+.glow { animation: pulseglow 1.6s ease-in-out infinite; }
+@keyframes pulseglow { 50% { opacity: .15; } }
+@media (prefers-reduced-motion: reduce) { .sparkle rect, .star, .glow, .mood-happy .creature-body, .mood-hurt .creature-body { animation: none !important; } }
+
+.botcard.card-retired { opacity: .45; filter: grayscale(.7); }
+.botcard-art { background: none; padding: 0; border-radius: 10px; overflow: hidden; }
+.botcard-art svg { width: 100%; height: auto; border-radius: 10px; }
+.side-tag { font-size: .72rem; padding: 1px 7px; border-radius: 999px; background: var(--ink-deep); }
+.side-tag.side-L { color: #4FCB8A; } .side-tag.side-S { color: #E0604A; }
+.retired-note { font-size: .82rem; color: var(--muted); text-align: center; }
+.btn-retire { background: none; border-color: var(--line); color: var(--muted); }
+.hero-art svg { border-radius: 14px; }
+.report-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.report-card { background: var(--panel); border-radius: 10px; padding: 10px 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; align-items: start; }
+.report-card .who { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; min-width: 0; }
+.report-card .who > span:not(.badge) { flex: 1; min-width: 0; }
+.report-card .who > .badge { flex: none; }
+.report-card .grade { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.report-card > .btn-retire { grid-column: 1 / -1; justify-self: start; }
+.report-card.card-retired { opacity: .5; }
+.grade b { font-size: 1rem; text-transform: capitalize; }
+.badge.strength-strong { color: var(--gain); } .badge.strength-moderate { color: var(--gold); } .badge.strength-weak { color: var(--muted); }
+.warnc { color: var(--gold); }
+
+.history td { vertical-align: middle; }
+.detail-row td { background: var(--ink-deep); }
+.trade-detail { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; padding: 6px 4px; }
+@media (max-width: 1100px) { .trade-detail { grid-template-columns: 1fr; } }
