@@ -2,34 +2,34 @@
 Generated from `Strategy.describe()`; regenerate with `python scripts/gen_strategy_doc.py` after changing rules.
 
 ## S01 Trend Pullback Scalper
-- Style: scalp | instruments: GOLD, SILVER | timeframes: M1, M15 (decisions on completed M1 bars) | min history: 700 bars | magic: 7710001
+- Style: scalp | instruments: GOLD, SILVER | timeframes: M5, M15 (decisions on completed M5 bars) | min history: 700 bars | magic: 7710001
 
-Trades short M1 pullbacks to the 20-EMA in the direction of the M15 trend (M15 EMA50 vs EMA200 with a rising or falling EMA50), only during London/New York liquidity. Trend from the slower chart, entry on the faster one.
+Trades short M5 pullbacks to the 20-EMA in the direction of the M15 trend (M15 EMA50 vs EMA200 with a rising or falling EMA50), only during London/New York liquidity. Trend from the slower chart, entry on the faster one.
 
-**Long (OPEN_LONG / CLOSE_LONG).** M15 uptrend (EMA50 > EMA200 and EMA50 rising over 4 M15 bars); previous M1 bar's low touched/pierced the M1 EMA20 with RSI(7) < pullback level; current M1 bar closes back above EMA20, bullish body, RSI rising.
+**Long (OPEN_LONG / CLOSE_LONG).** M15 uptrend (EMA50 > EMA200 and EMA50 rising over 4 M15 bars); previous M5 bar's low touched/pierced the M5 EMA20 with RSI(7) < pullback level; current M5 bar closes back above EMA20, bullish body, RSI rising.
 
-**Short (OPEN_SHORT / COVER_SHORT).** Mirror image: M15 downtrend, M1 rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20.
+**Short (OPEN_SHORT / COVER_SHORT).** Mirror image: M15 downtrend, M5 rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20.
 
-**Exits, stops, targets, max holding.** Server-side stop at entry -/+ stop_atr x ATR(14, M1); target at reward_risk x stop distance; close early if the M1 close crosses the M1 EMA50 against the trade or the M15 trend flips; max hold 30 bars (30 minutes).
+**Exits, stops, targets, max holding.** Server-side stop at entry -/+ stop_atr x ATR(14, M5); target at reward_risk x stop distance; close early if the M5 close crosses the M5 EMA50 against the trade or the M15 trend flips; max hold 12 bars (1 hour).
 
-**Invalidation.** M1 close through EMA50 against the position, or the M15 trend turning, invalidates the premise.
+**Invalidation.** M5 close through EMA50 against the position, or the M15 trend turning, invalidates the premise.
 
 **Spread, liquidity and volatility filters.** Hours 07:00-20:00 UTC; spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 to avoid dead and disorderly markets.
 
-**Limitations.** Generic trend-pullback logic, not a published metals-specific edge. On M1 OHLC the order of stop/target hits inside a bar is unknown; costs are a large fraction of the target.
+**Limitations.** Generic trend-pullback logic, not a published metals-specific edge. On M5 OHLC the order of stop/target hits inside a bar is unknown; costs are still a real share of the target. Moved from one-minute to five-minute entries so years of history can be backtested (MT5 keeps far less one-minute history).
 
 | Parameter | Default | Research grid | Rationale |
 |---|---|---|---|
-| `ema_fast` | 20 | 15, 20, 30 | M1 pullback reference; common short EMA. |
-| `ema_mid` | 50 | 50 | M1 invalidation line (early exit). |
+| `ema_fast` | 20 | 15, 20, 30 | M5 pullback reference; common short EMA. |
+| `ema_mid` | 50 | 50 | M5 invalidation line (early exit). |
 | `trend_fast` | 50 | 34, 50 | M15 trend EMA (50 x 15 min = 12.5 hours). |
 | `ema_slow` | 200 | 150, 200 | M15 slow trend EMA (200 x 15 min = 50 hours). |
 | `rsi_n` | 7 | 5, 7 | Short RSI to measure pullback depth. |
 | `rsi_pull` | 40 | 35, 40, 45 | Pullback must push RSI below this (long). |
-| `stop_atr` | 1.2 | 1.0, 1.2, 1.5 | Stop beyond normal M1 noise. |
-| `reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Larger multiple so the target clears M1 costs. |
-| `max_hold_bars` | 30 | 15, 30, 45 | Scalps that do not work quickly are closed (30 min). |
-| `max_spread_atr` | 0.3 | 0.2, 0.3, 0.4 | M1 ranges are small: skip when spread exceeds 30% of ATR(14,M1). |
+| `stop_atr` | 1.2 | 1.0, 1.2, 1.5 | Stop beyond normal M5 noise. |
+| `reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Target a multiple of the stop so it clears costs. |
+| `max_hold_bars` | 12 | 6, 12, 18 | Scalps that do not work quickly are closed (12 M5 bars = 1 hour). |
+| `max_spread_atr` | 0.2 | 0.15, 0.2, 0.3 | Skip when the spread exceeds 20% of ATR(14,M5), like the other M5 bots. |
 | `start_hour` | 7 | – | UTC start of liquid hours. |
 | `end_hour` | 20 | – | UTC end of liquid hours. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |

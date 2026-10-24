@@ -31,7 +31,7 @@ No bot showed a statistically real edge (best t-stat about 1.1). Treat everythin
 
 ## Watch chart and entry chart
 
-Trend bots read direction from a slower chart and enter on a faster one (the common rule of thumb is a slower chart about 4-6 times slower): S01 trades M1 pullbacks only in the M15 trend; S07, S08 and S09 only trade with the hourly (H1) trend. Session bots (S02-S05) and the squeeze and ratio bots (S06, S10) are built around one chart. Session windows are set in London or New York time, so they follow clock changes; each bot's page shows the hours it can actually open trades today (its own session combined with its hour filter).
+Trend bots read direction from a slower chart and enter on a faster one (the common rule of thumb is a slower chart about 4-6 times slower): S01 trades M5 pullbacks only in the M15 trend; S07, S08 and S09 only trade with the hourly (H1) trend. Session bots (S02-S05) and the squeeze and ratio bots (S06, S10) are built around one chart. Session windows are set in London or New York time, so they follow clock changes; each bot's page shows the hours it can actually open trades today (its own session combined with its hour filter).
 
 ## Distribution and why
 
@@ -39,7 +39,7 @@ Timeframes were set by the operator: nothing slower than M15, only one bot on M1
 
 | Bot | Timeframe | Style | Mechanism |
 |---|---|---|---|
-| S01 Trend Pullback Scalper | M1 entries, M15 trend | scalp | trend continuation |
+| S01 Trend Pullback Scalper | M5 entries, M15 trend | scalp | trend continuation |
 | S02 Asian Range Reversion | M5 (00:00-07:00 London) | scalp | range mean reversion |
 | S03 Failed Breakout Reversal | M5 | scalp | failed-break reversal |
 | S04 New York Opening Range Breakout | M5 (range 08:30-09:00 New York) | day | first break of the opening range |
@@ -50,11 +50,11 @@ Timeframes were set by the operator: nothing slower than M15, only one bot on M1
 | S08 Donchian Channel Breakout | M15 entries, H1 trend | day | 6-hour channel breakout with the hourly trend |
 | S09 Time-Series Momentum | M15 entries, H1 trend | day | one-day momentum with the hourly trend, evaluated hourly |
 
-**Cost warning for M1:** on the connected demo, gold's spread was about $0.43. That is often 25-40% of a one-minute range, so S01 keeps a spread guard (spread ≤ 30% of ATR) and a 2:1 target, and will skip many signals. M1 backtests without tick data are the least reliable results in this lab.
+**No one-minute entries.** Every bot enters on M5 or M15 charts (S01 moved from M1 to M5) because MT5 keeps years of M5/M15 history but often only months of M1, so every bot can be backtested over the same long periods. H1 is used only as a trend filter by S07-S09 and has the deepest history of all. S01 keeps a spread guard (spread ≤ 20% of ATR) and a 2:1 target; on gold, the roughly $0.43 spread is a much smaller share of a five-minute range than of a one-minute one.
 
 S07, S08, S09 and S10 on M15 are adaptations. The cited evidence for all four is at daily or monthly horizons.
 
-**Trade frequency.** The operator target is about 5 trades per bot per day, and the risk engine caps each bot at 5 new trades per UTC day (`risk.max_entries_per_bot_per_day`; a two-leg S10 group counts once). Filters were loosened to trade more often. On synthetic data, S01, S03 and S07 reach roughly 3-5 a day and S08, S09 and S10 roughly 2-3. The session strategies (S02 Asian range, S04 New York opening range, S05 London range, S06 squeeze) are built around one setup per session, so expect about 1 a day from each. Real-market frequency will differ from the synthetic figures. Trading more often is not evidence of edge: each extra trade pays the spread again.
+**Trade frequency.** The operator target is about 5 trades per bot per day, and the risk engine caps each bot at 5 new trades per UTC day (`risk.max_entries_per_bot_per_day`; a two-leg S10 group counts once). Filters were loosened to trade more often. On synthetic data, S03 and S07 reach roughly 3-5 a day, S01 fewer since it moved to M5 entries, and S08, S09 and S10 roughly 2-3. The session strategies (S02 Asian range, S04 New York opening range, S05 London range, S06 squeeze) are built around one setup per session, so expect about 1 a day from each. Real-market frequency will differ from the synthetic figures. Trading more often is not evidence of edge: each extra trade pays the spread again.
 
 They are deliberately not ten renamings of one idea. They differ in mechanism (trend, mean reversion, failed break, volatility regime, cross-sectional relative value), horizon and entry trigger.
 

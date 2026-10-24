@@ -1,4 +1,4 @@
-"""Scalping hypotheses (M1/M5 entries). Results on OHLC bars are flagged low-reliability."""
+"""Scalping hypotheses (M5 entries). Results on OHLC bars are flagged low-reliability."""
 from __future__ import annotations
 
 import pandas as pd
@@ -14,18 +14,18 @@ class TrendPullbackScalper(Strategy):
     strategy_id = "S01"
     name = "Trend Pullback Scalper"
     style = Style.SCALP
-    timeframes = ("M1", "M15")
-    primary_timeframe = "M1"
+    timeframes = ("M5", "M15")
+    primary_timeframe = "M5"
     min_history_bars = 700
     magic_offset = 1
-    description = ("Trades short M1 pullbacks to the 20-EMA in the direction of the M15 trend (M15 EMA50 vs EMA200 with a "
+    description = ("Trades short M5 pullbacks to the 20-EMA in the direction of the M15 trend (M15 EMA50 vs EMA200 with a "
                    "rising or falling EMA50), only during London/New York liquidity. Trend from the slower chart, entry on the faster one.")
-    long_rules = ("M15 uptrend (EMA50 > EMA200 and EMA50 rising over 4 M15 bars); previous M1 bar's low touched/pierced the M1 EMA20 "
-                  "with RSI(7) < pullback level; current M1 bar closes back above EMA20, bullish body, RSI rising.")
-    short_rules = "Mirror image: M15 downtrend, M1 rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20."
-    exit_rules = ("Server-side stop at entry -/+ stop_atr x ATR(14, M1); target at reward_risk x stop distance; "
-                  "close early if the M1 close crosses the M1 EMA50 against the trade or the M15 trend flips; max hold 30 bars (30 minutes).")
-    invalidation_rules = "M1 close through EMA50 against the position, or the M15 trend turning, invalidates the premise."
+    long_rules = ("M15 uptrend (EMA50 > EMA200 and EMA50 rising over 4 M15 bars); previous M5 bar's low touched/pierced the M5 EMA20 "
+                  "with RSI(7) < pullback level; current M5 bar closes back above EMA20, bullish body, RSI rising.")
+    short_rules = "Mirror image: M15 downtrend, M5 rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20."
+    exit_rules = ("Server-side stop at entry -/+ stop_atr x ATR(14, M5); target at reward_risk x stop distance; "
+                  "close early if the M5 close crosses the M5 EMA50 against the trade or the M15 trend flips; max hold 12 bars (1 hour).")
+    invalidation_rules = "M5 close through EMA50 against the position, or the M15 trend turning, invalidates the premise."
     filters = ("Hours 07:00-20:00 UTC; spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 "
                "to avoid dead and disorderly markets.")
     citations = (
@@ -34,19 +34,20 @@ class TrendPullbackScalper(Strategy):
         "Batten, Lucey, McGroarty, Peat, Urquhart (2017) 'Stylized facts of intraday precious metals', PLoS ONE 12(4) - "
         "liquidity/volatility concentrate in European/US hours; spreads tightest while Europe is open.",
     )
-    limitations = ("Generic trend-pullback logic, not a published metals-specific edge. On M1 OHLC the order of "
-                   "stop/target hits inside a bar is unknown; costs are a large fraction of the target.")
+    limitations = ("Generic trend-pullback logic, not a published metals-specific edge. On M5 OHLC the order of "
+                   "stop/target hits inside a bar is unknown; costs are still a real share of the target. Moved from one-minute "
+                   "to five-minute entries so years of history can be backtested (MT5 keeps far less one-minute history).")
     PARAMS = {
-        "ema_fast": Param(20, "M1 pullback reference; common short EMA.", (15, 20, 30)),
-        "ema_mid": Param(50, "M1 invalidation line (early exit).", (50,)),
+        "ema_fast": Param(20, "M5 pullback reference; common short EMA.", (15, 20, 30)),
+        "ema_mid": Param(50, "M5 invalidation line (early exit).", (50,)),
         "trend_fast": Param(50, "M15 trend EMA (50 x 15 min = 12.5 hours).", (34, 50)),
         "ema_slow": Param(200, "M15 slow trend EMA (200 x 15 min = 50 hours).", (150, 200)),
         "rsi_n": Param(7, "Short RSI to measure pullback depth.", (5, 7)),
         "rsi_pull": Param(40, "Pullback must push RSI below this (long).", (35, 40, 45)),
-        "stop_atr": Param(1.2, "Stop beyond normal M1 noise.", (1.0, 1.2, 1.5)),
-        "reward_risk": Param(2.0, "Larger multiple so the target clears M1 costs.", (1.5, 2.0, 2.5)),
-        "max_hold_bars": Param(30, "Scalps that do not work quickly are closed (30 min).", (15, 30, 45)),
-        "max_spread_atr": Param(0.3, "M1 ranges are small: skip when spread exceeds 30% of ATR(14,M1).", (0.2, 0.3, 0.4)),
+        "stop_atr": Param(1.2, "Stop beyond normal M5 noise.", (1.0, 1.2, 1.5)),
+        "reward_risk": Param(2.0, "Target a multiple of the stop so it clears costs.", (1.5, 2.0, 2.5)),
+        "max_hold_bars": Param(12, "Scalps that do not work quickly are closed (12 M5 bars = 1 hour).", (6, 12, 18)),
+        "max_spread_atr": Param(0.2, "Skip when the spread exceeds 20% of ATR(14,M5), like the other M5 bots.", (0.15, 0.2, 0.3)),
         "start_hour": Param(7, "UTC start of liquid hours.", ()),
         "end_hour": Param(20, "UTC end of liquid hours.", ()),
     }
@@ -89,9 +90,9 @@ class TrendPullbackScalper(Strategy):
     def entry_signals(self, ctx: StrategyContext):
         sigs = []
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "M1", 3) or not ctx.has(role, "M15", self.p["ema_slow"]):
+            if ctx.position(role) or not ctx.has(role, "M5", 3) or not ctx.has(role, "M15", self.p["ema_slow"]):
                 continue
-            r, pv = ctx.last(role, "M1"), ctx.last(role, "M1", 2)
+            r, pv = ctx.last(role, "M5"), ctx.last(role, "M5", 2)
             trend, t = self._trend(ctx, role)
             spec = ctx.specs[role]
             hour = ctx.now.hour
@@ -106,13 +107,13 @@ class TrendPullbackScalper(Strategy):
             stop_d = self.p["stop_atr"] * r["atr"]
             if (trend == 1 and pv["low"] <= pv["ema_f"] and r["close"] > r["ema_f"]
                     and r["close"] > r["open"] and pv["rsi"] < self.p["rsi_pull"] and r["rsi"] > pv["rsi"]):
-                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "M15 uptrend; M1 pullback to EMA20 rejected with bullish close",
+                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "M15 uptrend; M5 pullback to EMA20 rejected with bullish close",
                                         vals, stop_price=r["close"] - stop_d,
                                         target_price=r["close"] + self.p["reward_risk"] * stop_d,
                                         max_hold_bars=self.p["max_hold_bars"]))
             elif (trend == -1 and pv["high"] >= pv["ema_f"] and r["close"] < r["ema_f"]
                   and r["close"] < r["open"] and pv["rsi"] > 100 - self.p["rsi_pull"] and r["rsi"] < pv["rsi"]):
-                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "M15 downtrend; M1 rally to EMA20 rejected with bearish close",
+                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "M15 downtrend; M5 rally to EMA20 rejected with bearish close",
                                         vals, stop_price=r["close"] + stop_d,
                                         target_price=r["close"] - self.p["reward_risk"] * stop_d,
                                         max_hold_bars=self.p["max_hold_bars"]))
@@ -121,13 +122,13 @@ class TrendPullbackScalper(Strategy):
     def exit_signals(self, ctx):
         out = []
         for pos in ctx.positions:
-            r = ctx.last(pos.role, "M1")
+            r = ctx.last(pos.role, "M5")
             trend = self._trend(ctx, pos.role)[0] if ctx.has(pos.role, "M15", 2) else 0
             vals = {"close": r["close"], "ema50": r["ema_m"], "m15_trend": trend}
             if pos.side == "LONG" and (r["close"] < r["ema_m"] or trend == -1):
-                out.append(self.close_signal(ctx, pos, "M15 trend turned down" if trend == -1 else "closed below M1 EMA50: pullback failed", vals))
+                out.append(self.close_signal(ctx, pos, "M15 trend turned down" if trend == -1 else "closed below M5 EMA50: pullback failed", vals))
             elif pos.side == "SHORT" and (r["close"] > r["ema_m"] or trend == 1):
-                out.append(self.close_signal(ctx, pos, "M15 trend turned up" if trend == 1 else "closed above M1 EMA50: rally held", vals))
+                out.append(self.close_signal(ctx, pos, "M15 trend turned up" if trend == 1 else "closed above M5 EMA50: rally held", vals))
         return out
 
 
@@ -144,7 +145,7 @@ class TrendPullbackScalper(Strategy):
             spr = spread_price(r, ctx.specs[role])
             out[role] = {
                 "price": float(r["close"]),
-                "levels": [x for x in (level("M1 EMA20", r["ema_f"]), level("M1 EMA50", r["ema_m"]), level("M15 EMA50", t["t_fast"]),
+                "levels": [x for x in (level("M5 EMA20", r["ema_f"]), level("M5 EMA50", r["ema_m"]), level("M15 EMA50", t["t_fast"]),
                                        level(f"M15 EMA{self.p['ema_slow']}", t["t_slow"])) if x],
                 "filters": [
                     chk(f"Liquid hours ({self.p['start_hour']:02d}-{self.p['end_hour']:02d} UTC)",

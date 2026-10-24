@@ -357,7 +357,7 @@ def main(argv=None) -> int:
     s.add_argument("--reason", default="")
     s.add_argument("--operator", default="cli")
     s = sub.add_parser("fetch-history")
-    s.add_argument("--tf", nargs="+", default=["M1", "M5", "M15", "H1"])
+    s.add_argument("--tf", nargs="+", default=["M5", "M15", "H1"])
     s.add_argument("--days", type=int, default=365)
     s.add_argument("--ticks", action="store_true", help="build bars from ticks (real per-tick spreads)")
     for name in ("backtest", "research"):

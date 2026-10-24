@@ -8,7 +8,7 @@ import { Button, DateInput, EmptyState, Panel, PctDir, Pnl, Stat, Stats, Table }
 import { Any, api, apiBase, confirmAction, money, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
 
-const TFS = ["M1", "M5", "M15", "H1"];
+const TFS = ["M5", "M15", "H1"];
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 const daysAgo = (n: number) => isoDay(new Date(Date.now() - n * 86400000));
 const ukDay = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "–");

@@ -23,7 +23,7 @@ def test_ten_distinct_strategies_with_full_metadata():
     assert styles.count(Style.SCALP) == 3 and styles.count(Style.DAY) == 7
     tfs = [c.primary_timeframe for c in STRATEGY_CLASSES.values()]
     # operator rule: nothing trades slower than M15, and only one bot trades M1
-    assert {tf: tfs.count(tf) for tf in set(tfs)} == {"M1": 1, "M5": 4, "M15": 5}
+    assert {tf: tfs.count(tf) for tf in set(tfs)} == {"M5": 5, "M15": 5}  # no one-minute entries: deep history for every bot
     names = {c.name for c in STRATEGY_CLASSES.values()}
     assert len(names) == 10
     for sid, cls in STRATEGY_CLASSES.items():
@@ -98,8 +98,8 @@ def test_long_and_short_entries(sid, specs):
 def test_exit_intents_distinguish_close_long_and_cover_short(specs):
     s = build("S01")
     fr0 = frames_for_strategy(type(s))
-    prepared = s.prepare({("GOLD", "M1"): fr0[("GOLD", "M1")], ("SILVER", "M1"): fr0[("SILVER", "M1")]})
-    T = prepared[("GOLD", "M1")]["time"].iloc[800] + pd.Timedelta(minutes=1)
+    prepared = s.prepare({("GOLD", "M5"): fr0[("GOLD", "M5")], ("SILVER", "M5"): fr0[("SILVER", "M5")]})
+    T = prepared[("GOLD", "M5")]["time"].iloc[800] + pd.Timedelta(minutes=5)
     fr = {k: v.iloc[:801] for k, v in prepared.items()}
     long_pos = PositionView("k1", "GOLD", "XAUUSD", "LONG", 0.1, 1.0, T.to_pydatetime(), bars_held=99, max_hold_bars=12)
     short_pos = PositionView("k2", "SILVER", "XAGUSD", "SHORT", 0.1, 1.0, T.to_pydatetime(), bars_held=99, max_hold_bars=12)
@@ -246,7 +246,7 @@ def test_trading_window_combines_session_and_hour_filter_and_follows_clock_chang
 
 
 def test_trend_bots_read_the_slower_chart():
-    assert build("S01L", {}).timeframes == ("M1", "M15")
+    assert build("S01L", {}).timeframes == ("M5", "M15")
     assert build("S08L", {}).timeframes == ("M15", "H1") and build("S09S", {}).timeframes == ("M15", "H1")
 
 

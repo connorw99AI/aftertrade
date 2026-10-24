@@ -22,7 +22,7 @@ from ..store import now_iso
 from ..strategies import BOT_IDS as _BOTS, bot_class, bot_name, build  # noqa: F401
 from ..timeutil import utc_now
 
-DATA_TFS = ("M1", "M5", "M15", "H1")
+DATA_TFS = ("M5", "M15", "H1")  # every bot enters on M5 or M15; H1 is only a trend filter
 
 
 class BacktestBody(BaseModel):

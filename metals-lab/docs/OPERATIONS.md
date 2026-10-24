@@ -120,7 +120,7 @@ The Research page does the common steps from the dashboard: **Download history f
 
 ```
 metals-lab fetch-history --days 730 --tf M1 M5 M15 H1        # Parquet cache + manifest + quality report
-metals-lab fetch-history --days 30 --tf M1 --ticks              # bars built from ticks (real spreads); history depth varies by broker
+metals-lab fetch-history --days 30 --tf M5 --ticks              # bars built from ticks (real spreads); history depth varies by broker
 metals-lab backtest --strategy S08 --capital 1000
 metals-lab research --strategy S08 --trials 20                  # train/validation/test, walk-forward, sensitivity, cost stress, DSR
 metals-lab research --strategy S08 --holdout                    # touches the final holdout ONCE per strategy+dataset
