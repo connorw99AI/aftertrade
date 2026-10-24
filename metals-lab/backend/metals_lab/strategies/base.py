@@ -16,8 +16,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -67,6 +68,26 @@ class StrategyContext:
         return None
 
 
+def local_window(day: date, tz: str, start: str, end: str) -> tuple[datetime, datetime]:
+    """UTC start/end of a local-time window ("HH:MM") on ``day`` in ``tz`` (DST-aware). End before start = next day."""
+    z = ZoneInfo(tz)
+    (h1, m1), (h2, m2) = (map(int, start.split(":")), map(int, end.split(":")))
+    a = datetime(day.year, day.month, day.day, h1, m1, tzinfo=z)
+    b = datetime(day.year, day.month, day.day, h2, m2, tzinfo=z)
+    if b <= a:
+        b += timedelta(days=1)
+    return a.astimezone(timezone.utc), b.astimezone(timezone.utc)
+
+
+def in_local_window(now: datetime, tz: str, start: str, end: str) -> bool:
+    """Is ``now`` inside a daily local-time window (DST-aware)?"""
+    loc = now.astimezone(ZoneInfo(tz))
+    m = loc.hour * 60 + loc.minute
+    (h1, m1), (h2, m2) = (map(int, start.split(":")), map(int, end.split(":")))
+    a, b = h1 * 60 + m1, h2 * 60 + m2
+    return a <= m < b if a < b else (m >= a or m < b)
+
+
 # loss_fn(spec, side, entry, stop, volume) -> loss in account currency (positive number)
 LossFn = Callable[[InstrumentSpec, str, float, float, float], float]
 
@@ -97,6 +118,8 @@ class Strategy(ABC):
     # Assessor-derived defaults for the shared trade filters: {"sides", "metals", "hours_utc", "evidence"}.
     ASSESSOR_FILTERS: dict = {}
     pair_trades: bool = False      # two-leg groups: side/metal filters do not apply, only hours
+    session_text: str = ""         # built-in entry window in words, e.g. "08:00-21:00 London"; "" = any time
+    RETIRED_PARAMS: tuple = ()     # parameter names from older versions: ignored if still saved on a bot
 
     @classmethod
     def param_defs(cls) -> dict[str, Param]:
@@ -111,6 +134,7 @@ class Strategy(ABC):
         defs = self.param_defs()
         self.params = {k: p.default for k, p in defs.items()}
         if params:
+            params = {k: v for k, v in params.items() if k not in self.RETIRED_PARAMS}
             unknown = set(params) - set(defs)
             if unknown:
                 raise ValueError(f"{self.strategy_id}: unknown parameters {sorted(unknown)}")
@@ -241,6 +265,36 @@ class Strategy(ABC):
             out.append(TargetPosition(s, vol, loss_1 * vol, budget))
         return out
 
+    # ------------------------------------------------------- trading window
+    def session_windows(self, day: date) -> Optional[list[tuple[datetime, datetime]]]:
+        """UTC intervals on ``day`` in which the strategy's own rules allow new entries; None = any time."""
+        return None
+
+    def trading_window(self, now: datetime) -> dict:
+        """When this bot can actually open trades today: its built-in session combined with the hours_utc filter."""
+        from .filters import parse_hours
+        day = now.astimezone(timezone.utc).date()
+        d0 = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+        built = []
+        for k in (-1, 0, 1):  # windows set in another time zone can start the evening before or end the morning after
+            w = self.session_windows(day + timedelta(days=k))
+            if w is None:
+                built = [(d0, d0 + timedelta(days=1))]
+                break
+            built += w
+        filt = [(d0 + timedelta(hours=a), d0 + timedelta(hours=b)) for a, b in parse_hours(self.p["hours_utc"])]
+        eff = []
+        for a, b in built:
+            for c, d in filt:
+                lo, hi = max(a, c, d0), min(b, d, d0 + timedelta(days=1))
+                if lo < hi:
+                    eff.append((lo, hi))
+        eff.sort()
+        txt = lambda iv: ", ".join(f"{a:%H:%M}-{'24:00' if b == d0 + timedelta(days=1) else f'{b:%H:%M}'}" for a, b in iv)
+        return {"built_in": self.session_text or "any time", "filter_utc": self.p["hours_utc"],
+                "effective_utc": txt(eff) + " UTC" if eff else "none: the built-in session and the hour filter do not overlap",
+                "all_day": eff == [(d0, d0 + timedelta(days=1))], "day": str(day)}
+
     # ------------------------------------------------------------ metadata
     def risk_metadata(self) -> dict:
         return {
@@ -329,10 +383,16 @@ class Strategy(ABC):
             "params": {k: {"value": self.params[k], "default": p.default, "rationale": p.rationale, "grid": list(p.grid)}
                        for k, p in self.param_defs().items()},
             "assessor_filters": self.ASSESSOR_FILTERS,
+            "trading_window": self.trading_window(_utc_now()),
             "citations": list(self.citations),
             "limitations": self.limitations,
             "risk_metadata": self.risk_metadata(),
         }
+
+
+def _utc_now() -> datetime:
+    from ..timeutil import utc_now
+    return utc_now()
 
 
 def bar_close_time(df: pd.DataFrame, tf: str) -> pd.Series:

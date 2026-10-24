@@ -1,5 +1,5 @@
 from .base import Param, Strategy, StrategyContext  # noqa: F401
-from .daytrading import BreakoutRetest, LondonOpeningRangeBreakout, VolatilityCompressionBreakout
+from .daytrading import BreakoutRetest, NewYorkOpeningRangeBreakout, VolatilityCompressionBreakout
 from .scalping import AsianRangeReversion, FailedBreakoutReversal, TrendPullbackScalper
 from .swing import DonchianChannelBreakout, GoldSilverRatioReversion, RegimeRSI2Reversion, TimeSeriesMomentum
 
@@ -7,7 +7,7 @@ STRATEGY_CLASSES = {
     c.strategy_id: c
     for c in (
         TrendPullbackScalper, AsianRangeReversion, FailedBreakoutReversal,
-        LondonOpeningRangeBreakout, BreakoutRetest, VolatilityCompressionBreakout,
+        NewYorkOpeningRangeBreakout, BreakoutRetest, VolatilityCompressionBreakout,
         RegimeRSI2Reversion, DonchianChannelBreakout, TimeSeriesMomentum, GoldSilverRatioReversion,
     )
 }
@@ -77,7 +77,7 @@ def build(bot_or_strategy_id: str, params: dict | None = None) -> Strategy:
 ASSESSOR_RETIRED = {
     "S01L": "no edge: lost 48% with a 15% win rate", "S01S": "no edge: lost 48% with a 15% win rate",
     "S02L": "no edge: expectancy -0.06R over 202 trades", "S02S": "no edge: expectancy -0.06R over 202 trades",
-    "S03S": "shorts lost -76 while longs made +96", "S04L": "longs lost -247 while shorts made +220",
+    "S03S": "shorts lost -76 while longs made +96", "S04L": "London-open version: longs lost -247 while shorts made +220 (S04 now trades the New York open; re-test before retiring)",
     "S05L": "longs lost -81 while shorts made +190", "S06S": "shorts lost -269 while longs made +276",
     "S07S": "shorts lost -135 while longs made +31",
 }

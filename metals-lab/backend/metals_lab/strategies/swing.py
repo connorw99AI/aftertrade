@@ -9,6 +9,16 @@ from ..domain import Intent, Style
 from .base import Param, Strategy, StrategyContext, chk, fmt, level, spread_price
 
 
+def hourly_trend(ctx: StrategyContext, role: str, sma_n: int) -> tuple[int, "pd.Series | None"]:
+    """+1 / -1 when the last completed H1 close is above / below its SMA(sma_n); 0 when off or not enough hourly bars."""
+    if not sma_n or not ctx.has(role, "H1", sma_n):
+        return 0, None
+    h = ctx.last(role, "H1")
+    if pd.isna(h["sma_t"]):
+        return 0, h
+    return (1 if h["close"] > h["sma_t"] else -1), h
+
+
 class RegimeRSI2Reversion(Strategy):
     strategy_id = "S07"
     ASSESSOR_FILTERS = {"sides": "long", "hours_utc": "12-24", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56."}
@@ -132,14 +142,14 @@ class DonchianChannelBreakout(Strategy):
     ASSESSOR_FILTERS = {"hours_utc": "7-12,16-24", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4)."}
     name = "Donchian Channel Breakout"
     style = Style.DAY
-    timeframes = ("M15",)
+    timeframes = ("M15", "H1")
     primary_timeframe = "M15"
     min_history_bars = 120
     magic_offset = 8
-    description = ("Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-bar extreme (8 hours by default), "
-                   "exit on the exit_n-bar opposite extreme.")
-    long_rules = "M15 close > highest high of the previous entry_n bars."
-    short_rules = "M15 close < lowest low of the previous entry_n bars."
+    description = ("Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-bar extreme (6 hours by default) "
+                   "in the direction of the hourly trend, exit on the exit_n-bar opposite extreme.")
+    long_rules = "Hourly uptrend (last completed H1 close > H1 SMA(trend_sma)) and M15 close > highest high of the previous entry_n bars."
+    short_rules = "Hourly downtrend (H1 close < H1 SMA(trend_sma)) and M15 close < lowest low of the previous entry_n bars."
     exit_rules = "Close long on close < lowest low of previous exit_n bars (cover short mirror). Server stop at stop_n x N (ATR 20). Max hold 96 bars (one day). No fixed target."
     invalidation_rules = "The 2N stop."
     filters = "Spread guard. No pyramiding (simplification of original Turtle rules)."
@@ -156,16 +166,20 @@ class DonchianChannelBreakout(Strategy):
         "stop_n": Param(2.0, "2N stop.", (2.0, 3.0)),
         "max_hold_bars": Param(96, "One day of M15 bars (safety cap).", (48, 96)),
         "max_spread_atr": Param(0.15, "Cost guard (M15 ranges are small next to the spread).", ()),
+        "trend_sma": Param(200, "Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off).", (0, 100, 200)),
     }
 
     def prepare(self, frames):
         out = {}
-        for key, df in frames.items():
+        for (role, tf), df in frames.items():
             df = df.copy()
-            df["hi_e"], df["lo_e"] = ind.donchian(df, self.p["entry_n"])
-            df["hi_x"], df["lo_x"] = ind.donchian(df, self.p["exit_n"])
-            df["atr"] = ind.atr(df, 20)
-            out[key] = df
+            if tf == "H1":
+                df["sma_t"] = ind.sma(df["close"], self.p["trend_sma"]) if self.p["trend_sma"] else np.nan
+            else:
+                df["hi_e"], df["lo_e"] = ind.donchian(df, self.p["entry_n"])
+                df["hi_x"], df["lo_x"] = ind.donchian(df, self.p["exit_n"])
+                df["atr"] = ind.atr(df, 20)
+            out[(role, tf)] = df
         return out
 
     def entry_signals(self, ctx):
@@ -176,12 +190,13 @@ class DonchianChannelBreakout(Strategy):
             r = ctx.last(role, "M15")
             if pd.isna(r["hi_e"]) or pd.isna(r["atr"]) or spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
                 continue
-            vals = {"close": r["close"], "upper": r["hi_e"], "lower": r["lo_e"], "N_atr20": r["atr"]}
+            trend, h = hourly_trend(ctx, role, self.p["trend_sma"])
+            vals = {"close": r["close"], "upper": r["hi_e"], "lower": r["lo_e"], "N_atr20": r["atr"], "h1_trend": trend}
             sd = self.p["stop_n"] * r["atr"]
-            if r["close"] > r["hi_e"]:
+            if r["close"] > r["hi_e"] and (trend == 1 or not self.p["trend_sma"]):
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, f"close above {self.p['entry_n']}-bar high", vals,
                                         stop_price=r["close"] - sd, max_hold_bars=self.p["max_hold_bars"]))
-            elif r["close"] < r["lo_e"]:
+            elif r["close"] < r["lo_e"] and (trend == -1 or not self.p["trend_sma"]):
                 sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, f"close below {self.p['entry_n']}-bar low", vals,
                                         stop_price=r["close"] + sd, max_hold_bars=self.p["max_hold_bars"]))
         return sigs
@@ -209,14 +224,20 @@ class DonchianChannelBreakout(Strategy):
             d = ctx.specs[role].digits
             spr = spread_price(r, ctx.specs[role])
             n, x = self.p["entry_n"], self.p["exit_n"]
+            trend, h = hourly_trend(ctx, role, self.p["trend_sma"])
+            tsma = self.p["trend_sma"]
+            up_ok, dn_ok = (trend == 1 or not tsma), (trend == -1 or not tsma)
+            tdetail = "off" if not tsma else (f"hourly close {fmt(h['close'], d)} vs SMA{tsma} {fmt(h['sma_t'], d)}" if h is not None else "waiting for hourly bars")
             out[role] = {
                 "price": float(r["close"]),
                 "levels": [v for v in (level(f"{n}-bar high (long entry)", r["hi_e"]), level(f"{n}-bar low (short entry)", r["lo_e"]),
                                        level(f"{x}-bar low (long exit)", r["lo_x"]), level(f"{x}-bar high (short exit)", r["hi_x"])) if v],
                 "filters": [chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}")],
-                "long": [chk(f"M15 close above the {n}-bar high", r["close"] > r["hi_e"],
+                "long": [chk("Hourly uptrend", up_ok, tdetail),
+                         chk(f"M15 close above the {n}-bar high", r["close"] > r["hi_e"],
                              f"close {fmt(r['close'], d)} vs {fmt(r['hi_e'], d)} ({fmt(r['hi_e'] - r['close'], d)} away)")],
-                "short": [chk(f"M15 close below the {n}-bar low", r["close"] < r["lo_e"],
+                "short": [chk("Hourly downtrend", dn_ok, tdetail),
+                          chk(f"M15 close below the {n}-bar low", r["close"] < r["lo_e"],
                               f"close {fmt(r['close'], d)} vs {fmt(r['lo_e'], d)} ({fmt(r['close'] - r['lo_e'], d)} away)")],
             }
         return out
@@ -227,14 +248,15 @@ class TimeSeriesMomentum(Strategy):
     ASSESSOR_FILTERS = {"hours_utc": "0-7,21-24", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320."}
     name = "Time-Series Momentum"
     style = Style.DAY
-    timeframes = ("M15",)
+    timeframes = ("M15", "H1")
     primary_timeframe = "M15"
     min_history_bars = 200
     magic_offset = 9
     description = ("Each metal is held long or short according to the sign of its own volatility-scaled past return over the last "
                    "lookback M15 bars, re-evaluated on the first M15 bar of every hour (short-horizon adaptation).")
-    long_rules = "On the first M15 bar of each hour: lookback return / (bar vol x sqrt(lookback)) > entry_strength."
-    short_rules = "Same, < -entry_strength."
+    long_rules = ("On the first M15 bar of each hour: lookback return / (bar vol x sqrt(lookback)) > entry_strength, "
+                  "and the hourly trend is up (H1 close > H1 SMA(trend_sma)).")
+    short_rules = "Same, < -entry_strength, and the hourly trend is down."
     exit_rules = "At an hourly evaluation, close if strength fades to exit_strength or flips; server stop stop_atr x ATR(20); max hold 48 bars (12 hours)."
     invalidation_rules = "Sign reversal of the trend measure."
     filters = "Spread guard; one evaluation per hour (limits turnover)."
@@ -253,13 +275,18 @@ class TimeSeriesMomentum(Strategy):
         "stop_atr": Param(3.0, "Wide stop: momentum needs room.", (2.0, 3.0, 4.0)),
         "max_hold_bars": Param(48, "12 hours of M15 bars.", (24, 48, 96)),
         "max_spread_atr": Param(0.15, "Cost guard (M15 ranges are small next to the spread).", ()),
+        "trend_sma": Param(200, "Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off).", (0, 100, 200)),
     }
 
     def prepare(self, frames):
         out = {}
         lb = self.p["lookback"]
-        for key, df in frames.items():
+        for (role, tf), df in frames.items():
             df = df.copy()
+            if tf == "H1":
+                df["sma_t"] = ind.sma(df["close"], self.p["trend_sma"]) if self.p["trend_sma"] else np.nan
+                out[(role, tf)] = df
+                continue
             ret = df["close"] / df["close"].shift(lb) - 1
             vol = ind.realized_vol(df["close"], 60) * np.sqrt(lb)
             df["strength"] = ret / vol
@@ -267,7 +294,7 @@ class TimeSeriesMomentum(Strategy):
             hour_id = df["time"].dt.floor("1h")
             df["rebalance"] = hour_id != hour_id.shift(1)
             df["atr"] = ind.atr(df, 20)
-            out[key] = df
+            out[(role, tf)] = df
         return out
 
     def entry_signals(self, ctx):
@@ -280,12 +307,13 @@ class TimeSeriesMomentum(Strategy):
                 continue
             if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
                 continue
-            vals = {"close": r["close"], "lookback_return": r["ret_lb"], "strength": r["strength"], "atr": r["atr"]}
+            trend, _ = hourly_trend(ctx, role, self.p["trend_sma"])
+            vals = {"close": r["close"], "lookback_return": r["ret_lb"], "strength": r["strength"], "atr": r["atr"], "h1_trend": trend}
             sd = self.p["stop_atr"] * r["atr"]
-            if r["strength"] > self.p["entry_strength"]:
+            if r["strength"] > self.p["entry_strength"] and (trend == 1 or not self.p["trend_sma"]):
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "positive vol-scaled trend at hourly evaluation", vals,
                                         stop_price=r["close"] - sd, max_hold_bars=self.p["max_hold_bars"]))
-            elif r["strength"] < -self.p["entry_strength"]:
+            elif r["strength"] < -self.p["entry_strength"] and (trend == -1 or not self.p["trend_sma"]):
                 sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "negative vol-scaled trend at hourly evaluation", vals,
                                         stop_price=r["close"] + sd, max_hold_bars=self.p["max_hold_bars"]))
         return sigs
@@ -315,6 +343,9 @@ class TimeSeriesMomentum(Strategy):
             d = ctx.specs[role].digits
             spr = spread_price(r, ctx.specs[role])
             th = self.p["entry_strength"]
+            trend, h = hourly_trend(ctx, role, self.p["trend_sma"])
+            tsma = self.p["trend_sma"]
+            tdetail = "off" if not tsma else (f"hourly close {fmt(h['close'], d)} vs SMA{tsma} {fmt(h['sma_t'], d)}" if h is not None else "waiting for hourly bars")
             out[role] = {
                 "price": float(r["close"]),
                 "levels": [],
@@ -323,9 +354,11 @@ class TimeSeriesMomentum(Strategy):
                         "evaluates once an hour; waiting for the next hour's first bar" if not r["rebalance"] else ""),
                     chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
                 ],
-                "long": [chk(f"Trend strength above +{th}", r["strength"] > th,
+                "long": [chk("Hourly uptrend", trend == 1 or not tsma, tdetail),
+                         chk(f"Trend strength above +{th}", r["strength"] > th,
                              f"strength {fmt(r['strength'], 2)} ({fmt(100 * r['ret_lb'], 2)}% over {self.p['lookback']} bars)")],
-                "short": [chk(f"Trend strength below -{th}", r["strength"] < -th, f"strength {fmt(r['strength'], 2)}")],
+                "short": [chk("Hourly downtrend", trend == -1 or not tsma, tdetail),
+                          chk(f"Trend strength below -{th}", r["strength"] < -th, f"strength {fmt(r['strength'], 2)}")],
             }
         return out
 

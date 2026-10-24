@@ -230,3 +230,25 @@ def test_min_lot_per_metal(specs):
     v = Signal("S08", datetime(2025, 1, 1, tzinfo=timezone.utc), "SILVER", "XAGUSD", Intent.OPEN_LONG, "t", {}, stop_price=24.5, ref_price=25.0)
     tg, tv = s.calculate_target_positions([g, v], 300.0, specs, 0.03, loss, lambda spec: 0.0, min_lot={"GOLD": 0.04, "SILVER": 0.01})
     assert tg.volume == 0.04 and tv.volume == 0.01 and not tg.skipped and not tv.skipped
+
+
+def test_trading_window_combines_session_and_hour_filter_and_follows_clock_changes():
+    from datetime import datetime, timezone
+    winter, summer = datetime(2026, 12, 7, 12, tzinfo=timezone.utc), datetime(2026, 7, 6, 12, tzinfo=timezone.utc)
+    s03 = build("S03L", {})  # 08:00-21:00 London, hour filter 12-21 UTC
+    assert s03.trading_window(winter)["effective_utc"] == "12:00-21:00 UTC"
+    assert s03.trading_window(summer)["effective_utc"] == "12:00-20:00 UTC"
+    s04 = build("S04L", {})  # New York opening range: entries 09:00-11:30 New York
+    assert s04.trading_window(winter)["effective_utc"] == "14:00-16:30 UTC"
+    assert s04.trading_window(summer)["effective_utc"] == "13:00-15:30 UTC"
+    clash = build("S03L", {"hours_utc": "0-6"})
+    assert clash.trading_window(winter)["effective_utc"].startswith("none")
+
+
+def test_trend_bots_read_the_slower_chart():
+    assert build("S01L", {}).timeframes == ("M1", "M15")
+    assert build("S08L", {}).timeframes == ("M15", "H1") and build("S09S", {}).timeframes == ("M15", "H1")
+
+
+def test_old_saved_session_params_are_ignored_not_fatal():
+    build("S02L", {"entry_start_hour": 0, "entry_end_hour": 6, "flat_hour": 7})

@@ -17,7 +17,7 @@ The Assessor's ranked suggestions from the October 2025 → October 2026 backtes
 | Strategy | Filter now on by default | Why (backtest evidence) |
 |---|---|---|
 | S03 | gold only, 12-21 UTC | silver and Asian/London hours lost |
-| S04 | silver only, 12-16 UTC | gold and other hours lost |
+| S04 | none (now trades the New York open) | the London-open version lost in London hours and only made money 12-16 UTC, so the range was moved to 08:30-09:00 New York; re-test it |
 | S05 | (short half only trades) | longs lost |
 | S06 | gold only, 0-7 and 16-24 UTC | silver and London hours lost |
 | S07 | 12-24 UTC | early hours lost |
@@ -29,28 +29,32 @@ No half is retired by default. The Assessor flagged S01L, S01S, S02L, S02S (no e
 
 No bot showed a statistically real edge (best t-stat about 1.1). Treat everything above as hypotheses to test, not improvements you have.
 
+## Watch chart and entry chart
+
+Trend bots read direction from a slower chart and enter on a faster one (the common rule of thumb is a slower chart about 4-6 times slower): S01 trades M1 pullbacks only in the M15 trend; S07, S08 and S09 only trade with the hourly (H1) trend. Session bots (S02-S05) and the squeeze and ratio bots (S06, S10) are built around one chart. Session windows are set in London or New York time, so they follow clock changes; each bot's page shows the hours it can actually open trades today (its own session combined with its hour filter).
+
 ## Distribution and why
 
 Timeframes were set by the operator: nothing slower than M15, only one bot on M1. That gives one bot on M1, four on M5 and five on M15. The former swing strategies (S07, S08, S09) now run intraday on M15, so there is no swing bot any more.
 
 | Bot | Timeframe | Style | Mechanism |
 |---|---|---|---|
-| S01 Trend Pullback Scalper | M1 | scalp | trend continuation |
-| S02 Asian Range Reversion | M5 | scalp | range mean reversion |
+| S01 Trend Pullback Scalper | M1 entries, M15 trend | scalp | trend continuation |
+| S02 Asian Range Reversion | M5 (00:00-07:00 London) | scalp | range mean reversion |
 | S03 Failed Breakout Reversal | M5 | scalp | failed-break reversal |
-| S04 London Opening Range Breakout | M5 | day | first break of the opening range |
+| S04 New York Opening Range Breakout | M5 (range 08:30-09:00 New York) | day | first break of the opening range |
 | S05 London-Range Breakout & Retest | M5 | day | break plus retest |
 | S06 Volatility Compression Breakout | M15 | day | compression release |
 | S10 Gold/Silver Ratio Reversion | M15 | day | intraday relative value (two-leg group) |
 | S07 Regime-Filtered RSI(2) Reversion | M15 (H1 regime filter) | day | pullback reversion with trend filter |
-| S08 Donchian Channel Breakout | M15 | day | 6-hour channel breakout |
-| S09 Time-Series Momentum | M15 | day | one-day momentum, evaluated hourly |
+| S08 Donchian Channel Breakout | M15 entries, H1 trend | day | 6-hour channel breakout with the hourly trend |
+| S09 Time-Series Momentum | M15 entries, H1 trend | day | one-day momentum with the hourly trend, evaluated hourly |
 
 **Cost warning for M1:** on the connected demo, gold's spread was about $0.43. That is often 25-40% of a one-minute range, so S01 keeps a spread guard (spread ≤ 30% of ATR) and a 2:1 target, and will skip many signals. M1 backtests without tick data are the least reliable results in this lab.
 
 S07, S08, S09 and S10 on M15 are adaptations. The cited evidence for all four is at daily or monthly horizons.
 
-**Trade frequency.** The operator target is about 5 trades per bot per day, and the risk engine caps each bot at 5 new trades per UTC day (`risk.max_entries_per_bot_per_day`; a two-leg S10 group counts once). Filters were loosened to trade more often. On synthetic data, S01, S03 and S07 reach roughly 3-5 a day and S08, S09 and S10 roughly 2-3. The session strategies (S02 Asian range, S04 and S05 London range, S06 squeeze) are built around one setup per session, so expect about 1 a day from each. Real-market frequency will differ from the synthetic figures. Trading more often is not evidence of edge: each extra trade pays the spread again.
+**Trade frequency.** The operator target is about 5 trades per bot per day, and the risk engine caps each bot at 5 new trades per UTC day (`risk.max_entries_per_bot_per_day`; a two-leg S10 group counts once). Filters were loosened to trade more often. On synthetic data, S01, S03 and S07 reach roughly 3-5 a day and S08, S09 and S10 roughly 2-3. The session strategies (S02 Asian range, S04 New York opening range, S05 London range, S06 squeeze) are built around one setup per session, so expect about 1 a day from each. Real-market frequency will differ from the synthetic figures. Trading more often is not evidence of edge: each extra trade pays the spread again.
 
 They are deliberately not ten renamings of one idea. They differ in mechanism (trend, mean reversion, failed break, volatility regime, cross-sectional relative value), horizon and entry trigger.
 

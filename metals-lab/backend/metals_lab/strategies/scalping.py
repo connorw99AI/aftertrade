@@ -1,29 +1,31 @@
-"""Scalping hypotheses (M5). Results on OHLC bars are flagged low-reliability."""
+"""Scalping hypotheses (M1/M5 entries). Results on OHLC bars are flagged low-reliability."""
 from __future__ import annotations
 
 import pandas as pd
 
 from .. import indicators as ind
 from ..domain import Intent, Style
-from .base import Param, Strategy, StrategyContext, chk, fmt, level, spread_price
+from datetime import datetime, timedelta, timezone
+
+from .base import Param, Strategy, StrategyContext, chk, fmt, in_local_window, level, local_window, spread_price
 
 
 class TrendPullbackScalper(Strategy):
     strategy_id = "S01"
     name = "Trend Pullback Scalper"
     style = Style.SCALP
-    timeframes = ("M1",)
+    timeframes = ("M1", "M15")
     primary_timeframe = "M1"
     min_history_bars = 700
     magic_offset = 1
-    description = ("Trades short pullbacks to the 20-EMA in the direction of an established M1 trend "
-                   "(EMA50 vs EMA200 with positive slope), only during London/New York liquidity.")
-    long_rules = ("Uptrend (EMA50 > EMA200 and EMA50 rising over 10 bars); previous bar's low touched/pierced EMA20 "
-                  "with RSI(7) < pullback level; current bar closes back above EMA20, bullish body, RSI rising.")
-    short_rules = "Mirror image: downtrend, rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20."
-    exit_rules = ("Server-side stop at entry -/+ stop_atr x ATR(14); target at reward_risk x stop distance; "
-                  "close early if price closes through EMA50 against the trade; max hold 30 bars (30 minutes).")
-    invalidation_rules = "Close through EMA50 against the position invalidates the trend premise."
+    description = ("Trades short M1 pullbacks to the 20-EMA in the direction of the M15 trend (M15 EMA50 vs EMA200 with a "
+                   "rising or falling EMA50), only during London/New York liquidity. Trend from the slower chart, entry on the faster one.")
+    long_rules = ("M15 uptrend (EMA50 > EMA200 and EMA50 rising over 4 M15 bars); previous M1 bar's low touched/pierced the M1 EMA20 "
+                  "with RSI(7) < pullback level; current M1 bar closes back above EMA20, bullish body, RSI rising.")
+    short_rules = "Mirror image: M15 downtrend, M1 rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20."
+    exit_rules = ("Server-side stop at entry -/+ stop_atr x ATR(14, M1); target at reward_risk x stop distance; "
+                  "close early if the M1 close crosses the M1 EMA50 against the trade or the M15 trend flips; max hold 30 bars (30 minutes).")
+    invalidation_rules = "M1 close through EMA50 against the position, or the M15 trend turning, invalidates the premise."
     filters = ("Hours 07:00-20:00 UTC; spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 "
                "to avoid dead and disorderly markets.")
     citations = (
@@ -35,12 +37,13 @@ class TrendPullbackScalper(Strategy):
     limitations = ("Generic trend-pullback logic, not a published metals-specific edge. On M1 OHLC the order of "
                    "stop/target hits inside a bar is unknown; costs are a large fraction of the target.")
     PARAMS = {
-        "ema_fast": Param(20, "Pullback reference; common short EMA.", (15, 20, 30)),
-        "ema_mid": Param(50, "Trend/invalidation line.", (50,)),
-        "ema_slow": Param(200, "Long trend filter.", (150, 200)),
+        "ema_fast": Param(20, "M1 pullback reference; common short EMA.", (15, 20, 30)),
+        "ema_mid": Param(50, "M1 invalidation line (early exit).", (50,)),
+        "trend_fast": Param(50, "M15 trend EMA (50 x 15 min = 12.5 hours).", (34, 50)),
+        "ema_slow": Param(200, "M15 slow trend EMA (200 x 15 min = 50 hours).", (150, 200)),
         "rsi_n": Param(7, "Short RSI to measure pullback depth.", (5, 7)),
         "rsi_pull": Param(40, "Pullback must push RSI below this (long).", (35, 40, 45)),
-        "stop_atr": Param(1.2, "Stop beyond normal M5 noise.", (1.0, 1.2, 1.5)),
+        "stop_atr": Param(1.2, "Stop beyond normal M1 noise.", (1.0, 1.2, 1.5)),
         "reward_risk": Param(2.0, "Larger multiple so the target clears M1 costs.", (1.5, 2.0, 2.5)),
         "max_hold_bars": Param(30, "Scalps that do not work quickly are closed (30 min).", (15, 30, 45)),
         "max_spread_atr": Param(0.3, "M1 ranges are small: skip when spread exceeds 30% of ATR(14,M1).", (0.2, 0.3, 0.4)),
@@ -50,25 +53,46 @@ class TrendPullbackScalper(Strategy):
 
     def prepare(self, frames):
         out = {}
-        for key, df in frames.items():
+        for (role, tf), df in frames.items():
             df = df.copy()
             c = df["close"]
-            df["ema_f"] = ind.ema(c, self.p["ema_fast"])
-            df["ema_m"] = ind.ema(c, self.p["ema_mid"])
-            df["ema_s"] = ind.ema(c, self.p["ema_slow"])
-            df["slope"] = df["ema_m"] - df["ema_m"].shift(10)
-            df["rsi"] = ind.rsi(c, self.p["rsi_n"])
-            df["atr"] = ind.atr(df, 14)
-            df["atr_pct"] = ind.rolling_percentile(df["atr"], 500)
-            out[key] = df
+            if tf == "M15":
+                df["t_fast"] = ind.ema(c, self.p["trend_fast"])
+                df["t_slow"] = ind.ema(c, self.p["ema_slow"])
+                df["t_slope"] = df["t_fast"] - df["t_fast"].shift(4)
+            else:
+                df["ema_f"] = ind.ema(c, self.p["ema_fast"])
+                df["ema_m"] = ind.ema(c, self.p["ema_mid"])
+                df["rsi"] = ind.rsi(c, self.p["rsi_n"])
+                df["atr"] = ind.atr(df, 14)
+                df["atr_pct"] = ind.rolling_percentile(df["atr"], 500)
+            out[(role, tf)] = df
         return out
+
+    def _trend(self, ctx, role) -> tuple[int, pd.Series]:
+        """+1 M15 uptrend, -1 downtrend, 0 neither (last completed M15 bar)."""
+        t = ctx.last(role, "M15")
+        if pd.isna(t["t_slow"]) or pd.isna(t["t_slope"]):
+            return 0, t
+        if t["t_fast"] > t["t_slow"] and t["t_slope"] > 0:
+            return 1, t
+        if t["t_fast"] < t["t_slow"] and t["t_slope"] < 0:
+            return -1, t
+        return 0, t
+
+    session_text = "07:00-20:00 UTC"
+
+    def session_windows(self, day):
+        d0 = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+        return [(d0 + timedelta(hours=self.p["start_hour"]), d0 + timedelta(hours=self.p["end_hour"]))]
 
     def entry_signals(self, ctx: StrategyContext):
         sigs = []
         for role in self.roles:
-            if ctx.position(role) or not ctx.has(role, "M1", 3):
+            if ctx.position(role) or not ctx.has(role, "M1", 3) or not ctx.has(role, "M15", self.p["ema_slow"]):
                 continue
             r, pv = ctx.last(role, "M1"), ctx.last(role, "M1", 2)
+            trend, t = self._trend(ctx, role)
             spec = ctx.specs[role]
             hour = ctx.now.hour
             if not (self.p["start_hour"] <= hour < self.p["end_hour"]):
@@ -77,18 +101,18 @@ class TrendPullbackScalper(Strategy):
                 continue
             if spread_price(r, spec) > self.p["max_spread_atr"] * r["atr"]:
                 continue
-            vals = {"close": r["close"], "ema20": r["ema_f"], "ema50": r["ema_m"], "ema200": r["ema_s"],
+            vals = {"close": r["close"], "ema20": r["ema_f"], "ema50": r["ema_m"], "m15_ema_fast": t["t_fast"], "m15_ema_slow": t["t_slow"],
                     "rsi": r["rsi"], "prev_rsi": pv["rsi"], "atr": r["atr"], "atr_pct": r["atr_pct"]}
             stop_d = self.p["stop_atr"] * r["atr"]
-            if (r["ema_m"] > r["ema_s"] and r["slope"] > 0 and pv["low"] <= pv["ema_f"] and r["close"] > r["ema_f"]
+            if (trend == 1 and pv["low"] <= pv["ema_f"] and r["close"] > r["ema_f"]
                     and r["close"] > r["open"] and pv["rsi"] < self.p["rsi_pull"] and r["rsi"] > pv["rsi"]):
-                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "uptrend pullback to EMA20 rejected with bullish close",
+                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "M15 uptrend; M1 pullback to EMA20 rejected with bullish close",
                                         vals, stop_price=r["close"] - stop_d,
                                         target_price=r["close"] + self.p["reward_risk"] * stop_d,
                                         max_hold_bars=self.p["max_hold_bars"]))
-            elif (r["ema_m"] < r["ema_s"] and r["slope"] < 0 and pv["high"] >= pv["ema_f"] and r["close"] < r["ema_f"]
+            elif (trend == -1 and pv["high"] >= pv["ema_f"] and r["close"] < r["ema_f"]
                   and r["close"] < r["open"] and pv["rsi"] > 100 - self.p["rsi_pull"] and r["rsi"] < pv["rsi"]):
-                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "downtrend rally to EMA20 rejected with bearish close",
+                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "M15 downtrend; M1 rally to EMA20 rejected with bearish close",
                                         vals, stop_price=r["close"] + stop_d,
                                         target_price=r["close"] - self.p["reward_risk"] * stop_d,
                                         max_hold_bars=self.p["max_hold_bars"]))
@@ -98,10 +122,12 @@ class TrendPullbackScalper(Strategy):
         out = []
         for pos in ctx.positions:
             r = ctx.last(pos.role, "M1")
-            if pos.side == "LONG" and r["close"] < r["ema_m"]:
-                out.append(self.close_signal(ctx, pos, "closed below EMA50: trend premise invalidated", {"close": r["close"], "ema50": r["ema_m"]}))
-            elif pos.side == "SHORT" and r["close"] > r["ema_m"]:
-                out.append(self.close_signal(ctx, pos, "closed above EMA50: trend premise invalidated", {"close": r["close"], "ema50": r["ema_m"]}))
+            trend = self._trend(ctx, pos.role)[0] if ctx.has(pos.role, "M15", 2) else 0
+            vals = {"close": r["close"], "ema50": r["ema_m"], "m15_trend": trend}
+            if pos.side == "LONG" and (r["close"] < r["ema_m"] or trend == -1):
+                out.append(self.close_signal(ctx, pos, "M15 trend turned down" if trend == -1 else "closed below M1 EMA50: pullback failed", vals))
+            elif pos.side == "SHORT" and (r["close"] > r["ema_m"] or trend == 1):
+                out.append(self.close_signal(ctx, pos, "M15 trend turned up" if trend == 1 else "closed above M1 EMA50: rally held", vals))
         return out
 
 
@@ -109,15 +135,17 @@ class TrendPullbackScalper(Strategy):
         out = {}
         tf = self.primary_timeframe
         for role in self.roles:
-            if not ctx.has(role, tf, 3):
-                out[role] = {"waiting": "not enough bars yet"}
+            if not ctx.has(role, tf, 3) or not ctx.has(role, "M15", self.p["ema_slow"]):
+                out[role] = {"waiting": f"needs {self.p['ema_slow']} M15 bars for the trend"}
                 continue
             r, pv = ctx.last(role, tf), ctx.last(role, tf, 2)
+            trend, t = self._trend(ctx, role)
             d = ctx.specs[role].digits
             spr = spread_price(r, ctx.specs[role])
             out[role] = {
                 "price": float(r["close"]),
-                "levels": [x for x in (level("EMA20", r["ema_f"]), level("EMA50", r["ema_m"]), level("EMA200", r["ema_s"])) if x],
+                "levels": [x for x in (level("M1 EMA20", r["ema_f"]), level("M1 EMA50", r["ema_m"]), level("M15 EMA50", t["t_fast"]),
+                                       level(f"M15 EMA{self.p['ema_slow']}", t["t_slow"])) if x],
                 "filters": [
                     chk(f"Liquid hours ({self.p['start_hour']:02d}-{self.p['end_hour']:02d} UTC)",
                         self.p["start_hour"] <= ctx.now.hour < self.p["end_hour"], f"now {ctx.now:%H:%M} UTC"),
@@ -127,8 +155,7 @@ class TrendPullbackScalper(Strategy):
                         f"spread {fmt(spr, d)} vs ATR {fmt(r['atr'], d)}"),
                 ],
                 "long": [
-                    chk("Uptrend: EMA50 above EMA200", r["ema_m"] > r["ema_s"], f"{fmt(r['ema_m'], d)} vs {fmt(r['ema_s'], d)}"),
-                    chk("EMA50 rising", r["slope"] > 0, f"10-bar change {fmt(r['slope'], d)}"),
+                    chk("M15 uptrend: EMA50 above EMA200 and rising", trend == 1, f"{fmt(t['t_fast'], d)} vs {fmt(t['t_slow'], d)}, 4-bar change {fmt(t['t_slope'], d)}"),
                     chk("Previous bar dipped to EMA20", pv["low"] <= pv["ema_f"], f"low {fmt(pv['low'], d)} vs EMA20 {fmt(pv['ema_f'], d)}"),
                     chk("Closed back above EMA20", r["close"] > r["ema_f"], f"close {fmt(r['close'], d)}"),
                     chk("Bullish candle", r["close"] > r["open"], ""),
@@ -136,8 +163,7 @@ class TrendPullbackScalper(Strategy):
                     chk("RSI turning up", r["rsi"] > pv["rsi"], f"RSI {fmt(r['rsi'], 1)}"),
                 ],
                 "short": [
-                    chk("Downtrend: EMA50 below EMA200", r["ema_m"] < r["ema_s"], f"{fmt(r['ema_m'], d)} vs {fmt(r['ema_s'], d)}"),
-                    chk("EMA50 falling", r["slope"] < 0, f"10-bar change {fmt(r['slope'], d)}"),
+                    chk("M15 downtrend: EMA50 below EMA200 and falling", trend == -1, f"{fmt(t['t_fast'], d)} vs {fmt(t['t_slow'], d)}, 4-bar change {fmt(t['t_slope'], d)}"),
                     chk("Previous bar rallied to EMA20", pv["high"] >= pv["ema_f"], f"high {fmt(pv['high'], d)} vs EMA20 {fmt(pv['ema_f'], d)}"),
                     chk("Closed back below EMA20", r["close"] < r["ema_f"], f"close {fmt(r['close'], d)}"),
                     chk("Bearish candle", r["close"] < r["open"], ""),
@@ -158,12 +184,12 @@ class AsianRangeReversion(Strategy):
     magic_offset = 2
     description = ("Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter Asian session, "
                    "only when ADX and band width say the market is ranging.")
-    long_rules = "Hours 00:00-06:00 UTC; ADX(14) < adx_max; band-width percentile < 50; close below lower band(20, bb_k) and RSI(5) < rsi_low."
+    long_rules = "Entries 00:00-07:00 London time; ADX(14) < adx_max; band-width percentile < 50; close below lower band(20, bb_k) and RSI(5) < rsi_low."
     short_rules = "Same regime; close above upper band and RSI(5) > 100 - rsi_low."
     exit_rules = ("Exit at the 20-period mean (strategy close when close crosses SMA20; server TP at the mean at entry time); "
-                  "stop stop_atr x ATR beyond entry; max hold 9 bars; flatten at flat_hour UTC before London opens.")
+                  "stop stop_atr x ATR beyond entry; max hold 9 bars; flatten at flat_time London, before the 08:00 London open.")
     invalidation_rules = "ADX rising above adx_max+5 while in trade (range turning into trend) closes the position."
-    filters = "Spread <= max_spread_atr x ATR; no new entries after entry_end_hour."
+    filters = "Spread <= max_spread_atr x ATR; no new entries after entry_end London (the window follows UK clock changes)."
     citations = (
         "Bollinger, J. (2001) Bollinger on Bollinger Bands, McGraw-Hill - band construction and mean-reversion use in ranges.",
         "Wilder (1978) - ADX as trend-strength filter.",
@@ -178,9 +204,10 @@ class AsianRangeReversion(Strategy):
         "adx_max": Param(25, "Only trade when trend strength is low.", (20, 25, 30)),
         "stop_atr": Param(1.0, "Tight stop; ranges that break tend to run.", (0.8, 1.0, 1.3)),
         "max_hold_bars": Param(9, "45 minutes.", (6, 9, 12)),
-        "entry_start_hour": Param(0, "UTC.", ()),
-        "entry_end_hour": Param(6, "UTC.", ()),
-        "flat_hour": Param(7, "UTC flatten before London open.", ()),
+        "tz": Param("Europe/London", "Session clock (follows UK summer time).", ()),
+        "entry_start": Param("00:00", "London time: start of the quiet Asian hours.", ()),
+        "entry_end": Param("07:00", "London time: no new entries after this.", ()),
+        "flat_time": Param("07:45", "London time: flatten before the 08:00 London open.", ()),
         "max_spread_atr": Param(0.2, "Cost guard.", (0.15, 0.2)),
     }
 
@@ -198,10 +225,18 @@ class AsianRangeReversion(Strategy):
             out[key] = df
         return out
 
+    RETIRED_PARAMS = ("entry_start_hour", "entry_end_hour", "flat_hour")
+
+    @property
+    def session_text(self):
+        return f"{self.p['entry_start']}-{self.p['entry_end']} London"
+
+    def session_windows(self, day):
+        return [local_window(day, self.p["tz"], self.p["entry_start"], self.p["entry_end"])]
+
     def entry_signals(self, ctx):
         sigs = []
-        h = ctx.now.hour
-        if not (self.p["entry_start_hour"] <= h < self.p["entry_end_hour"]):
+        if not in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["entry_end"]):
             return sigs
         for role in self.roles:
             if ctx.position(role) or not ctx.has(role, "M5", 2):
@@ -225,11 +260,10 @@ class AsianRangeReversion(Strategy):
 
     def exit_signals(self, ctx):
         out = []
-        h = ctx.now.hour
         for pos in ctx.positions:
             r = ctx.last(pos.role, "M5")
-            vals = {"close": r["close"], "bb_mid": r["bb_m"], "adx": r["adx"], "hour_utc": h}
-            if h >= self.p["flat_hour"] or h < self.p["entry_start_hour"]:
+            vals = {"close": r["close"], "bb_mid": r["bb_m"], "adx": r["adx"], "time_utc": f"{ctx.now:%H:%M}"}
+            if not in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["flat_time"]):
                 out.append(self.close_signal(ctx, pos, "session time stop before London open", vals))
             elif pos.side == "LONG" and r["close"] >= r["bb_m"]:
                 out.append(self.close_signal(ctx, pos, "reverted to the mean", vals))
@@ -254,8 +288,8 @@ class AsianRangeReversion(Strategy):
                 "price": float(r["close"]),
                 "levels": [x for x in (level("Upper band", r["bb_u"]), level("Mean (SMA20)", r["bb_m"]), level("Lower band", r["bb_l"])) if x],
                 "filters": [
-                    chk(f"Asian session ({self.p['entry_start_hour']:02d}-{self.p['entry_end_hour']:02d} UTC)",
-                        self.p["entry_start_hour"] <= ctx.now.hour < self.p["entry_end_hour"], f"now {ctx.now:%H:%M} UTC"),
+                    chk(f"Asian session ({self.p['entry_start']}-{self.p['entry_end']} London)",
+                        in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["entry_end"]), f"now {ctx.now:%H:%M} UTC"),
                     chk(f"Ranging: ADX below {self.p['adx_max']}", r["adx"] < self.p["adx_max"], f"ADX {fmt(r['adx'], 1)}"),
                     chk("Bands not wide (width percentile < 50)", r["bbw_pct"] < 50, f"percentile {fmt(r['bbw_pct'], 0)}"),
                     chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
@@ -289,7 +323,8 @@ class FailedBreakoutReversal(Strategy):
     short_rules = "Mirror: high of last two bars > prior N-bar high, close back below it with bearish body."
     exit_rules = "Stop beyond the failed-breakout extreme + 0.2 ATR; target reward_risk x risk; max hold 10 bars (50 minutes)."
     invalidation_rules = "A new extreme beyond the breakout high/low (= the stop) invalidates the failure."
-    filters = "07:00-20:00 UTC; skip expansion bars (>2.5 ATR, likely news); skip strong trends (ADX >= adx_max); spread guard."
+    filters = ("08:00-21:00 London time (follows UK clock changes); skip expansion bars (>2.5 ATR, likely news); "
+               "skip strong trends (ADX >= adx_max); spread guard.")
     citations = (
         "Connors, L. & Raschke, L.B. (1995) Street Smarts: High Probability Short-Term Trading Strategies, M. Gordon Publishing "
         "- 'Turtle Soup' failed 20-day breakout pattern (daily bars; adapted here to M5, which is NOT validated by the source).",
@@ -301,7 +336,20 @@ class FailedBreakoutReversal(Strategy):
         "adx_max": Param(30, "Avoid fading strong trends.", (25, 30)),
         "max_hold_bars": Param(10, "Reversal should work quickly (50 min).", (6, 10, 15)),
         "max_spread_atr": Param(0.15, "Cost guard: spread <= 15% of ATR(14,M5).", (0.15, 0.2)),
+        "tz": Param("Europe/London", "Session clock (follows UK summer time).", ()),
+        "session_start": Param("08:00", "London time: London open.", ()),
+        "session_end": Param("21:00", "London time: end of the New York afternoon.", ()),
     }
+
+    @property
+    def session_text(self):
+        return f"{self.p['session_start']}-{self.p['session_end']} London"
+
+    def session_windows(self, day):
+        return [local_window(day, self.p["tz"], self.p["session_start"], self.p["session_end"])]
+
+    def _in_session(self, now) -> bool:
+        return in_local_window(now, self.p["tz"], self.p["session_start"], self.p["session_end"])
 
     def prepare(self, frames):
         out = {}
@@ -317,7 +365,7 @@ class FailedBreakoutReversal(Strategy):
 
     def entry_signals(self, ctx):
         sigs = []
-        if not (7 <= ctx.now.hour < 20):
+        if not self._in_session(ctx.now):
             return sigs
         for role in self.roles:
             if ctx.position(role) or not ctx.has(role, "M5", 3):
@@ -360,7 +408,7 @@ class FailedBreakoutReversal(Strategy):
                 "price": float(r["close"]),
                 "levels": [x for x in (level(f"Prior {n}-bar high", r["ph"]), level(f"Prior {n}-bar low", r["pl"])) if x],
                 "filters": [
-                    chk("Hours 07-20 UTC", 7 <= ctx.now.hour < 20, f"now {ctx.now:%H:%M} UTC"),
+                    chk(f"Session {self.session_text}", self._in_session(ctx.now), f"now {ctx.now:%H:%M} UTC"),
                     chk(f"Not a strong trend (ADX < {self.p['adx_max']})", r["adx"] < self.p["adx_max"], f"ADX {fmt(r['adx'], 1)}"),
                     chk("Breakout bar not a news spike (< 2.5 ATR)", (b["high"] - b["low"]) <= 2.5 * r["atr"],
                         f"range {fmt(b['high'] - b['low'], d)} vs ATR {fmt(r['atr'], d)}"),

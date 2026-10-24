@@ -6,7 +6,7 @@ import pandas as pd
 
 from .. import indicators as ind
 from ..domain import Intent, Style
-from .base import Param, Strategy, StrategyContext, chk, fmt, level, spread_price
+from .base import Param, Strategy, StrategyContext, chk, fmt, level, local_window, spread_price
 
 
 def _local_minutes(df: pd.DataFrame, tz: str) -> tuple[pd.Series, pd.Series]:
@@ -19,45 +19,55 @@ def _hhmm(s: str) -> int:
     return int(h) * 60 + int(m)
 
 
-class LondonOpeningRangeBreakout(Strategy):
+class NewYorkOpeningRangeBreakout(Strategy):
     strategy_id = "S04"
-    ASSESSOR_FILTERS = {"sides": "short", "metals": "silver", "hours_utc": "12-16", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -247 vs shorts +220; gold -133 vs silver +106; 07-12 UTC -118 vs 12-16 +91."}
-    name = "London Opening Range Breakout"
+    # The London-open version lost in the London hours and only made money 12-16 UTC (assessor, in-sample), so the range
+    # now opens with New York. The old side/metal/hour evidence came from the London version and is not carried over.
+    ASSESSOR_FILTERS = {}
+    name = "New York Opening Range Breakout"
     style = Style.DAY
     timeframes = ("M5",)
     primary_timeframe = "M5"
     min_history_bars = 200
     magic_offset = 4
-    description = ("Builds the first hour range after the London open (Europe/London local time, so UK DST is handled) "
-                   "and trades the first decisive close beyond it, flat by late afternoon London time.")
-    long_rules = "First M5 close above OR high + buffer_atr x ATR(14) between OR end and entry cut-off, OR width within limits."
-    short_rules = "First M5 close below OR low - buffer."
+    description = ("Builds the first half hour of the New York session (08:30-09:00 New York time, when US data lands and "
+                   "COMEX gold is open; DST handled) and trades the first decisive M5 close beyond it, flat by mid-afternoon New York.")
+    long_rules = "First M5 close above the opening-range high + buffer_atr x ATR(14) between the range end and the entry cut-off."
+    short_rules = "First M5 close below the opening-range low - buffer."
     exit_rules = ("Stop at the opposite side of the range (or range midpoint if the range is wider than wide_range_atr x ATR); "
-                  "target tp_range_mult x OR width; time exit at exit_time London.")
+                  "target tp_range_mult x range width; time exit at exit_time New York.")
     invalidation_rules = "Close back inside the opposite half of the range = stop; one breakout attempt per day."
-    filters = "OR width between min_range_atr and max_range_atr x ATR(14, M5); spread guard."
+    filters = "Range width between min_range_atr and max_range_atr x ATR(14, M5); spread guard; entries only until entry_cutoff New York."
     citations = (
         "Crabel, T. (1990) Day Trading with Short Term Price Patterns and Opening Range Breakout, Traders Press.",
         "Zarattini, C. & Aziz, A. (2023) 'Can Day Trading Really Be Profitable? Evidence of Sustainable Long-term Profits "
         "from Opening Range Breakout (ORB) Day Trading Strategy', SSRN 4416622 (equity index ETF evidence, not metals).",
-        "Batten et al. (2017) PLoS ONE - intraday precious-metals volatility rises with the opening of major markets.",
+        "Cai, Cheung & Wong (2001) 'What moves the gold market?', J. Futures Markets 21(3) - US macro releases move gold intraday.",
+        "Assessor review of the London-open version (MT5 2025-10-23..2026-10-23, in-sample): 07-12 UTC -118, 12-16 UTC +91.",
     )
-    limitations = ("Spot metals trade almost 24h; 'London open' is a liquidity event, not an exchange open, so ORB evidence "
-                   "from equities does not transfer automatically. Breakouts fail regularly on rotational days.")
+    limitations = ("Spot metals trade almost 24h; the New York open is a liquidity and data event, not an exchange open, so ORB "
+                   "evidence from equities does not transfer automatically. The 08:30 data release can make the range unusually wide.")
     PARAMS = {
-        "tz": Param("Europe/London", "Session clock (DST-aware).", ()),
-        "or_start": Param("08:00", "London open.", ()),
-        "or_end": Param("09:00", "One-hour opening range.", ("08:30", "09:00")),
-        "entry_cutoff": Param("14:00", "No new entries after early afternoon London.", ("12:00", "13:00", "14:00")),
-        "exit_time": Param("16:30", "Flat before US afternoon.", ("15:00", "16:30")),
+        "tz": Param("America/New_York", "Session clock (follows US daylight saving).", ()),
+        "or_start": Param("08:30", "US data releases and the active New York gold session.", ()),
+        "or_end": Param("09:00", "Half-hour opening range (6 M5 bars).", ("08:45", "09:00", "09:30")),
+        "entry_cutoff": Param("11:30", "No new entries after late morning New York.", ("11:00", "11:30", "12:30")),
+        "exit_time": Param("15:00", "Flat by mid-afternoon New York.", ("13:30", "15:00")),
         "buffer_atr": Param(0.1, "Close must clear the range by a small margin.", (0.0, 0.1, 0.25)),
         "min_range_atr": Param(1.0, "Too-narrow ranges produce noise breaks (in M5 ATRs).", (1.0, 1.5, 2.0)),
         "max_range_atr": Param(10.0, "Too-wide ranges leave little room (in M5 ATRs).", (8.0, 10.0, 12.0)),
         "wide_range_atr": Param(6.0, "Use midpoint stop for wide ranges (in M5 ATRs).", (6.0,)),
         "tp_range_mult": Param(1.5, "Target as multiple of the range.", (1.0, 1.5, 2.0)),
-        "max_hold_bars": Param(120, "Safety cap (10h of M5 bars).", ()),
+        "max_hold_bars": Param(84, "Safety cap (7h of M5 bars).", ()),
         "max_spread_atr": Param(0.2, "Cost guard.", ()),
     }
+
+    @property
+    def session_text(self):
+        return f"{self.p['or_end']}-{self.p['entry_cutoff']} New York"
+
+    def session_windows(self, day):
+        return [local_window(day, self.p["tz"], self.p["or_end"], self.p["entry_cutoff"])]
 
     def prepare(self, frames):
         out = {}
@@ -104,12 +114,12 @@ class LondonOpeningRangeBreakout(Strategy):
             wide = width > self.p["wide_range_atr"] * r["atr"]
             vals = {"close": r["close"], "or_high": r["or_high"], "or_low": r["or_low"], "or_width": width, "atr": r["atr"]}
             if r["orb_dir"] == 1:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "first close above London opening range", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "first close above the New York opening range", vals,
                                         stop_price=mid if wide else r["or_low"],
                                         target_price=r["close"] + self.p["tp_range_mult"] * width,
                                         max_hold_bars=self.p["max_hold_bars"]))
             else:
-                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "first close below London opening range", vals,
+                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "first close below the New York opening range", vals,
                                         stop_price=mid if wide else r["or_high"],
                                         target_price=r["close"] - self.p["tp_range_mult"] * width,
                                         max_hold_bars=self.p["max_hold_bars"]))
@@ -120,7 +130,7 @@ class LondonOpeningRangeBreakout(Strategy):
         for pos in ctx.positions:
             r = ctx.last(pos.role, "M5")
             if r["time_exit"] or r["ldate"] != pd.Timestamp(pos.opened_at).tz_convert(self.p["tz"]).date():
-                out.append(self.close_signal(ctx, pos, f"day-trade time exit ({self.p['exit_time']} London)", {"close": r["close"]}))
+                out.append(self.close_signal(ctx, pos, f"day-trade time exit ({self.p['exit_time']} New York)", {"close": r["close"]}))
         return out
 
 
@@ -141,9 +151,9 @@ class LondonOpeningRangeBreakout(Strategy):
                 "price": float(r["close"]),
                 "levels": [x for x in (level("Opening range high", r["or_high"]), level("Opening range low", r["or_low"])) if x],
                 "filters": [
-                    chk(f"Opening range complete ({self.p['or_start']}-{self.p['or_end']} London)", done,
+                    chk(f"Opening range complete ({self.p['or_start']}-{self.p['or_end']} New York)", done,
                         "range not built yet today" if not done else f"{fmt(r['or_low'], d)} - {fmt(r['or_high'], d)}"),
-                    chk(f"Before entry cut-off ({self.p['entry_cutoff']} London)", bool(r["in_window"]), ""),
+                    chk(f"Before entry cut-off ({self.p['entry_cutoff']} New York)", bool(r["in_window"]), ""),
                     chk("No breakout taken yet today", not bool(r["brk_before"]), ""),
                     chk(f"Range width {self.p['min_range_atr']}-{self.p['max_range_atr']} ATR",
                         done and self.p["min_range_atr"] * r["atr"] <= width <= self.p["max_range_atr"] * r["atr"],
@@ -169,7 +179,7 @@ class BreakoutRetest(Strategy):
     magic_offset = 5
     description = ("Marks the London-morning range (08:00-13:00 London). After a decisive break during the US "
                    "session handover, waits for price to come back and hold the broken level before entering.")
-    long_rules = ("Breakout: close > range high + 0.2 ATR after 13:00 London. Retest within retest_bars: bar low <= level + "
+    long_rules = ("Breakout: close > range high + breakout_atr x ATR (0.1 by default) after 13:00 London. Retest within retest_bars: bar low <= level + "
                   "retest_tol_atr x ATR and close > level with bullish body -> OPEN_LONG.")
     short_rules = "Mirror for a break below range low and a failed retest from below."
     exit_rules = "Stop = min(retest low, level) - stop_atr x ATR; target reward_risk x risk; time exit 16:00 New York."
@@ -194,6 +204,15 @@ class BreakoutRetest(Strategy):
         "max_hold_bars": Param(96, "Safety cap (8h of M5 bars).", ()),
         "max_spread_atr": Param(0.2, "Cost guard.", ()),
     }
+
+    @property
+    def session_text(self):
+        return f"{self.p['range_end']} London - 16:00 New York"
+
+    def session_windows(self, day):
+        start = local_window(day, "Europe/London", self.p["range_end"], "23:59")[0]
+        end = local_window(day, "America/New_York", "16:00", "16:01")[0]
+        return [(start, end)] if end > start else []
 
     def prepare(self, frames):
         out = {}

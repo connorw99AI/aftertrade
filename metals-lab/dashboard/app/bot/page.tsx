@@ -285,6 +285,8 @@ function BotDetail({ id }: { id: string }) {
         <div className="hero-text">
           <h1 className="hero-title">{CREATURES[id]?.name} <SideIcon bot={id} size={52} /></h1>
           <p><b>{id} {st.name}</b> · <span className={`side-tag side-${id[3]}`}>{side}</span> · {st.timeframes.join(" + ")} · {b.symbols.join(" and ") || st.roles.join(" and ")}</p>
+          {st.trading_window && <p className="window-line"><b>Can open trades today:</b> {st.trading_window.effective_utc}
+            <span className="muted"> (its own session: {st.trading_window.built_in}; hour filter: {st.trading_window.filter_utc === "all" ? "none" : `${st.trading_window.filter_utc} UTC`})</span></p>}
           {who && <p className="character"><b>Looks:</b> {who.looks}<br /><b>Personality:</b> {who.personality}</p>}
           <p className="muted">{st.description}</p>
           <div className="actions"><StatusBadge status={b.status} extra={b.pause_reason} />

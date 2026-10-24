@@ -2,17 +2,17 @@
 Generated from `Strategy.describe()`; regenerate with `python scripts/gen_strategy_doc.py` after changing rules.
 
 ## S01 Trend Pullback Scalper
-- Style: scalp | instruments: GOLD, SILVER | timeframes: M1 (decisions on completed M1 bars) | min history: 700 bars | magic: 7710001
+- Style: scalp | instruments: GOLD, SILVER | timeframes: M1, M15 (decisions on completed M1 bars) | min history: 700 bars | magic: 7710001
 
-Trades short pullbacks to the 20-EMA in the direction of an established M1 trend (EMA50 vs EMA200 with positive slope), only during London/New York liquidity.
+Trades short M1 pullbacks to the 20-EMA in the direction of the M15 trend (M15 EMA50 vs EMA200 with a rising or falling EMA50), only during London/New York liquidity. Trend from the slower chart, entry on the faster one.
 
-**Long (OPEN_LONG / CLOSE_LONG).** Uptrend (EMA50 > EMA200 and EMA50 rising over 10 bars); previous bar's low touched/pierced EMA20 with RSI(7) < pullback level; current bar closes back above EMA20, bullish body, RSI rising.
+**Long (OPEN_LONG / CLOSE_LONG).** M15 uptrend (EMA50 > EMA200 and EMA50 rising over 4 M15 bars); previous M1 bar's low touched/pierced the M1 EMA20 with RSI(7) < pullback level; current M1 bar closes back above EMA20, bullish body, RSI rising.
 
-**Short (OPEN_SHORT / COVER_SHORT).** Mirror image: downtrend, rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20.
+**Short (OPEN_SHORT / COVER_SHORT).** Mirror image: M15 downtrend, M1 rally to EMA20 with RSI(7) > 100-pullback level, bearish close back below EMA20.
 
-**Exits, stops, targets, max holding.** Server-side stop at entry -/+ stop_atr x ATR(14); target at reward_risk x stop distance; close early if price closes through EMA50 against the trade; max hold 30 bars (30 minutes).
+**Exits, stops, targets, max holding.** Server-side stop at entry -/+ stop_atr x ATR(14, M1); target at reward_risk x stop distance; close early if the M1 close crosses the M1 EMA50 against the trade or the M15 trend flips; max hold 30 bars (30 minutes).
 
-**Invalidation.** Close through EMA50 against the position invalidates the trend premise.
+**Invalidation.** M1 close through EMA50 against the position, or the M15 trend turning, invalidates the premise.
 
 **Spread, liquidity and volatility filters.** Hours 07:00-20:00 UTC; spread <= max_spread_atr x ATR; ATR percentile (500 bars) between 20 and 90 to avoid dead and disorderly markets.
 
@@ -20,12 +20,13 @@ Trades short pullbacks to the 20-EMA in the direction of an established M1 trend
 
 | Parameter | Default | Research grid | Rationale |
 |---|---|---|---|
-| `ema_fast` | 20 | 15, 20, 30 | Pullback reference; common short EMA. |
-| `ema_mid` | 50 | 50 | Trend/invalidation line. |
-| `ema_slow` | 200 | 150, 200 | Long trend filter. |
+| `ema_fast` | 20 | 15, 20, 30 | M1 pullback reference; common short EMA. |
+| `ema_mid` | 50 | 50 | M1 invalidation line (early exit). |
+| `trend_fast` | 50 | 34, 50 | M15 trend EMA (50 x 15 min = 12.5 hours). |
+| `ema_slow` | 200 | 150, 200 | M15 slow trend EMA (200 x 15 min = 50 hours). |
 | `rsi_n` | 7 | 5, 7 | Short RSI to measure pullback depth. |
 | `rsi_pull` | 40 | 35, 40, 45 | Pullback must push RSI below this (long). |
-| `stop_atr` | 1.2 | 1.0, 1.2, 1.5 | Stop beyond normal M5 noise. |
+| `stop_atr` | 1.2 | 1.0, 1.2, 1.5 | Stop beyond normal M1 noise. |
 | `reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Larger multiple so the target clears M1 costs. |
 | `max_hold_bars` | 30 | 15, 30, 45 | Scalps that do not work quickly are closed (30 min). |
 | `max_spread_atr` | 0.3 | 0.2, 0.3, 0.4 | M1 ranges are small: skip when spread exceeds 30% of ATR(14,M1). |
@@ -46,15 +47,15 @@ Trades short pullbacks to the 20-EMA in the direction of an established M1 trend
 
 Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter Asian session, only when ADX and band width say the market is ranging.
 
-**Long (OPEN_LONG / CLOSE_LONG).** Hours 00:00-06:00 UTC; ADX(14) < adx_max; band-width percentile < 50; close below lower band(20, bb_k) and RSI(5) < rsi_low.
+**Long (OPEN_LONG / CLOSE_LONG).** Entries 00:00-07:00 London time; ADX(14) < adx_max; band-width percentile < 50; close below lower band(20, bb_k) and RSI(5) < rsi_low.
 
 **Short (OPEN_SHORT / COVER_SHORT).** Same regime; close above upper band and RSI(5) > 100 - rsi_low.
 
-**Exits, stops, targets, max holding.** Exit at the 20-period mean (strategy close when close crosses SMA20; server TP at the mean at entry time); stop stop_atr x ATR beyond entry; max hold 9 bars; flatten at flat_hour UTC before London opens.
+**Exits, stops, targets, max holding.** Exit at the 20-period mean (strategy close when close crosses SMA20; server TP at the mean at entry time); stop stop_atr x ATR beyond entry; max hold 9 bars; flatten at flat_time London, before the 08:00 London open.
 
 **Invalidation.** ADX rising above adx_max+5 while in trade (range turning into trend) closes the position.
 
-**Spread, liquidity and volatility filters.** Spread <= max_spread_atr x ATR; no new entries after entry_end_hour.
+**Spread, liquidity and volatility filters.** Spread <= max_spread_atr x ATR; no new entries after entry_end London (the window follows UK clock changes).
 
 **Limitations.** Asian-session spreads can be wide relative to the small target; mean reversion fails abruptly on news (e.g. Chinese data, geopolitical headlines). OHLC intrabar ordering unknown.
 
@@ -66,9 +67,10 @@ Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter
 | `adx_max` | 25 | 20, 25, 30 | Only trade when trend strength is low. |
 | `stop_atr` | 1.0 | 0.8, 1.0, 1.3 | Tight stop; ranges that break tend to run. |
 | `max_hold_bars` | 9 | 6, 9, 12 | 45 minutes. |
-| `entry_start_hour` | 0 | – | UTC. |
-| `entry_end_hour` | 6 | – | UTC. |
-| `flat_hour` | 7 | – | UTC flatten before London open. |
+| `tz` | Europe/London | – | Session clock (follows UK summer time). |
+| `entry_start` | 00:00 | – | London time: start of the quiet Asian hours. |
+| `entry_end` | 07:00 | – | London time: no new entries after this. |
+| `flat_time` | 07:45 | – | London time: flatten before the 08:00 London open. |
 | `max_spread_atr` | 0.2 | 0.15, 0.2 | Cost guard. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
 | `metals` | both | – | Which metals may open: both, gold or silver. No assessor change; trades every side, metal and hour. |
@@ -93,7 +95,7 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 
 **Invalidation.** A new extreme beyond the breakout high/low (= the stop) invalidates the failure.
 
-**Spread, liquidity and volatility filters.** 07:00-20:00 UTC; skip expansion bars (>2.5 ATR, likely news); skip strong trends (ADX >= adx_max); spread guard.
+**Spread, liquidity and volatility filters.** 08:00-21:00 London time (follows UK clock changes); skip expansion bars (>2.5 ATR, likely news); skip strong trends (ADX >= adx_max); spread guard.
 
 **Limitations.** Source pattern is daily and not metals-specific. M5 adaptation is a hypothesis; stop placement on OHLC is coarse.
 
@@ -104,6 +106,9 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 | `adx_max` | 30 | 25, 30 | Avoid fading strong trends. |
 | `max_hold_bars` | 10 | 6, 10, 15 | Reversal should work quickly (50 min). |
 | `max_spread_atr` | 0.15 | 0.15, 0.2 | Cost guard: spread <= 15% of ATR(14,M5). |
+| `tz` | Europe/London | – | Session clock (follows UK summer time). |
+| `session_start` | 08:00 | – | London time: London open. |
+| `session_end` | 21:00 | – | London time: end of the New York afternoon. |
 | `sides` | long | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
 | `metals` | gold | – | Which metals may open: both, gold or silver. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
 | `hours_utc` | 12-21 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
@@ -112,53 +117,54 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 
 - Connors, L. & Raschke, L.B. (1995) Street Smarts: High Probability Short-Term Trading Strategies, M. Gordon Publishing - 'Turtle Soup' failed 20-day breakout pattern (daily bars; adapted here to M5, which is NOT validated by the source).
 
-## S04 London Opening Range Breakout
+## S04 New York Opening Range Breakout
 - Style: day | instruments: GOLD, SILVER | timeframes: M5 (decisions on completed M5 bars) | min history: 200 bars | magic: 7710004
 
-Builds the first hour range after the London open (Europe/London local time, so UK DST is handled) and trades the first decisive close beyond it, flat by late afternoon London time.
+Builds the first half hour of the New York session (08:30-09:00 New York time, when US data lands and COMEX gold is open; DST handled) and trades the first decisive M5 close beyond it, flat by mid-afternoon New York.
 
-**Long (OPEN_LONG / CLOSE_LONG).** First M5 close above OR high + buffer_atr x ATR(14) between OR end and entry cut-off, OR width within limits.
+**Long (OPEN_LONG / CLOSE_LONG).** First M5 close above the opening-range high + buffer_atr x ATR(14) between the range end and the entry cut-off.
 
-**Short (OPEN_SHORT / COVER_SHORT).** First M5 close below OR low - buffer.
+**Short (OPEN_SHORT / COVER_SHORT).** First M5 close below the opening-range low - buffer.
 
-**Exits, stops, targets, max holding.** Stop at the opposite side of the range (or range midpoint if the range is wider than wide_range_atr x ATR); target tp_range_mult x OR width; time exit at exit_time London.
+**Exits, stops, targets, max holding.** Stop at the opposite side of the range (or range midpoint if the range is wider than wide_range_atr x ATR); target tp_range_mult x range width; time exit at exit_time New York.
 
 **Invalidation.** Close back inside the opposite half of the range = stop; one breakout attempt per day.
 
-**Spread, liquidity and volatility filters.** OR width between min_range_atr and max_range_atr x ATR(14, M5); spread guard.
+**Spread, liquidity and volatility filters.** Range width between min_range_atr and max_range_atr x ATR(14, M5); spread guard; entries only until entry_cutoff New York.
 
-**Limitations.** Spot metals trade almost 24h; 'London open' is a liquidity event, not an exchange open, so ORB evidence from equities does not transfer automatically. Breakouts fail regularly on rotational days.
+**Limitations.** Spot metals trade almost 24h; the New York open is a liquidity and data event, not an exchange open, so ORB evidence from equities does not transfer automatically. The 08:30 data release can make the range unusually wide.
 
 | Parameter | Default | Research grid | Rationale |
 |---|---|---|---|
-| `tz` | Europe/London | – | Session clock (DST-aware). |
-| `or_start` | 08:00 | – | London open. |
-| `or_end` | 09:00 | 08:30, 09:00 | One-hour opening range. |
-| `entry_cutoff` | 14:00 | 12:00, 13:00, 14:00 | No new entries after early afternoon London. |
-| `exit_time` | 16:30 | 15:00, 16:30 | Flat before US afternoon. |
+| `tz` | America/New_York | – | Session clock (follows US daylight saving). |
+| `or_start` | 08:30 | – | US data releases and the active New York gold session. |
+| `or_end` | 09:00 | 08:45, 09:00, 09:30 | Half-hour opening range (6 M5 bars). |
+| `entry_cutoff` | 11:30 | 11:00, 11:30, 12:30 | No new entries after late morning New York. |
+| `exit_time` | 15:00 | 13:30, 15:00 | Flat by mid-afternoon New York. |
 | `buffer_atr` | 0.1 | 0.0, 0.1, 0.25 | Close must clear the range by a small margin. |
 | `min_range_atr` | 1.0 | 1.0, 1.5, 2.0 | Too-narrow ranges produce noise breaks (in M5 ATRs). |
 | `max_range_atr` | 10.0 | 8.0, 10.0, 12.0 | Too-wide ranges leave little room (in M5 ATRs). |
 | `wide_range_atr` | 6.0 | 6.0 | Use midpoint stop for wide ranges (in M5 ATRs). |
 | `tp_range_mult` | 1.5 | 1.0, 1.5, 2.0 | Target as multiple of the range. |
-| `max_hold_bars` | 120 | – | Safety cap (10h of M5 bars). |
+| `max_hold_bars` | 84 | – | Safety cap (7h of M5 bars). |
 | `max_spread_atr` | 0.2 | – | Cost guard. |
-| `sides` | short | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -247 vs shorts +220; gold -133 vs silver +106; 07-12 UTC -118 vs 12-16 +91. |
-| `metals` | silver | – | Which metals may open: both, gold or silver. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -247 vs shorts +220; gold -133 vs silver +106; 07-12 UTC -118 vs 12-16 +91. |
-| `hours_utc` | 12-16 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -247 vs shorts +220; gold -133 vs silver +106; 07-12 UTC -118 vs 12-16 +91. |
+| `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
+| `metals` | both | – | Which metals may open: both, gold or silver. No assessor change; trades every side, metal and hour. |
+| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). No assessor change; trades every side, metal and hour. |
 
 **Sources.**
 
 - Crabel, T. (1990) Day Trading with Short Term Price Patterns and Opening Range Breakout, Traders Press.
 - Zarattini, C. & Aziz, A. (2023) 'Can Day Trading Really Be Profitable? Evidence of Sustainable Long-term Profits from Opening Range Breakout (ORB) Day Trading Strategy', SSRN 4416622 (equity index ETF evidence, not metals).
-- Batten et al. (2017) PLoS ONE - intraday precious-metals volatility rises with the opening of major markets.
+- Cai, Cheung & Wong (2001) 'What moves the gold market?', J. Futures Markets 21(3) - US macro releases move gold intraday.
+- Assessor review of the London-open version (MT5 2025-10-23..2026-10-23, in-sample): 07-12 UTC -118, 12-16 UTC +91.
 
 ## S05 London-Range Breakout & Retest
 - Style: day | instruments: GOLD, SILVER | timeframes: M5 (decisions on completed M5 bars) | min history: 200 bars | magic: 7710005
 
 Marks the London-morning range (08:00-13:00 London). After a decisive break during the US session handover, waits for price to come back and hold the broken level before entering.
 
-**Long (OPEN_LONG / CLOSE_LONG).** Breakout: close > range high + 0.2 ATR after 13:00 London. Retest within retest_bars: bar low <= level + retest_tol_atr x ATR and close > level with bullish body -> OPEN_LONG.
+**Long (OPEN_LONG / CLOSE_LONG).** Breakout: close > range high + breakout_atr x ATR (0.1 by default) after 13:00 London. Retest within retest_bars: bar low <= level + retest_tol_atr x ATR and close > level with bullish body -> OPEN_LONG.
 
 **Short (OPEN_SHORT / COVER_SHORT).** Mirror for a break below range low and a failed retest from below.
 
@@ -263,13 +269,13 @@ Buys sharp M15 pullbacks only when the hourly regime is up (H1 close > H1 SMA200
 - Connors, L. & Alvarez, C. (2008) Short Term Trading Strategies That Work, TradingMarkets - RSI(2) with 200-day filter and 5-day MA exit (documented on US equities/indices; metals and the M15/H1 adaptation are untested hypotheses).
 
 ## S08 Donchian Channel Breakout
-- Style: day | instruments: GOLD, SILVER | timeframes: M15 (decisions on completed M15 bars) | min history: 120 bars | magic: 7710008
+- Style: day | instruments: GOLD, SILVER | timeframes: M15, H1 (decisions on completed M15 bars) | min history: 120 bars | magic: 7710008
 
-Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-bar extreme (8 hours by default), exit on the exit_n-bar opposite extreme.
+Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-bar extreme (6 hours by default) in the direction of the hourly trend, exit on the exit_n-bar opposite extreme.
 
-**Long (OPEN_LONG / CLOSE_LONG).** M15 close > highest high of the previous entry_n bars.
+**Long (OPEN_LONG / CLOSE_LONG).** Hourly uptrend (last completed H1 close > H1 SMA(trend_sma)) and M15 close > highest high of the previous entry_n bars.
 
-**Short (OPEN_SHORT / COVER_SHORT).** M15 close < lowest low of the previous entry_n bars.
+**Short (OPEN_SHORT / COVER_SHORT).** Hourly downtrend (H1 close < H1 SMA(trend_sma)) and M15 close < lowest low of the previous entry_n bars.
 
 **Exits, stops, targets, max holding.** Close long on close < lowest low of previous exit_n bars (cover short mirror). Server stop at stop_n x N (ATR 20). Max hold 96 bars (one day). No fixed target.
 
@@ -286,6 +292,7 @@ Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-
 | `stop_n` | 2.0 | 2.0, 3.0 | 2N stop. |
 | `max_hold_bars` | 96 | 48, 96 | One day of M15 bars (safety cap). |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
+| `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
 | `sides` | both | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
 | `metals` | both | – | Which metals may open: both, gold or silver. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
 | `hours_utc` | 7-12,16-24 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
@@ -297,13 +304,13 @@ Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-
 - Hurst, Ooi & Pedersen (2017) 'A Century of Evidence on Trend-Following Investing', J. Portfolio Management 44(1).
 
 ## S09 Time-Series Momentum
-- Style: day | instruments: GOLD, SILVER | timeframes: M15 (decisions on completed M15 bars) | min history: 200 bars | magic: 7710009
+- Style: day | instruments: GOLD, SILVER | timeframes: M15, H1 (decisions on completed M15 bars) | min history: 200 bars | magic: 7710009
 
 Each metal is held long or short according to the sign of its own volatility-scaled past return over the last lookback M15 bars, re-evaluated on the first M15 bar of every hour (short-horizon adaptation).
 
-**Long (OPEN_LONG / CLOSE_LONG).** On the first M15 bar of each hour: lookback return / (bar vol x sqrt(lookback)) > entry_strength.
+**Long (OPEN_LONG / CLOSE_LONG).** On the first M15 bar of each hour: lookback return / (bar vol x sqrt(lookback)) > entry_strength, and the hourly trend is up (H1 close > H1 SMA(trend_sma)).
 
-**Short (OPEN_SHORT / COVER_SHORT).** Same, < -entry_strength.
+**Short (OPEN_SHORT / COVER_SHORT).** Same, < -entry_strength, and the hourly trend is down.
 
 **Exits, stops, targets, max holding.** At an hourly evaluation, close if strength fades to exit_strength or flips; server stop stop_atr x ATR(20); max hold 48 bars (12 hours).
 
@@ -321,6 +328,7 @@ Each metal is held long or short according to the sign of its own volatility-sca
 | `stop_atr` | 3.0 | 2.0, 3.0, 4.0 | Wide stop: momentum needs room. |
 | `max_hold_bars` | 48 | 24, 48, 96 | 12 hours of M15 bars. |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
+| `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
 | `sides` | both | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
 | `metals` | both | – | Which metals may open: both, gold or silver. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
 | `hours_utc` | 0-7,21-24 | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |

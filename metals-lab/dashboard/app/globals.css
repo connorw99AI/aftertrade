@@ -510,3 +510,5 @@ button:disabled, .controls button:disabled { opacity: .32; filter: grayscale(.7)
 .creature.sprite.mood-hurt .creature-body { filter: drop-shadow(0 0 6px #e0604a88); }
 .creature.sprite .glow { animation: pulseglow 6s ease-in-out infinite; }
 .creature.sprite .sparkle i { animation: twinkle 4s ease-in-out infinite; }
+.window-line { margin: 4px 0; }
+.window-line b { color: var(--bronze-hi); font-weight: 400; }
