@@ -44,6 +44,8 @@ class RiskParams:
     daily_lock_from: float = 0.0              # profit lock: once up this much on the day...
     daily_giveback: float = 0.0               # ...stop for the day after giving back this share of the day's best gain
     max_trade_risk: float = 0.0               # >0: skip trades whose (floored) size risks more than this share
+    big_lot: float | dict = 0.0               # size for tighter stops (mirrors live risk.big_lot)
+    big_lot_max_risk: float = 0.0             # big_lot is used when its loss at the stop is at most this share
     max_drawdown_pause: float = 0.10          # 0 = off
     weekend_flat_from: Optional[str] = None   # "HH:MM" UTC Friday: close all, no entries until Sunday 22:00 UTC
     max_open_positions: int = 2
@@ -59,7 +61,8 @@ class RiskParams:
                    daily_loss_pause=float(r.get("daily_loss_pause", 0.02)),
                    daily_profit_stop=float(r.get("daily_profit_stop", 0.0) or 0.0),
                    daily_lock_from=float(r.get("daily_lock_from", 0.0) or 0.0), daily_giveback=float(r.get("daily_giveback", 0.0) or 0.0),
-                   max_trade_risk=float(r.get("max_trade_risk", 0.0) or 0.0), max_drawdown_pause=float(r.get("max_drawdown_pause", 0.10) or 0),
+                   max_trade_risk=float(r.get("max_trade_risk", 0.0) or 0.0), big_lot=r.get("big_lot", 0.0) or 0.0,
+                   big_lot_max_risk=float(r.get("big_lot_max_risk", 0.0) or 0.0), max_drawdown_pause=float(r.get("max_drawdown_pause", 0.10) or 0),
                    max_open_positions=int(r.get("max_positions_per_bot", 2)),
                    max_margin_fraction=float(r.get("max_bot_margin_fraction", 0.5)))
 

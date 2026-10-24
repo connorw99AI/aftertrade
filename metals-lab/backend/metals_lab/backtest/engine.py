@@ -432,7 +432,8 @@ class Backtester:
                     self._rec(decisions, entries, "AUDITOR:" + ";".join(r for v in verdicts for r in v[1]))
                     continue
             tps = s.calculate_target_positions(entries, eq, self.specs, cfg.risk.risk_per_trade, self._loss, self._cost_per_lot,
-                                               min_lot=cfg.risk.min_lot, max_risk_pct=cfg.risk.max_trade_risk)
+                                               min_lot=cfg.risk.min_lot, max_risk_pct=cfg.risk.max_trade_risk,
+                                               big_lot=cfg.risk.big_lot, big_lot_max_risk=cfg.risk.big_lot_max_risk)
             if any(tp.skipped for tp in tps) and any(x.group_id for x in entries):
                 diag["skipped_min_lot"] += len(entries)  # trade groups are all-or-nothing
                 self._rec(decisions, entries, "GROUP_SKIPPED:" + ";".join(tp.skip_reason for tp in tps if tp.skipped))

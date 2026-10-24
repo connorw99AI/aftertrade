@@ -1,7 +1,8 @@
 # Metal Lab one-click launcher (what the desktop icon runs).
 # 1. Fetches the latest version with git (skipped, with a message, if that fails).
 # 2. Reinstalls the Python package only when its dependency files changed.
-# 3. Starts the lab and opens the dashboard; if it is already running, just opens the dashboard.
+# 3. Applies settings agreed since setup to config\config.yaml (once each, with a backup).
+# 4. Starts the lab and opens the dashboard; if it is already running, just opens the dashboard.
 # It never arms trading: the lab starts in whatever state you left it (shadow mode unless you armed it with the CLI).
 $ErrorActionPreference = "Continue"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
@@ -48,7 +49,10 @@ if (-not (Test-Path $stamp) -or (Get-Content $stamp -Raw).Trim() -ne $hash) {
   else { Write-Host "Updating the Python environment failed; it will be retried next launch." -ForegroundColor Yellow }
 }
 
-# 3. Start: open the browser once the server answers, and keep the server in this window (close it to stop the lab)
+# 3. Apply settings agreed since setup to config\config.yaml (once each, backup kept next to it)
+& $vpy -m metals_lab.cli apply-settings
+
+# 4. Start: open the browser once the server answers, and keep the server in this window (close it to stop the lab)
 Write-Host "Starting Metal Lab. Close this window (or press Ctrl+C) to stop it." -ForegroundColor Green
 Start-Job -ScriptBlock {
   param($u)

@@ -16,7 +16,9 @@ function limitSentences(l: Any): [string, string][] {
   const caps = l.pre_trade_limits !== false;
   const off = caps ? "" : " (off: pre-trade caps are switched off)";
   say("risk_per_trade", `Each trade is sized to risk ${pc(l.risk_per_trade)} of the bot's balance at its stop${l.max_risk_per_trade_cap ? ` (no bot above ${pc(l.max_risk_per_trade_cap)})` : ""}, but never below the minimum size.`);
-  say("min_lot", `Minimum trade size: ${metals(l.min_lot, " lots")}.`);
+  if (l.big_lot && l.big_lot_max_risk) {
+    say("min_lot", `Trade size: ${metals(l.big_lot, " lots")} when the strategy's stop is tight enough that this loses at most ${pc(l.big_lot_max_risk)} of the bot; otherwise ${metals(l.min_lot, " lots")}. The stop is always the strategy's own.`);
+  } else say("min_lot", `Minimum trade size: ${metals(l.min_lot, " lots")}.`);
   say("per_trade_limit_enabled", l.per_trade_limit_enabled && caps ? "A trade whose stop would lose more than the per-trade risk is refused." : "A trade may risk more than the per-trade figure when the minimum size needs it.");
   say("pre_trade_limits", caps ? "Margin and exposure caps are checked before every entry." : "Margin-share and exposure caps are off; losses are handled by the daily stops and the drawdown pause.");
   say("max_entries_per_bot_per_day", `Each bot opens at most ${l.max_entries_per_bot_per_day} trades per UTC day (a two-leg pair counts once).`);
@@ -36,7 +38,7 @@ function limitSentences(l: Any): [string, string][] {
   say("max_spread_points", `No entry when the spread is wider than ${metals(l.max_spread_points, " points")}.`);
   say("stop_buffer_points", `Stops sit at least ${l.stop_buffer_points} points beyond the broker's minimum distance.`);
   say("require_stop", l.require_stop ? "Every trade must carry a stop-loss." : "Trades may open without a stop-loss.");
-  const known = new Set(out.map(([k]) => k).concat(["max_risk_per_trade_cap", "daily_lock_from"]));
+  const known = new Set(out.map(([k]) => k).concat(["max_risk_per_trade_cap", "daily_lock_from", "big_lot", "big_lot_max_risk"]));
   for (const [k, v] of Object.entries(l)) if (!known.has(k)) out.push([k, `${k.replace(/_/g, " ")}: ${typeof v === "object" ? metals(v, "") : String(v)}.`]);
   return out;
 }

@@ -118,3 +118,32 @@ def test_min_lot_never_risks_more_than_the_cap(armed):
     near = sig.__class__(**{**sig.__dict__, "stop_price": sig.ref_price - 5.0})   # $20 = 4%: allowed at the floor
     tp = strat.calculate_target_positions([near], 500.0, armed.specs, 0.03, loss, lambda s: 0.0, min_lot=0.04, max_risk_pct=0.10)[0]
     assert not tp.skipped and tp.volume == 0.04
+
+
+def test_tight_stops_trade_the_big_lot_and_wide_stops_the_small_one(armed):
+    strat = armed.strategy("S01L")
+    sig = make_open_proposal(armed, bot="S01L", volume=0.1).signal
+    loss = lambda spec, side, entry, stop, vol: abs(entry - stop) * spec.contract_size * vol
+    size = lambda dist: strat.calculate_target_positions(
+        [sig.__class__(**{**sig.__dict__, "stop_price": sig.ref_price - dist})], 150.0, armed.specs, 0.03, loss, lambda s: 0.0,
+        min_lot={"GOLD": 0.05}, big_lot={"GOLD": 0.1}, big_lot_max_risk=0.30)[0]
+    tight, wide = size(4.0), size(15.0)          # 0.1 lot: $40 (27% of 150) vs $150 (100%)
+    assert tight.volume == 0.1 and not tight.skipped
+    assert wide.volume == 0.05 and not wide.skipped   # no cap: the strategy's wide stop still trades, at the smaller size
+    assert wide.signal.stop_price == sig.ref_price - 15.0
+
+
+def test_settings_update_edits_config_once_and_keeps_the_rest(tmp_path):
+    import yaml
+    from metals_lab.settings_update import apply
+    p = tmp_path / "config.yaml"
+    p.write_text("mt5:\n  server_timezone: Europe/Athens   # keep me\n\nrisk:\n  risk_per_trade: 0.30\n  min_lot: {GOLD: 0.04, SILVER: 0.02}\n"
+                 "  daily_loss_pause: 0.50\n  daily_profit_stop: false\n  max_drawdown_pause: 0.50\n")
+    assert apply(p) == ["2026-10-25-risk"]
+    r = yaml.safe_load(p.read_text())["risk"]
+    assert r["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and r["big_lot"] == {"GOLD": 0.1, "SILVER": 0.1}
+    assert r["daily_loss_pause"] == 0.30 and r["daily_profit_stop"] == 0 and r["risk_per_trade"] == 0.03
+    assert r["max_drawdown_pause"] == 0.50 and "# keep me" in p.read_text()
+    assert (tmp_path / "config.yaml.bak-2026-10-25-risk").exists()
+    assert apply(p) == []   # applied once only
+    assert apply(tmp_path / "missing.yaml") == []

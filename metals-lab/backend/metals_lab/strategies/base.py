@@ -229,13 +229,17 @@ class Strategy(ABC):
     # ---------------------------------------------------------------- sizing
     def calculate_target_positions(self, signals: list[Signal], equity: float, specs: dict[str, InstrumentSpec],
                                    risk_pct: float, loss_fn: LossFn, cost_per_lot: Callable[[InstrumentSpec], float],
-                                   min_lot: float | dict = 0.0, max_risk_pct: float = 0.0) -> list[TargetPosition]:
+                                   min_lot: float | dict = 0.0, max_risk_pct: float = 0.0,
+                                   big_lot: float | dict = 0.0, big_lot_max_risk: float = 0.0) -> list[TargetPosition]:
         """Risk-based sizing from the bot's own equity only.
 
         volume = floor_to_step(risk_budget / (stop loss per lot + est. round-trip cost per lot))
         ``min_lot`` is a number or {role: lots}. When > 0 the volume is never below that floor (operator policy: trade at least
         min_lot even when it risks more than the budget). With ``min_lot`` == 0, trades whose
         broker minimum lot would exceed the budget are skipped, never upsized.
+        ``big_lot`` (number or {role: lots}) is the size for tighter stops: used instead of ``min_lot`` when its loss at the
+        strategy's stop is at most ``big_lot_max_risk`` of equity. Wider stops fall back to ``min_lot``. The stop itself is
+        always the strategy's; only the size changes.
         ``max_risk_pct`` > 0 is a hard cap: a trade whose size (after the floor) would lose more than that share of
         equity at its stop is skipped, so the floor can never turn into an outsized bet.
         """
@@ -257,6 +261,9 @@ class Strategy(ABC):
             raw = budget / loss_1 if loss_1 > 0 else 0.0
             vol = spec.round_volume_down(raw)
             floor = float(min_lot.get(s.role, 0.0) if isinstance(min_lot, dict) else min_lot or 0.0)
+            big = float(big_lot.get(s.role, 0.0) if isinstance(big_lot, dict) else big_lot or 0.0)
+            if big > floor and big_lot_max_risk > 0 and loss_1 * spec.round_volume_down(big) <= equity * big_lot_max_risk:
+                floor = big  # tight stop: the larger size still loses no more than big_lot_max_risk at the stop
             if floor > 0:
                 vol = max(vol, spec.round_volume_down(max(floor, spec.volume_min)))
             if vol <= 0:

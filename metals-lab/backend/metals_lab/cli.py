@@ -255,6 +255,20 @@ def cmd_research(cfg, a):
     return 0
 
 
+def cmd_apply_settings(cfg, a):
+    """Apply agreed settings to config/config.yaml once each (backup kept). Run by the desktop launcher."""
+    from .settings_update import apply
+    p = Path(cfg.get("_path") or a.config or "config/config.yaml")
+    try:
+        done = apply(p)
+    except Exception as e:  # never stop the lab from starting over this
+        print(f"Settings update skipped: {e}")
+        return 0
+    if done:
+        print(f"Updated {p} with: {', '.join(done)} (backup saved next to it)")
+    return 0
+
+
 def cmd_new_lab(cfg, a):
     """Archive the current database (history kept) so the next start creates a fresh lab with new allocations."""
     import shutil
@@ -377,6 +391,7 @@ def main(argv=None) -> int:
     s = sub.add_parser("new-lab", help="archive the database and start a fresh lab (needed after the long/short split)")
     s.add_argument("--confirm", default=None)
     s.add_argument("--force", action="store_true")
+    sub.add_parser("apply-settings", help="apply agreed settings to config/config.yaml once (backup kept)")
     s = sub.add_parser("export-backtests", help="write the latest backtest per bot + trade review to a shareable file")
     s.add_argument("--out", default="reports/backtest_review.md")
     s = sub.add_parser("serve")
@@ -386,7 +401,8 @@ def main(argv=None) -> int:
     cfg = config_mod.load(a.config)
     fn = {"check": cmd_check, "arm": cmd_arm, "disarm": cmd_disarm, "kill": cmd_kill, "clear-kill": cmd_clear_kill,
           "allocate": cmd_allocate, "unretire-all": cmd_unretire_all, "bot": cmd_bot, "fetch-history": cmd_fetch, "backtest": cmd_backtest,
-          "research": cmd_research, "serve": cmd_serve, "export-backtests": cmd_export_backtests, "new-lab": cmd_new_lab}[a.cmd]
+          "research": cmd_research, "serve": cmd_serve, "export-backtests": cmd_export_backtests, "new-lab": cmd_new_lab,
+          "apply-settings": cmd_apply_settings}[a.cmd]
     return fn(cfg, a)
 
 

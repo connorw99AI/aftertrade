@@ -670,7 +670,8 @@ class Coordinator:
         tps = strat.calculate_target_positions(
             entries, book.equity, self.specs, risk_pct_for(self.cfg, bot), self.risk.loss_at_stop,
             lambda spec: self.risk.est_cost_per_lot(spec, ticks.get(spec.role), commission),
-            min_lot=self.cfg["risk"].get("min_lot", 0.0) or 0.0, max_risk_pct=float(self.cfg["risk"].get("max_trade_risk") or 0))
+            min_lot=self.cfg["risk"].get("min_lot", 0.0) or 0.0, max_risk_pct=float(self.cfg["risk"].get("max_trade_risk") or 0),
+            big_lot=self.cfg["risk"].get("big_lot", 0.0) or 0.0, big_lot_max_risk=float(self.cfg["risk"].get("big_lot_max_risk") or 0))
         approved: list[tuple] = []
         group = any(s.group_id for s in entries)
         for tp in tps:
