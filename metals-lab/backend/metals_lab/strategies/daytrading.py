@@ -341,7 +341,7 @@ class BreakoutRetest(Strategy):
 
 class VolatilityCompressionBreakout(Strategy):
     strategy_id = "S06"
-    ASSESSOR_FILTERS = {"sides": "long", "metals": "gold", "hours_utc": "0-7,16-24", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125."}
+    ASSESSOR_FILTERS = {"sides": "long", "metals": "both", "hours_utc": "0-7,16-24", "evidence": "Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125."}
     name = "Volatility Compression Breakout"
     style = Style.DAY
     timeframes = ("M15",)

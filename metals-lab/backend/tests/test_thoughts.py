@@ -139,11 +139,21 @@ def test_settings_update_edits_config_once_and_keeps_the_rest(tmp_path):
     p = tmp_path / "config.yaml"
     p.write_text("mt5:\n  server_timezone: Europe/Athens   # keep me\n\nrisk:\n  risk_per_trade: 0.30\n  min_lot: {GOLD: 0.04, SILVER: 0.02}\n"
                  "  daily_loss_pause: 0.50\n  daily_profit_stop: false\n  max_drawdown_pause: 0.50\n")
-    assert apply(p) == ["2026-10-25-risk"]
+    assert apply(p) == ["2026-10-25-risk", "2026-10-25-silver"]
     r = yaml.safe_load(p.read_text())["risk"]
-    assert r["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and r["big_lot"] == {"GOLD": 0.1, "SILVER": 0.1}
+    assert r["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and r["big_lot"] == {"GOLD": 0.1, "SILVER": 0.05}
     assert r["daily_loss_pause"] == 0.30 and r["daily_profit_stop"] == 0 and r["risk_per_trade"] == 0.03
     assert r["max_drawdown_pause"] == 0.50 and "# keep me" in p.read_text()
     assert (tmp_path / "config.yaml.bak-2026-10-25-risk").exists()
     assert apply(p) == []   # applied once only
     assert apply(tmp_path / "missing.yaml") == []
+
+
+def test_every_bot_trades_both_metals_while_the_switch_is_on(armed):
+    import json
+    from metals_lab.strategies import BOT_IDS, build
+    assert all(build(b).p["metals"] == "both" for b in BOT_IDS)           # no gold-only defaults left
+    armed.db.x("UPDATE bots SET params_json=? WHERE bot_id='S03L'", (json.dumps({"metals": "gold"}),))
+    assert armed.strategy("S03L").p["metals"] == "both"                   # a saved metal filter is overridden
+    armed.cfg["trading"]["all_metals"] = False
+    assert armed.strategy("S03L").p["metals"] == "gold"                   # switch off: the bot's own setting applies

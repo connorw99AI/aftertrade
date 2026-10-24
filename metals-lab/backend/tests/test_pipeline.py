@@ -405,7 +405,7 @@ def test_no_total_loss_pause_when_disabled(armed):
 
 
 def test_default_min_lot_is_per_metal(cfg):
-    assert cfg["risk"]["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and cfg["risk"]["big_lot"] == {"GOLD": 0.1, "SILVER": 0.1}
+    assert cfg["risk"]["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and cfg["risk"]["big_lot"] == {"GOLD": 0.1, "SILVER": 0.05}
 
 
 def test_news_off_by_default(armed):

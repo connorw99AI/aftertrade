@@ -310,7 +310,7 @@ class AsianRangeReversion(Strategy):
 
 class FailedBreakoutReversal(Strategy):
     strategy_id = "S03"
-    ASSESSOR_FILTERS = {"sides": "long", "metals": "gold", "hours_utc": "12-21", "evidence": "Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58."}
+    ASSESSOR_FILTERS = {"sides": "long", "metals": "both", "hours_utc": "12-21", "evidence": "Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58."}
     name = "Failed Breakout Reversal"
     style = Style.SCALP
     timeframes = ("M5",)

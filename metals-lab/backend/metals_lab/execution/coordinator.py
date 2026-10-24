@@ -129,7 +129,10 @@ class Coordinator:
 
     def strategy(self, bot_id: str) -> Strategy:
         row = self.db.one("SELECT params_json FROM bots WHERE bot_id=?", (bot_id,))
-        return build(bot_id, json.loads(row["params_json"] or "{}"))
+        params = json.loads(row["params_json"] or "{}")
+        if self.cfg.get("trading", {}).get("all_metals"):
+            params["metals"] = "both"  # operator switch: every bot trades both metals for now
+        return build(bot_id, params)
 
     def connect(self) -> AccountCheck:
         ok = self.gw.initialize(self.cfg["mt5"]["terminal_path"], self.cfg["mt5"]["timeout_ms"])
