@@ -28,7 +28,7 @@ DEFAULTS: dict[str, Any] = {
         "pre_trade_limits": False,          # True re-enables the per-trade risk, bot margin share, account margin share and
                                             # exposure caps below; False = losses are handled by the daily stops and drawdown pause
         "max_entries_per_bot_per_day": 5,   # new trades (a two-leg group counts once) per bot per UTC day; 0 = unlimited
-        "max_trade_risk": 0.10,             # skip a trade when even the minimum lot would risk more than this share of the bot
+        "max_trade_risk": 0.30,             # skip a trade when even the minimum lot would risk more than this share of the bot
         "daily_loss_pause": 0.30,           # no new entries for the rest of the UTC day after losing this much
         "daily_lock_from": 0.05,            # profit lock: once up this much on the day...
         "daily_giveback": 0.5,              # ...stop for the day after giving back this share of the day's best gain (0 = off)
