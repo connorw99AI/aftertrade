@@ -268,7 +268,7 @@ def cmd_new_lab(cfg, a):
     open_n = st.one("SELECT COUNT(*) n FROM positions WHERE status='OPEN'")["n"]
     st.conn.close()
     if open_n and not a.force:
-        print(f"{open_n} bot positions are still open. Close them first (dashboard Positions page), or pass --force.")
+        print(f"{open_n} bot positions are still open. Close them first (dashboard Trades page, Open tab), or pass --force.")
         return 2
     if a.confirm != "NEW LAB":
         print('This archives the database and starts a fresh lab: new balance snapshot and allocations on the next arm.')
