@@ -4,22 +4,14 @@ import { BOTS, Creature, CREATURES } from "@/components/Creature";
 import { Tabs } from "@/components/Bits";
 import { Any, api, confirmAction, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
+import { alertGroupTitle, alertKind, reasonText } from "@/lib/wording";
 
 const STAGE: Record<string, [string, string]> = {
   skipped_sizing: ["Skipped at sizing", "loss"], auditor_held: ["Held by auditor", "warnc"], risk_rejected: ["Rejected by risk", "loss"],
   approved: ["Approved", "gain"], other: ["", ""],
 };
 
-const REASON: Record<string, string> = {
-  MIN_LOT_EXCEEDS_RISK_BUDGET: "minimum lot too big for the budget", MAX_ENTRIES_PER_DAY: "5 trades today already",
-  DAILY_LOSS_LIMIT: "daily loss stop", DAILY_PROFIT_TARGET_REACHED: "daily profit stop", MAX_POSITIONS_PER_BOT: "2 trades already open",
-  MAX_DRAWDOWN_LIMIT: "drawdown pause", INSUFFICIENT_BOT_FREE_CAPITAL: "not enough free money", ACCOUNT_MARGIN_LEVEL_LOW: "account margin level low",
-  SPREAD_TOO_WIDE: "spread too wide", R04_SPREAD_EXPANSION: "spread spike", R03_STALE_QUOTE: "stale price", R01_SESSION_CLOSED: "market closed",
-  R05_INSUFFICIENT_DATA: "not enough bars", R10_CORRELATED_SHOCK: "gold+silver shock", ORDER_IN_FLIGHT_FOR_SYMBOL: "order already in flight",
-  BLOCKING_ALERTS: "an alert is blocking entries", RECONCILIATION_UNCERTAIN: "records not reconciled", GLOBAL_PAUSE: "all bots paused",
-  KILL_SWITCH_ACTIVE: "kill switch", ACCOUNT_NOT_HEDGING: "account not hedging",
-};
-const reason = (k: string) => REASON[k] ?? k.replace(/^R\d+_/, "").replace(/_/g, " ").toLowerCase();
+const reason = reasonText;
 
 export default function Activity() {
   const [bot, setBot] = useState("");
@@ -28,10 +20,11 @@ export default function Activity() {
   const funnel: Any[] = (span === "today" ? data?.funnel : data?.funnel_7d) ?? [];
   const alerts: Any[] = data?.alerts ?? [];
 
-  // identical alerts (same severity and message) are shown once with a count and resolved together
+  // alerts of the same kind (e.g. several vanished trades) are shown once with a count and resolved together
   const groups = Object.values(alerts.reduce((acc: Record<string, Any>, a) => {
-    const k = `${a.severity}|${a.message}`;
-    (acc[k] ??= { ...a, codes: [] as string[], first: a.ts, last: a.ts }).codes.push(a.code);
+    const k = `${a.severity}|${alertKind(a.code)}`;
+    (acc[k] ??= { ...a, kind: alertKind(a.code), codes: [] as string[], messages: [] as string[], first: a.ts, last: a.ts }).codes.push(a.code);
+    acc[k].messages.push(a.message);
     if (a.ts < acc[k].first) acc[k].first = a.ts;
     if (a.ts > acc[k].last) acc[k].last = a.ts;
     return acc;
@@ -58,7 +51,12 @@ export default function Activity() {
             {groups.map((g) => (
               <li key={g.id} className={`sev-${g.severity}`}>
                 <b>{g.severity}</b>
-                <span className="alert-msg">{g.message}{g.codes.length > 1 && <span className="alert-count">×{g.codes.length}</span>}</span>
+                <span className="alert-msg">
+                  {g.codes.length > 1 ? (
+                    <details><summary>{alertGroupTitle(g.kind, g.codes.length)}</summary>
+                      <ul className="alert-items">{g.messages.map((m: string, i: number) => <li key={i}>{m}</li>)}</ul></details>
+                  ) : g.message}
+                </span>
                 <span className="muted small">{g.codes.length > 1 ? `${when(g.first)} to ${when(g.last)}` : when(g.ts)}{g.blocks_entries ? ", blocks new entries" : ""}</span>
                 <button className="small-btn" onClick={() => resolve(g)}>{g.codes.length > 1 ? `Resolve all ${g.codes.length}` : "Resolve"}</button>
               </li>

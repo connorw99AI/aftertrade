@@ -6,6 +6,7 @@ import { Creature, CREATURES } from "@/components/Creature";
 import { Compare2 } from "@/components/TestResult";
 import { Any, api, confirmAction, money, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
+import { blockDetail, capitalise, reasonText } from "@/lib/wording";
 
 const GRADE_TONE: Record<string, string> = { keep: "gain", retire: "loss", watch: "warnc", "too early": "muted" };
 
@@ -123,16 +124,17 @@ export default function Assessor() {
       <h2>What got blocked (last 7 days)</h2>
       {(data?.blocks ?? []).length === 0 ? <p className="empty">Nothing blocked.</p> : (
         <div className="table-wrap"><table>
-          <thead><tr><th>Check</th><th>By</th><th className="n">Times</th><th>Bots</th><th>Example</th></tr></thead>
-          <tbody>{data.blocks.map((g: Any) => <tr key={g.code}><td>{g.code}</td><td>{g.by}</td><td className="n">{g.count}</td>
-            <td className="small">{g.bots.join(", ")}</td><td className="muted small">{String(g.example)}</td></tr>)}</tbody>
+          <thead><tr><th>Why it was blocked</th><th>Checked by</th><th className="n">Times</th><th>Bots</th><th>Detail</th></tr></thead>
+          <tbody>{data.blocks.map((g: Any) => <tr key={g.code}><td title={g.code}>{capitalise(reasonText(g.code))}</td>
+            <td>{g.by === "auditor" ? "Market auditor" : "Risk engine"}</td><td className="n">{g.count}</td>
+            <td className="small">{g.bots.join(", ")}</td><td className="muted small">{blockDetail(g.code, g.example)}</td></tr>)}</tbody>
         </table></div>)}
 
       <h2>Stops and targets put back</h2>
       {(data?.protection ?? []).length === 0 ? <p className="empty">None needed: every open trade has kept its stop-loss and take-profit.</p> : (
         <ul className="feed">{data.protection.map((e: Any, i: number) => { const p = JSON.parse(e.payload_json || "{}"); return (
           <li key={i}><span className="when">{when(e.ts)}</span><span className="who">{e.bot_id}</span>
-            <span>{e.kind === "PROTECTION_RESTORED" ? "restored" : "could not restore"} SL {p.set_sl} / TP {p.set_tp} on {p.symbol} #{p.ticket}</span><span /></li>); })}</ul>)}
+            <span>{e.kind === "PROTECTION_RESTORED" ? "restored" : "could not restore"} stop-loss {p.set_sl} and take-profit {p.set_tp} on {p.symbol} trade #{p.ticket}</span><span /></li>); })}</ul>)}
 
       <h2>Review log</h2>
       <ul className="feed">{(data?.recent_reviews ?? []).map((r: Any) => (

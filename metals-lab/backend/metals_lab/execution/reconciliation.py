@@ -73,19 +73,20 @@ class Reconciler:
                 bot = pos["bot_id"] if pos else self.bot_for_magic(int(d.get("magic") or 0))
                 if bot is None:
                     self.db.alert("HIGH", f"UNKNOWN_DEAL_{d['ticket']}",
-                                  f"deal on {d.get('symbol')} not owned by any bot (manual trade or other EA)", blocks_entries=True)
+                                  f"MT5 recorded a {d.get('symbol')} deal (#{d['ticket']}) that no bot made: a manual trade or another EA. "
+                                  "Check it in MT5, then resolve this alert", blocks_entries=True)
                 elif pos is None and d.get("entry") == self.gw.const("DEAL_ENTRY_IN"):
                     # Known magic but untracked position: adopt only if a matching intent exists.
                     if not self._adopt_from_intent(d, bot):
                         self.db.alert("HIGH", f"UNTRACKED_POSITION_{d.get('position_id')}",
-                                      f"bot-magic deal for untracked position on {d.get('symbol')}", blocks_entries=True)
+                                      f"A {d.get('symbol')} trade carries {bot}'s number but the lab never sent it. Check it in MT5, then resolve this alert", blocks_entries=True)
             else:
                 # balance / credit / charge / correction / bonus: never auto-distributed.
                 self.db.x("INSERT OR IGNORE INTO unallocated_events(ts,amount,deal_ticket,kind) VALUES(?,?,?,?)",
                           (now_iso(), float(d.get("profit") or 0.0), d["ticket"], f"DEAL_TYPE_{dtype}"))
                 self.db.alert("MEDIUM", f"BALANCE_OP_{d['ticket']}",
-                              f"account balance operation {float(d.get('profit') or 0):+.2f} detected; not allocated to any bot. "
-                              "Acknowledge in the Risk centre.", blocks_entries=True)
+                              f"A deposit or withdrawal of {float(d.get('profit') or 0):+.2f} reached the account. It is not given to any bot; "
+                              "resolve this alert to acknowledge it", blocks_entries=True)
             self.db.x("INSERT OR IGNORE INTO deals(ticket,order_ticket,position_id,bot_id,symbol,type,entry,volume,price,profit,"
                       "commission,swap,fee,magic,time,comment,attributed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                       (d["ticket"], d.get("order"), d.get("position_id"), bot, d.get("symbol"), dtype, d.get("entry"),
@@ -106,8 +107,9 @@ class Reconciler:
             if row is None:
                 bot = self.bot_for_magic(int(p.get("magic") or 0))
                 code = f"UNKNOWN_POSITION_{t}"
-                self.db.alert("HIGH", code, f"open position on {p.get('symbol')} not owned by any bot"
-                              + ("" if bot is None else f" (magic of {bot}, no intent)"), blocks_entries=True)
+                self.db.alert("HIGH", code, f"MT5 has an open {p.get('symbol')} trade (#{t}) that no bot owns"
+                              + ("" if bot is None else f": it carries {bot}'s number but the lab never sent it")
+                              + ". Close or keep it in MT5, then resolve this alert", blocks_entries=True)
                 rep.clean = False
                 rep.issues.append(code)
                 continue
@@ -127,7 +129,8 @@ class Reconciler:
             if not outs:
                 rep.clean = False
                 rep.issues.append(f"position {row['ticket']} missing at terminal with no closing deal yet")
-                self.db.alert("HIGH", f"MISSING_CLOSE_{row['ticket']}", "position vanished without a closing deal", blocks_entries=True)
+                self.db.alert("HIGH", f"MISSING_CLOSE_{row['ticket']}", f"Trade #{row['ticket']} ({row['symbol']}, {row['bot_id']}) is gone from MT5 but no closing deal has arrived yet. "
+                              "Usually it shows up within a minute; if not, check the trade in MT5's history", blocks_entries=True)
                 continue
             self.db.x("UPDATE positions SET status='CLOSED', closed_at=?, volume_open=0 WHERE position_key=?",
                       (now_iso(), row["position_key"]))

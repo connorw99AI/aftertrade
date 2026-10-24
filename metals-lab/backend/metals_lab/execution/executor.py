@@ -212,8 +212,8 @@ class Executor:
             if done:
                 self.db.resolve_alert(code)
             else:
-                self.db.alert("HIGH", code, f"{r['symbol']} position {r['ticket']} is missing its stop/target and it could not be "
-                              "set; new entries are blocked until it is fixed", blocks_entries=True)
+                self.db.alert("HIGH", code, f"{r['symbol']} trade #{r['ticket']} is missing its stop-loss or take-profit and the lab could not put it back. "
+                              "Set it in MT5 or close the trade; new trades are blocked until then", blocks_entries=True)
             out.append(info)
         return out
 
@@ -238,6 +238,6 @@ class Executor:
                                 "deviation": int(self.cfg["deviation_points"]), "magic": int(p.magic),
                                 "comment": "ML-unprotected-close", "type_time": self.gw.const("ORDER_TIME_GTC"),
                                 "type_filling": spec.preferred_filling()})
-            self.db.alert("HIGH", f"UNPROTECTED_{ticket}", f"stop could not be set on {spec.symbol} position; closed", blocks_entries=False)
+            self.db.alert("HIGH", f"UNPROTECTED_{ticket}", f"The broker would not accept a stop-loss on the new {spec.symbol} trade (#{ticket}), so the lab closed it", blocks_entries=False)
             return False
         return True

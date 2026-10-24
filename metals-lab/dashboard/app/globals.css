@@ -463,4 +463,5 @@ button:disabled, .controls button:disabled { opacity: .32; filter: grayscale(.7)
 .retired-fold[open] > summary { margin-bottom: 8px; }
 .alert-list li { flex-wrap: nowrap; }
 .alert-list .alert-msg { flex: 1; min-width: 0; }
-.alert-count { margin-left: 8px; font-family: var(--pixel); font-size: .8rem; color: var(--bronze-hi); }
+.alert-items { margin: 6px 0 2px; padding-left: 18px; color: var(--muted); font-size: .86rem; display: grid; gap: 2px; }
+.alert-msg summary { color: var(--text); }

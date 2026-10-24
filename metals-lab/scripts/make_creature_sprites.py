@@ -2,7 +2,7 @@
 
 Usage (needs numpy, pillow, scipy; not part of the lab's runtime dependencies):
     python scripts/make_creature_sprites.py creatures-sheet.png dashboard/public/creatures
-Every long half gets its own colour (LONG_HUE) and every short half its own (SHORT_HUE).
+Colours per half are set in LONG and SHORT below.
 After changing colours, update COLOUR in dashboard/components/Creature.tsx and rebuild the dashboard.
 """
 import sys
@@ -57,31 +57,34 @@ def hsv2rgb(h, s, v):
     b = np.select([k == 0, k == 1, k == 2, k == 3, k == 4, k == 5], [z, z, x, c, c, x])
     return np.dstack([r + m, g + m, b + m]) * 255
 
-# Ten evenly spread hues. Every long has its own, every short has its own, and no short matches its twin.
-LONG_HUE = {1: 28, 2: 140, 3: 228, 4: 200, 5: 318, 6: 0, 7: 52, 8: 272, 9: "ice", 10: 172}
-SHORT_HUE = {1: 200, 2: 318, 3: 28, 4: "ice", 5: 172, 6: 228, 7: 0, 8: 140, 9: 272, 10: 52}
+# Colour per half. None keeps the original art untouched. A number is a hue; a tuple is (hue, saturation x, brightness x)
+# for lighter shades; "ice" is silver-white. Rules: every long differs from every other long, every short from every
+# other short, no short matches its twin, no long is red, no short is blue or green.
+LONG = {1: None, 2: None, 3: None, 4: 200, 5: None, 6: "ice", 7: None, 8: None, 9: 95, 10: None}
+SHORT = {1: (340, 0.65, 1.12), 2: 305, 3: 28, 4: "ice", 5: (262, 0.5, 1.15), 6: 22, 7: 0, 8: (38, 1.25, 1.1), 9: 272, 10: (55, 1.25, 1.25)}
 
-STONE = {6, 9}  # grey-bodied creatures: tint the stone itself, not just the accents
+STONE = {6, 9}  # grey-bodied golems: only the glowing accents change, the stone keeps its detail
 
 def recolour(rgb, al, target, stone=False):
+    if target is None:
+        return rgb
     h, s, v = rgb2hsv(rgb)
-    if target == "ice":  # silver-white: almost no colour, brighter, a cold blue hint
-        w = al > 0.3
-        return hsv2rgb(np.full_like(h, 205.0), np.where(w, np.clip(s * 0.18, 0, 0.14), s), np.where(w, np.clip(v * 1.18 + 0.06, 0, 1), v))
     w = al > 0.3
     sat = w & (s > 0.28) & (v > 0.18)
-    if not stone and sat.sum() > w.sum() * 0.25:  # colourful creature: rotate its dominant hue to the target
-        dom = np.degrees(np.angle(np.mean(np.exp(1j * np.radians(h[sat])))))
-        h2 = (h + (target - dom)) % 360
-        # pull every saturated pixel close to the target so multi-coloured bodies read as one colour
-        diff = ((h2 - target + 180) % 360) - 180
-        h2 = (target + diff * 0.45) % 360
-        return hsv2rgb(np.where(sat, h2, h), s, v)
-    # mostly grey creature (stone golems): tint the stone and recolour the glowing accents
-    h2 = np.full_like(h, float(target))
-    s2 = np.where(sat, np.maximum(s, 0.6), np.clip(s + 0.5, 0.42, 0.62))
-    v = np.where(sat, v, np.clip(v * 1.12, 0, 1))
-    return hsv2rgb(h2, s2, v)
+    if target == "ice":  # silver-white with a cold hint
+        m = sat if stone else w
+        return hsv2rgb(np.where(m, 205.0, h), np.where(m, np.clip(s * 0.18, 0, 0.14), s), np.where(m, np.clip(v * 1.18 + 0.06, 0, 1), v))
+    hue, smul, vmul = target if isinstance(target, tuple) else (target, 1.0, 1.0)
+    dom = np.degrees(np.angle(np.mean(np.exp(1j * np.radians(h[sat])))))
+    # only the body colour changes: eyes, bellies and trim in other colours keep their original look
+    sat = sat & (np.abs(((h - dom + 180) % 360) - 180) < 70)
+    h2 = (h + (hue - dom)) % 360
+    # pull saturated pixels towards the target so a multi-coloured body reads as one colour
+    diff = ((h2 - hue + 180) % 360) - 180
+    h2 = (hue + diff * 0.45) % 360
+    s2 = np.where(sat, np.clip(s * smul, 0, 1), s)
+    v2 = np.where(sat, np.clip(v * vmul, 0, 1), v)
+    return hsv2rgb(np.where(sat, h2, h), s2, v2)
 
 a = np.asarray(Image.open(sheet).convert("RGB")).astype(float)
 bg = np.median(np.concatenate([a[:20].reshape(-1, 3), a[-20:].reshape(-1, 3)]), axis=0)
@@ -92,7 +95,7 @@ for i in range(10):
     box = (int(c * cw), int(r * ch), int((c + 1) * cw), int((r + 1) * ch))
     rgb, al = cut(a, box, bg)
     sid = i + 1
-    save(recolour(rgb, al, LONG_HUE[sid], sid in STONE), al, f"{out}/S{sid:02d}L.png", 320)
-    save(recolour(rgb, al, SHORT_HUE[sid], sid in STONE), al, f"{out}/S{sid:02d}S.png", 320)
+    save(recolour(rgb, al, LONG[sid], sid in STONE), al, f"{out}/S{sid:02d}L.png", 320)
+    save(recolour(rgb, al, SHORT[sid], sid in STONE), al, f"{out}/S{sid:02d}S.png", 320)
 
 print("ok")

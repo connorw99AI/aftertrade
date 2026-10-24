@@ -138,7 +138,7 @@ class Coordinator:
             return self.account
         self.account = check_account(self.ro)
         if self.account.state != AccountState.DEMO:
-            self.db.alert("CRITICAL", "NOT_DEMO", f"connected account rejected: {self.account.reason}", blocks_entries=True)
+            self.db.alert("CRITICAL", "NOT_DEMO", f"Trading blocked: the connected MT5 account is not a demo account ({self.account.reason})", blocks_entries=True)
             if self.db.active_activation():
                 self.db.disarm("non-demo account at startup")
         else:
@@ -148,7 +148,7 @@ class Coordinator:
         self.specs = res.resolved
         self.discovery = res.public()
         for role, why in res.unresolved.items():
-            self.db.alert("HIGH", f"INSTRUMENT_{role}", f"{role}: {why}", blocks_entries=True)
+            self.db.alert("HIGH", f"INSTRUMENT_{role}", f"{role.title()} could not be found in MT5: {why}. Check the symbol names in config.yaml", blocks_entries=True)
         for role in res.resolved:
             self.db.resolve_alert(f"INSTRUMENT_{role}")
         self._setup_clock()
@@ -172,7 +172,7 @@ class Coordinator:
         if saved is not None:
             self.clock = ServerClock(fixed_offset_hours=float(saved))
             return
-        self.db.alert("HIGH", "CLOCK_UNVERIFIED", "server time offset unknown (market closed?); set mt5.server_timezone", blocks_entries=True)
+        self.db.alert("HIGH", "CLOCK_UNVERIFIED", "The broker's clock offset is unknown (often because the market is closed). Set mt5.server_timezone in config.yaml", blocks_entries=True)
 
     def _load_sessions(self):
         exp = self.cfg["mt5"].get("sessions_export")
@@ -189,7 +189,7 @@ class Coordinator:
         act = self.db.active_activation()
         if act and self.account and self.account.fingerprint != act["fingerprint"]:
             self.db.disarm("account changed since activation")
-            self.db.alert("CRITICAL", "ACCOUNT_SWITCHED", "connected account differs from the armed account; activation and approvals revoked",
+            self.db.alert("CRITICAL", "ACCOUNT_SWITCHED", "A different MT5 account is connected than the one you armed, so trading was disarmed. Arm again if this is intended",
                           blocks_entries=True)
 
     # ------------------------------------------------------------- activation
@@ -228,7 +228,7 @@ class Coordinator:
 
     def kill(self, reason: str, operator: str = "operator") -> dict:
         self.db.set_control("kill", "1")
-        self.db.alert("CRITICAL", "KILL_SWITCH", f"kill switch: {reason}", blocks_entries=True)
+        self.db.alert("CRITICAL", "KILL_SWITCH", f"Kill switch on: {reason}. All trades were closed and trading is off until you clear it", blocks_entries=True)
         results = []
         with self._lock:
             for row in self.db.q("SELECT * FROM positions WHERE status='OPEN'"):
@@ -358,7 +358,7 @@ class Coordinator:
             summary = {"time": now.isoformat(), "bots": {}}
             acct = check_account(self.ro)
             if acct.state == AccountState.DISCONNECTED:
-                self.db.alert("HIGH", "DISCONNECTED", "terminal disconnected", blocks_entries=True)
+                self.db.alert("HIGH", "DISCONNECTED", "MT5 is disconnected. Check the terminal is open and logged in", blocks_entries=True)
                 if not self.gw.initialize(self.cfg["mt5"]["terminal_path"], self.cfg["mt5"]["timeout_ms"]):
                     self.account = acct
                     summary["error"] = "disconnected"
@@ -369,7 +369,7 @@ class Coordinator:
             if acct.state != AccountState.DEMO:
                 if self.is_armed():
                     self.db.disarm(f"account state {acct.state.value}")
-                self.db.alert("CRITICAL", "NOT_DEMO", acct.reason, blocks_entries=True)
+                self.db.alert("CRITICAL", "NOT_DEMO", f"Trading blocked: the connected MT5 account is not a demo account ({acct.reason})", blocks_entries=True)
                 summary["error"] = "not demo"
                 return summary
             self._check_activation_binding()
@@ -421,7 +421,7 @@ class Coordinator:
                 self.db.set_control("server_offset_hours", str(measured))
                 self.db.event("CLOCK_OFFSET_CHANGED", None, {"detail": msg})
             else:
-                self.db.alert("HIGH", "CLOCK_MISMATCH", f"configured server timezone disagrees with terminal: {msg}", blocks_entries=True)
+                self.db.alert("HIGH", "CLOCK_MISMATCH", f"mt5.server_timezone in config.yaml does not match the broker's clock: {msg}", blocks_entries=True)
             return
 
     def bot_book(self, bot: str, rep=None):
@@ -700,7 +700,7 @@ class Coordinator:
         view = LiveMarketView(self, {}, utc_now())
         audit = self.auditor.assess(view, row["role"], False, p.proposal_hash, acct.fingerprint or "")
         if audit.decision != Decision.APPROVED:
-            self.db.alert("HIGH", f"CLOSE_DELAYED_{row['ticket']}", f"close of {row['symbol']} delayed: {audit.reasons}", blocks_entries=True)
+            self.db.alert("HIGH", f"CLOSE_DELAYED_{row['ticket']}", f"Closing {row['symbol']} trade #{row['ticket']} was held back: {'; '.join(map(str, audit.reasons))}", blocks_entries=True)
             return {"position": row["position_key"], "outcome": f"AUDIT_{audit.decision.value}"}
         book = self.bot_book(row["bot_id"])
         class _R:  # minimal report stand-in for risk context
