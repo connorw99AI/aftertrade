@@ -1,29 +1,58 @@
 "use client";
 import { useMemo } from "react";
-import { alienArt, SPECIES } from "./alienArt";
+import { assessorArt } from "./alienArt";
 
 export type Mood = "idle" | "asleep" | "hurt" | "busy" | "happy";
 
 export const BOTS = ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10"].flatMap((s) => [`${s}L`, `${s}S`]);
 
-/** Display name and colour per bot (the species), used everywhere a bot is shown. */
-export const CREATURES: Record<string, { name: string; colors: { a: string } }> = Object.fromEntries(
-  [...BOTS, "ASSESSOR"].map((b) => {
-    const art = alienArt(b);
-    const body = art.px.filter((p) => p.layer === "body" && p.c !== "#14131F");
-    const counts: Record<string, number> = {};
-    for (const p of body) counts[p.c] = (counts[p.c] ?? 0) + 1;
-    const a = Object.entries(counts).sort((x, y) => y[1] - x[1])[0]?.[0] ?? "#ccc";
-    return [b, { name: b === "ASSESSOR" ? "The Assessor" : SPECIES[b] ?? b, colors: { a } }];
-  }),
-);
+/** One species per strategy: the long half (bull) and short half (bear) are the same creature in different colours. */
+const SPECIES: Record<string, string> = {
+  S01: "Oculon", S02: "Fanmantis", S03: "Bruiser", S04: "Prismid", S05: "Manyeye",
+  S06: "Magmaw", S07: "Coilhorn", S08: "Snorkler", S09: "Ironhorn", S10: "Hollowheart",
+};
+/** Body colour of each sprite, for chart lines and legends. */
+const COLOUR: Record<string, string> = {
+  S01L: "#E96205", S01S: "#0597E9", S02L: "#33B277", S02S: "#9C33B2", S03L: "#2A5FB7", S03S: "#B7692A",
+  S04L: "#8051B2", S04S: "#54BC79", S05L: "#CB5083", S05S: "#48C2B9", S06L: "#B2551B", S06S: "#1C73B2",
+  S07L: "#EF9E07", S07S: "#EF0671", S08L: "#8736B2", S08S: "#44B237", S09L: "#B27239", S09S: "#7A39B2",
+  S10L: "#27B2A6", S10S: "#B22687",
+};
 
-export function Creature({ bot, size = 96, mood = "idle", label, scene = false }: {
+/** Display name and colour per bot, used everywhere a bot is shown. */
+export const CREATURES: Record<string, { name: string; colors: { a: string } }> = {
+  ...Object.fromEntries(BOTS.map((b) => [b, { name: `${b.endsWith("L") ? "Bull" : "Bear"} ${SPECIES[b.slice(0, 3)]}`, colors: { a: COLOUR[b] } }])),
+  ASSESSOR: { name: "The Assessor", colors: { a: "#E3B341" } },
+};
+
+/** Bull (long) or bear (short) badge for a bot. */
+export function SideIcon({ bot, size = 44 }: { bot: string; size?: number }) {
+  const long = bot.endsWith("L");
+  return <img className="side-icon" src={`/creatures/${long ? "bull" : "bear"}.png`} width={size} height={size}
+              alt={long ? "Long (bull)" : "Short (bear)"} title={long ? "Long half (bull)" : "Short half (bear)"} />;
+}
+
+export function Creature(props: { bot: string; size?: number; mood?: Mood; label?: string; scene?: boolean }) {
+  const { bot, size = 96, mood = "idle", label, scene = false } = props;
+  if (bot === "ASSESSOR") return <PixelCreature {...props} />;
+  if (!COLOUR[bot]) return null;
+  const name = CREATURES[bot].name;
+  return (
+    <span className={`creature sprite mood-${mood} ${scene ? `scene scene-${bot.slice(-1)}` : ""}`} style={{ width: size, height: size }}
+          role="img" aria-label={label ?? `${name}${mood === "asleep" ? ", asleep" : ""}`}>
+      {mood === "busy" && <span className="glow" />}
+      <img className="creature-body" src={`/creatures/${bot}.png`} alt="" draggable={false} />
+      {mood === "asleep" && size >= 60 && <span className="zzz">z</span>}
+      {mood === "happy" && size >= 60 && <span className="sparkle"><i /><i /><i /><i /></span>}
+    </span>
+  );
+}
+
+function PixelCreature({ bot, size = 96, mood = "idle", label, scene = false }: {
   bot: string; size?: number; mood?: Mood; label?: string; scene?: boolean;
 }) {
-  const art = useMemo(() => (CREATURES[bot] ? alienArt(bot) : null), [bot]);
-  if (!art) return null;
-  const gid = `sky-${bot}`;
+  const art = useMemo(() => assessorArt(), []);
+    const gid = `sky-${bot}`;
   const asleep = mood === "asleep";
   const eyes = art.px.filter((p) => p.layer === "eye");
   const eyeRows = new Set(eyes.map((p) => p.y));

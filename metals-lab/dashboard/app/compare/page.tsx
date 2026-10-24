@@ -18,7 +18,7 @@ export default function Compare() {
   return (
     <>
       <div className="page-head"><h1>Compare</h1>
-        <p className="muted">Rule for a live candidate: {rk?.rule ?? "…"}. Picking the best of ten bots still favours luck, so treat the top rank as a shortlist, then test it on history.</p></div>
+        <p className="muted">Rule for a live candidate: {rk?.rule ?? "…"}. Picking the best of 20 bots still favours luck, so treat the top rank as a shortlist, then test it on history.</p></div>
       <section className="panel"><h2>Demo results over time</h2><MultiEquity series={series} /></section>
       <h2>Ranking</h2>
       <div className="table-wrap">

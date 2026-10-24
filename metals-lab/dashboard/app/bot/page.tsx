@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { BotControls, StatusBadge, Tabs } from "@/components/Bits";
-import { Creature, CREATURES } from "@/components/Creature";
+import { Creature, CREATURES, SideIcon } from "@/components/Creature";
 import { RoleThinking } from "@/components/Thinking";
 import { Compare2 } from "@/components/TestResult";
 import { Any, api, confirmAction, minutes, money, pct, when } from "@/lib/api";
@@ -251,7 +251,7 @@ function BotDetail({ id }: { id: string }) {
       <div className="hero">
         <div className="hero-art"><Creature bot={id} size={190} mood={mood} scene /></div>
         <div className="hero-text">
-          <h1>{CREATURES[id]?.name}</h1>
+          <h1 className="hero-title">{CREATURES[id]?.name} <SideIcon bot={id} size={52} /></h1>
           <p><b>{id} {st.name}</b> · <span className={`side-tag side-${id[3]}`}>{side}</span> · {st.timeframes.join(" + ")} · {b.symbols.join(" and ") || st.roles.join(" and ")}</p>
           <p className="muted">{st.description}</p>
           <div className="actions"><StatusBadge status={b.status} extra={b.pause_reason} />

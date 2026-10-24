@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { BotControls, StatusBadge, VerdictPill } from "@/components/Bits";
-import { Creature, CREATURES, Mood } from "@/components/Creature";
+import { Creature, CREATURES, Mood, SideIcon } from "@/components/Creature";
 import { useSummary } from "@/components/Shell";
 import { Any, money } from "@/lib/api";
 
@@ -20,9 +20,8 @@ function BotCard({ b }: { b: Any }) {
   return (
     <Link href={`/bot?id=${b.bot_id}`} className={`botcard bc-${b.side} ${tone}`}>
       <div className="botcard-top">
-        <span className="tf-tag">{b.timeframe}</span>
-        <span className={`side-tag side-${b.side}`}>{b.side === "L" ? "▲ Bull · long" : "▼ Bear · short"}</span>
-        <StatusBadge status={b.status} />
+        <span className="botcard-tags"><span className="tf-tag">{b.timeframe}</span><StatusBadge status={b.status} /></span>
+        <SideIcon bot={b.bot_id} />
       </div>
       <div className="botcard-art"><Creature bot={b.bot_id} size={150} mood={mood(b)} scene /></div>
       <div className="botcard-name">
