@@ -198,6 +198,9 @@ def create_app(state: State) -> FastAPI:
         row = db.one("SELECT params_json FROM bots WHERE bot_id=?", (bot,))
         d["strategy"] = build(bot, json.loads(row["params_json"] or "{}")).describe()
         d["thinking"] = state.coord.thinking().get(bot) if state.coord else None
+        # each parameter save is one new rule version; version 1 is the bot as first created
+        changes = db.q("SELECT operator, created_at FROM config_audit WHERE bot_id=? AND action='PARAMS' ORDER BY id", (bot,))
+        d["rule_changes"] = [{"version": i + 2, "at": r["created_at"], "operator": r["operator"]} for i, r in enumerate(changes)]
         return d
 
     @app.get("/api/bots/{bot}/trades")

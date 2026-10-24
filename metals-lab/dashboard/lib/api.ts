@@ -44,9 +44,18 @@ export const api = {
   put: <T,>(p: string, b: unknown) => call<T>("PUT", p, b),
 };
 
+/* The account currency, set once the summary arrives, so every amount carries its symbol. */
+const SYMBOL: Record<string, string> = { GBP: "£", USD: "$", EUR: "€", JPY: "¥", AUD: "A$", CAD: "C$", CHF: "CHF " };
+let currency = "";
+export function setCurrency(code: string | null | undefined) {
+  if (code) currency = code;
+}
+export const currencySymbol = () => (currency ? SYMBOL[currency] ?? `${currency} ` : "");
+
+/** An amount in the account currency: "£1,234.56", signed "+£3.20" / "−£12.40" / "±£0.00". */
 export function money(v: number | null | undefined, signed = false): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "–";
-  const s = Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const s = currencySymbol() + Math.abs(v).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (!signed) return (v < 0 ? "−" : "") + s;
   return (v > 0 ? "+" : v < 0 ? "−" : "±") + s;
 }
@@ -56,34 +65,23 @@ export function pct(v: number | null | undefined, digits = 2): string {
   return `${v > 0 ? "+" : ""}${v.toFixed(digits)}%`;
 }
 
+/** Day-first date and time in the browser's time zone: "24 Oct, 14:05". */
 export function when(iso: string | null | undefined): string {
   if (!iso) return "–";
   const d = new Date(iso);
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+/** "14:05" in UTC, matching the trading windows. */
+export function utcTime(iso: string | null | undefined): string {
+  if (!iso) return "–";
+  return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any;
 
-export function operatorName(): string {
-  try {
-    return window.localStorage.getItem("metals-lab-operator") || "";
-  } catch {
-    return "";
-  }
-}
-
-/** Ask for confirmation and the operator's name (remembered) before an action that changes trading. */
-export function confirmAction(question: string): string | null {
-  if (!window.confirm(question)) return null;
-  let name = operatorName();
-  if (!name) {
-    name = (window.prompt("Your name for the audit log") || "").trim();
-    if (!name) return null;
-    try { window.localStorage.setItem("metals-lab-operator", name); } catch { /* not persisted */ }
-  }
-  return name;
-}
+export { confirmAction, operatorName } from "./confirm";
 
 export function minutes(m: number | null | undefined): string {
   if (m === null || m === undefined) return "–";

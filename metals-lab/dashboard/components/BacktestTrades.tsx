@@ -1,6 +1,7 @@
 "use client";
 import { Fragment, useState } from "react";
 import { Any, money, when } from "@/lib/api";
+import { Button, EmptyState, Pnl } from "./ui";
 
 const PAGE = 100;
 const px = (v: unknown, sym: string) => (v == null || Number.isNaN(Number(v)) ? "–" : Number(v).toFixed(String(sym).startsWith("XAG") ? 3 : 2));
@@ -11,13 +12,13 @@ const reason = (r: string) => String(r).replace(/_/g, " ").toLowerCase();
 export function BacktestTrades({ trades, restarts = [] }: { trades: Any[]; restarts?: Any[] }) {
   const [page, setPage] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
-  if (!trades.length) return <p className="empty">This run made no trades.</p>;
+  if (!trades.length) return <EmptyState>This run made no trades.</EmptyState>;
   const pages = Math.ceil(trades.length / PAGE);
   const rows = trades.slice(page * PAGE, (page + 1) * PAGE);
   return (
     <>
       {restarts.length > 0 && (
-        <div className="warn">Restarted {restarts.length} time{restarts.length > 1 ? "s" : ""} after the drawdown pause, as if you pressed Start the next day:{" "}
+        <div className="notice">Restarted {restarts.length} time{restarts.length > 1 ? "s" : ""} after the drawdown pause, as if you pressed Start the next day:{" "}
           {restarts.map((r: Any) => `${r.at} (balance ${money(r.equity)})`).join(", ")}.</div>
       )}
       <div className="table-wrap"><table className="history">
@@ -30,9 +31,9 @@ export function BacktestTrades({ trades, restarts = [] }: { trades: Any[]; resta
               <tr className={`clickable ${open === id ? "sel" : ""}`} onClick={() => setOpen(open === id ? null : id)}>
                 <td>{when(t.entry_time)}</td><td>{when(t.exit_time)}</td>
                 <td>{t.side === "LONG" ? "▲" : "▼"} {t.volume} {t.symbol}{t.group_id ? <span className="muted"> (pair leg)</span> : null}</td>
-                <td className="n num">{px(t.entry_price, t.symbol)}</td><td className="n num">{px(t.exit_price, t.symbol)}</td>
-                <td className="n num">{px(t.stop, t.symbol)}</td><td className="n num">{t.target ? px(t.target, t.symbol) : "none"}</td>
-                <td className={`n num ${t.net_pnl >= 0 ? "gain" : "loss"}`}>{money(t.net_pnl, true)}</td>
+                <td className="n">{px(t.entry_price, t.symbol)}</td><td className="n">{px(t.exit_price, t.symbol)}</td>
+                <td className="n">{px(t.stop, t.symbol)}</td><td className="n">{t.target ? px(t.target, t.symbol) : "none"}</td>
+                <td className="n"><Pnl v={t.net_pnl} /></td>
                 <td className="n">{t.r_multiple != null ? Number(t.r_multiple).toFixed(2) : "–"}</td>
                 <td>{reason(t.exit_reason)}{t.ambiguous_exit ? " (ambiguous bar)" : ""}</td>
               </tr>
@@ -48,10 +49,10 @@ export function BacktestTrades({ trades, restarts = [] }: { trades: Any[]; resta
         })}</tbody>
       </table></div>
       {pages > 1 && (
-        <div className="actions pager">
-          <button disabled={page === 0} onClick={() => setPage(page - 1)}>Earlier</button>
+        <div className="actions">
+          <Button disabled={page === 0} onClick={() => setPage(page - 1)}>Earlier</Button>
           <span className="muted small">Trades {page * PAGE + 1}–{Math.min(trades.length, (page + 1) * PAGE)} of {trades.length}</span>
-          <button disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>Later</button>
+          <Button disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>Later</Button>
         </div>
       )}
     </>

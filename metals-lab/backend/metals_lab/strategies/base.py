@@ -293,7 +293,9 @@ class Strategy(ABC):
         txt = lambda iv: ", ".join(f"{a:%H:%M}-{'24:00' if b == d0 + timedelta(days=1) else f'{b:%H:%M}'}" for a, b in iv)
         return {"built_in": self.session_text or "any time", "filter_utc": self.p["hours_utc"],
                 "effective_utc": txt(eff) + " UTC" if eff else "none: the built-in session and the hour filter do not overlap",
-                "all_day": eff == [(d0, d0 + timedelta(days=1))], "day": str(day)}
+                "all_day": eff == [(d0, d0 + timedelta(days=1))], "day": str(day),
+                # minutes after UTC midnight, for drawing the day as a strip
+                "intervals": [[int((a - d0).total_seconds() // 60), int((b - d0).total_seconds() // 60)] for a, b in eff]}
 
     # ------------------------------------------------------------ metadata
     def risk_metadata(self) -> dict:

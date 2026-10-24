@@ -77,22 +77,25 @@ Close the Metal Lab window to stop the lab. The icon never arms trading: the lab
 
 - Until you arm, the loop runs in **shadow mode**: signals, auditor and risk decisions are recorded, and no orders are sent.
 - Start, pause and stop bots from the dashboard or with `metals-lab bot S04L start`. Only RUNNING bots trade once armed.
-- The Overview has **Start all**, **Pause all** and **Kill all**. Each card shows ▶ running, ⏸ paused, ■ stopped, or a skull while the kill switch is on. Kill all asks you to type KILL, closes every bot trade, disarms and blocks new trades until `metals-lab clear-kill`.
+- The Lab page has **Start all**, **Pause all** and **Kill all**. Each card shows ▶ running, ⏸ paused, ■ stopped, or a skull while the kill switch is on. Every action that changes trading opens a dialog that says what will happen (for example "Closes 3 open trades on 2 bots at market now"), asks for your name for the audit log (remembered in this browser), and for Kill all asks you to type KILL. Kill all closes every bot trade, disarms and blocks new trades until `metals-lab clear-kill`.
+- Keys: `/` jumps to any bot by name; on a focused bot card or a bot page, `S` starts and `P` pauses (both through the same dialog).
+- Every amount is shown in the account currency (£ on a GBP account) and dates are day first.
 
 ### Dashboard pages
 
+Six pages, each named for a job. Old addresses (/positions, /history, /compare, /activity, /backtest, /risk, /auditor, /settings) redirect to their new place, so bookmarks keep working.
+
 | Page | What it is for |
 |---|---|
-| Overview | All 20 bots (long and short halves) as creature cards with Start all / Pause all / Kill all; retired halves collapse to one line at the end: status, what each sees on gold and silver now, open trade, today's P&L, trades today, start/pause/stop. Click a creature for its own page. |
-| Bot page | Retire / un-retire. Tabs: Live (checklist, money, open trades, last decision), Trades, Review (the auditor's assessment of its trade outcomes, with suggestions you can test on history and then apply), Rules & settings. |
-| Live | Gold and silver charts updated from a live price stream (about once a second) plus every bot's verdict and how close it is to an entry. Bots decide in the backend on completed candles; the page only displays. |
-| Positions | Every open trade with live P&L, distance to stop and target, and whether the stop/target in MT5 match what the bot set. Close one trade, all of one bot's trades, or everything (each close goes through the auditor and risk checks). |
-| Activity | Open alerts, per-bot counts of entry signals and where they stopped (sizing, auditor, risk, filled) with the main reasons, and the decision feed. |
-| Assessor | Reviews each bot's closed trades automatically after every trade closes and after every backtest. Shows suggestions ranked by strength (test on history, apply, or retire; nothing is applied automatically), a report card per bot, what the auditor and risk engine blocked in the last 7 days, and stops/targets it put back. |
-| History | All closed trades with entry and exit price, profit, time and date; click a trade for each leg's stop-loss, take-profit, price move, and why it entered and exited. CSV download. |
-| Compare | Equity curves of all bots, the live-candidate ranking, latest backtest next to demo results. |
-| Backtest | Download price history from MT5, run one bot or all 20 over a date range you choose with your live risk settings, results in account currency, clear old results. |
-| System | Risk settings and kill switch, auditor rules, MT5 connection, research records. |
+| Lab | Every bot as a creature card: state symbol, bull or bear plaque, today's P&L on the art, a one-line thought written from its live checklist ("1 of 3 conditions for a gold long; missing: …", "Off duty. My window opens at 16:00 UTC."), a readiness meter per metal, equity, today and trades, one Start/Pause button and a ⋯ menu (open, its trades, stop, retire). Zoom changes cards per row; phones get a compact two-column roster. "On duty now" opens a 24-hour strip per bot showing when it can trade today. Retired bots collapse to one line. |
+| Bot page | Who it is, its trading window, rules version (v1, v2… each parameter save is a new version) and Start/Pause/Stop/Retire. Live tab: equity with a sparkline, today, return, trades today; a decision pipeline per metal (Session → Filters → Setup → Sizing → Auditor → Risk → Order) showing where today's entry stopped, with the full checklist one click away; the last 7 days of signals; the last decision as a sentence; open trades with a stop-to-target bar; the equity curve with rule changes marked. Tabs for Trades, Review and Rules & settings. |
+| Live | Gold and silver charts from the live price stream, each open trade's lines ending in its creature; the on-duty strip; every bot's verdict and readiness. Bots decide in the backend on completed candles; the page only displays. |
+| Trades | Open: every trade with live P&L, a bar from stop to target with entry and the current price marked, and whether MT5 still holds the stop and target; close one, one bot's, or all. Closed: a daily P&L calendar for the last eight weeks (click a day to filter), filters, every closed trade with its rules version and reasons, CSV download. |
+| Assessor | Grades (a progress bar until there are enough trades to judge), Leaderboard (one small equity chart per bot on the same scale with the live-candidate checks, and the ranking table), Suggestions to test and apply, and Blocked trades (why trades did or did not happen, what the auditor and risk engine blocked, stops and targets put back). |
+| Research | Download MT5 history (with a coverage timeline of what you have), run one bot or all 20 over a date range with your live risk settings, results by bot name, the newest run opened automatically, and backtest results next to demo results. |
+| System | Risk controls and every limit written as a sentence, account and capital, the audit log grouped ("Initial allocation, all 20 bots, £500.00 each"), the market auditor, the MT5 connection, the full decision Log filterable by bot, and research Experiments. |
+
+The bell at the top right holds open alerts on every page; resolve them from its drawer.
 
 ## 4. Manual demo activation (the only way to enable trading)
 
@@ -107,13 +110,13 @@ Close the Metal Lab window to stop the lab. The icon never arms trading: the lab
 On the first activation for an account, the balance is snapshotted once and the allocations are created. Re-arming later never resets them.
 
 - Switching the terminal to another account disarms the system and revokes approvals.
-- Disarm: `metals-lab disarm`, or the Risk centre.
-- Kill everything: the Risk centre kill switch, or `metals-lab kill --reason "..."`.
+- Disarm: `metals-lab disarm`, or System → Risk & safety.
+- Kill everything: Kill all on the Lab page, System → Risk & safety, or `metals-lab kill --reason "..."`.
 - Allocation changes (audited, funded only from unallocated money): `metals-lab allocate --bot S03L --delta -200 --reason "..." --operator "..."`.
 
 ## 5. Historical data and research
 
-The Backtest page does the common steps from the dashboard: **Download history from MT5** for a From/To date range (M1, M5, M15, H1 for both metals), **Run all 20 bots** over a date range, **Clear old results**. Backtests run in a separate process, so the dashboard and the trading loop stay responsive while they run. A year of M1 data makes the M1 bot's backtest take a few minutes. The command line does the same and more:
+The Research page does the common steps from the dashboard: **Download history from MT5** for a From/To date range (M1, M5, M15, H1 for both metals), **Run all 20 bots** over a date range, **Clear old results**. Backtests run in a separate process, so the dashboard and the trading loop stay responsive while they run. A year of M1 data makes the M1 bot's backtest take a few minutes. The command line does the same and more:
 
 ```
 metals-lab fetch-history --days 730 --tf M1 M5 M15 H1        # Parquet cache + manifest + quality report
@@ -126,7 +129,7 @@ metals-lab research --strategy S08 --holdout                    # touches the fi
 - Downloads for different ranges are kept and merged per timeframe, so you can add an earlier year without losing the current one. Use this for out-of-sample checks: the Assessor's filters were chosen on Oct 2025 → Oct 2026, so test them on Oct 2024 → Oct 2025.
 - `metals-lab export-backtests --out reports/backtests.md` writes the latest result per bot.
 - When a backtest hits the 50% drawdown pause, it restarts the bot the next day with a fresh peak, as if you pressed Start, and lists each restart above the run's trades. Live, pressing Start on a drawdown-paused bot also measures the drawdown from that moment.
-- Every run's trades (entry, exit, stop, target, profit, R, and why it entered and exited) are on the Backtest page and on each bot's Trades tab under Backtest trades.
+- Every run's trades (entry, exit, stop, target, profit, R, and why it entered and exited) are on the Research page and on each bot's Trades tab under Backtest trades.
 - `--synthetic` runs the same commands on clearly labelled synthetic data. It only checks the machinery.
 - Reports are written to `reports/`. Every trial, including failures, is stored in the `experiments` table and shown on the Research page.
 - How much history you get is limited by the terminal's "Max bars in chart" setting and by the broker.
@@ -140,7 +143,7 @@ Old databases have ten bots with the old magic numbers. The new loop does not re
 3. In `config\config.yaml` set `capital: bot_fraction: 0.05`.
 4. `.venv\Scripts\metals-lab new-lab --confirm "NEW LAB"`. This moves the old database to `data\archive\` (nothing is deleted) and starts a fresh one with 20 bots.
 5. `scripts\windows\start.bat`, then `metals-lab arm --operator "Your Name"`. The balance is snapshotted again and allocations are created.
-6. Start the halves you want from the Overview.
+6. Start the halves you want from the Lab page.
 
 ## 7. Moving to a server later
 

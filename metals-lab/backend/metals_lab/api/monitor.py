@@ -20,6 +20,7 @@ from ..execution.coordinator import BOT_IDS
 from ..store import now_iso
 from ..strategies import bot_class, bot_name, is_bot
 from ..timeutil import utc_now
+from .thoughts import allowed_roles, readiness, thought
 
 
 class CloseBody(BaseModel):
@@ -59,11 +60,13 @@ def register(app: FastAPI, state, auth) -> None:
         c = state.coord
         info = (c.ro.account_info() or {}) if c else {}
         day = _today()
+        now = utc_now()
+        kill = db.get_control("kill") == "1"
         bots, today_total = [], 0.0
         thinking = c.thinking() if c else {}
         for b in BOT_IDS:
             cls = bot_class(b)
-            row = db.one("SELECT status, pause_reason FROM bots WHERE bot_id=?", (b,))
+            row = db.one("SELECT status, pause_reason, config_version FROM bots WHERE bot_id=?", (b,))
             book = c.bot_book(b) if c else None
             ds = db.one("SELECT equity FROM bot_day_start WHERE bot_id=? AND day=?", (b, day))
             eq = book.equity if book else 0.0
@@ -82,8 +85,12 @@ def register(app: FastAPI, state, auth) -> None:
                          "WHERE bot_id=? AND status='OPEN'", (b,))
             for o in opens:  # the checklist is per completed bar; an open trade is known immediately
                 verdicts[o["role"]] = {"verdict": f"IN_TRADE_{o['side']}", "summary": f"in a {o['side'].lower()} trade"}
+            metals = (c.strategy(b).p.get("metals") or "both") if c else "both"
+            window = c.strategy(b).trading_window(now) if c else None
+            roles = th.get("roles") or {}
+            ready = {r: readiness(roles[r], b[3]) for r in allowed_roles(roles, metals)}
             bots.append({
-                "bot_id": b, "name": bot_name(b), "side": b[3], "timeframe": cls.primary_timeframe, "style": cls.style.value,
+                "bot_id": b, "name": bot_name(b), "side": b[3], "timeframe": cls.primary_timeframe, "timeframes": list(cls.timeframes), "style": cls.style.value,
                 "status": row["status"], "pause_reason": row["pause_reason"],
                 "equity": round(eq, 2), "allocation": round(book.allocation, 2) if book else 0.0,
                 "unrealized": round(book.unrealized, 2) if book else 0.0, "shadow": bool(book.shadow) if book else False,
@@ -91,7 +98,13 @@ def register(app: FastAPI, state, auth) -> None:
                 "entries_today": c.entries_today(b) if c else 0,
                 "max_entries_per_day": int(rk.get("max_entries_per_bot_per_day", 0) or 0),
                 "open_positions": opens, "verdicts": verdicts, "thinking_as_of": th.get("bar_time"),
-                "metals": (c.strategy(b).p.get("metals") or "both") if c else "both",
+                "metals": metals, "config_version": row["config_version"],
+                "readiness": {r: v for r, v in ready.items() if v},
+                "trading_window": window,
+                "thought": thought(side=b[3], status=row["status"], kill=kill, stopped_for_day=stopped_for_day, opens=opens,
+                                   th=th, metals=metals, window=window, now=now),
+                # every bot trades the demo account today; reserved so a live bot can never look like a demo one
+                "environment": "demo",
             })
         alerts = db.q("SELECT * FROM alerts WHERE resolved_at IS NULL ORDER BY id DESC")
         bots.sort(key=lambda x: x["status"] == "RETIRED")  # retired halves go last (stable: otherwise in bot order)
@@ -183,11 +196,18 @@ def register(app: FastAPI, state, auth) -> None:
         return {"feed": feed[:lim], "funnel": funnel(days=1), "funnel_7d": funnel(days=7),
                 "alerts": db.q("SELECT * FROM alerts WHERE resolved_at IS NULL ORDER BY id DESC")}
 
-    def funnel(days: int = 1) -> list[dict]:
+    @app.get("/api/funnel")
+    def funnel_api(bot: Optional[str] = None, days: int = 1):
+        """The same funnel as /api/activity, for one bot or all, over 1 to 30 days."""
+        if bot and bot not in BOT_IDS:
+            raise HTTPException(404, "unknown bot")
+        return funnel(days=max(1, min(days, 30)), only=bot)
+
+    def funnel(days: int = 1, only: Optional[str] = None) -> list[dict]:
         """Per bot: entry signals -> skipped at sizing -> held by auditor -> rejected by risk -> approved -> filled."""
         since = (utc_now() - timedelta(days=days)).isoformat()
         out = []
-        for b in BOT_IDS:
+        for b in ([only] if only else BOT_IDS):
             rows = db.q("SELECT outcome, signal_json FROM signals_log WHERE bot_id=? AND ts>=?", (b, since))
             opens = [r for r in rows if str(json.loads(r["signal_json"] or "{}").get("intent", "")).startswith("OPEN")]
             stages = {"signals": len(opens), "skipped_sizing": 0, "auditor_held": 0, "risk_rejected": 0, "approved": 0}

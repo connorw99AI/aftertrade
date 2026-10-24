@@ -173,12 +173,12 @@ class Reconciler:
         sig = prop.get("signal", {})
         key = f"{it['bot_id']}-{deal.get('position_id')}"
         self.db.x("INSERT OR IGNORE INTO positions(position_key,bot_id,ticket,symbol,role,side,volume_initial,volume_open,entry_price,"
-                  "sl,tp,opened_at,status,group_id,reserved_margin,planned_risk,max_hold_bars,signal_json,intent_id) "
-                  "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  "sl,tp,opened_at,status,group_id,reserved_margin,planned_risk,max_hold_bars,signal_json,intent_id,"
+                  "config_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,(SELECT config_version FROM bots WHERE bot_id=?))",
                   (key, it["bot_id"], deal.get("position_id"), it["symbol"], prop.get("role"),
                    "LONG" if it["intent"] == "OPEN_LONG" else "SHORT", vol, vol, deal.get("price"), prop.get("sl"), prop.get("tp"),
                    now_iso(), "OPEN", sig.get("group_id") or key, prop.get("est_margin"), prop.get("planned_risk"),
-                   sig.get("max_hold_bars"), json.dumps(sig), it["intent_id"]))
+                   sig.get("max_hold_bars"), json.dumps(sig), it["intent_id"], it["bot_id"]))
 
     def _adopt_from_intent(self, d: dict, bot: str) -> bool:
         it = self.db.one("SELECT * FROM intents WHERE bot_id=? AND (comment_tag=? OR mt5_order=?)",
@@ -217,11 +217,12 @@ class Reconciler:
                 reasons.add(c or "closed outside the bot (no comment)")
         exit_reason = "; ".join(sorted(reasons)) or "closed"
         self.db.x("INSERT INTO trades(trade_id,bot_id,group_id,position_keys_json,symbol,side,volume,entry_time,exit_time,entry_price,"
-                  "exit_price,gross,commission,swap,fee,net,provisional,entry_rationale,exit_rationale) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)",
+                  "exit_price,gross,commission,swap,fee,net,provisional,entry_rationale,exit_rationale,config_version) "
+                  "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,COALESCE(?,(SELECT config_version FROM bots WHERE bot_id=?)))",
                   (group_id, bot_id, group_id, json.dumps([r["position_key"] for r in rows]),
                    ",".join(sorted({r["symbol"] for r in rows})), ",".join(r["side"] for r in rows),
                    sum(float(r["volume_initial"] or 0) for r in rows), first["opened_at"], now_iso(), first["entry_price"],
-                   exit_price, gross, com, swp, fee, net, sig.get("rationale"), exit_reason))
+                   exit_price, gross, com, swp, fee, net, sig.get("rationale"), exit_reason, first.get("config_version"), bot_id))
         self.db.event("TRADE_CLOSED", bot_id, {"trade_id": group_id, "net": round(net, 2), "gross": round(gross, 2),
                                                "commission": round(com, 2), "swap": round(swp, 2), "fee": round(fee, 2),
                                                "legs": len(rows), "provisional": True,

@@ -174,11 +174,11 @@ class Executor:
     def _record_open_position(self, p: Proposal, spec: InstrumentSpec, intent_id: str, ticket: int, vol: float, price) -> None:
         key = f"{p.bot_id}-{ticket}"
         self.db.x("INSERT OR IGNORE INTO positions(position_key,bot_id,ticket,symbol,role,side,volume_initial,volume_open,entry_price,"
-                  "sl,tp,opened_at,status,group_id,reserved_margin,planned_risk,max_hold_bars,bars_timeframe,signal_json,intent_id) "
-                  "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  "sl,tp,opened_at,status,group_id,reserved_margin,planned_risk,max_hold_bars,bars_timeframe,signal_json,intent_id,"
+                  "config_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,(SELECT config_version FROM bots WHERE bot_id=?))",
                   (key, p.bot_id, ticket, spec.symbol, p.role, p.intent.position_side, vol, vol, price, p.sl, p.tp, now_iso(),
                    "OPEN", p.signal.group_id or key, p.est_margin, p.planned_risk, p.signal.max_hold_bars,
-                   None, json.dumps(p.signal.to_dict(), default=str), intent_id))
+                   None, json.dumps(p.signal.to_dict(), default=str), intent_id, p.bot_id))
 
     def verify_protection(self, rows: list[dict], specs: dict) -> list[dict]:
         """Every cycle: each open bot position must carry the stop-loss and take-profit it was opened with.

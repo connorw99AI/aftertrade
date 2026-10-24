@@ -32,14 +32,14 @@ function spriteFor(bot: string, full: boolean): string | null {
   return COLOUR[bot] ? `/creatures/${bot}.png` : null;
 }
 
-export function Creature(props: { bot: string; size?: number; mood?: Mood; label?: string; scene?: boolean; full?: boolean }) {
-  const { bot, size = 96, mood = "idle", label, scene = false, full = false } = props;
+export function Creature(props: { bot: string; size?: number; mood?: Mood; label?: string; scene?: boolean; full?: boolean; react?: "long" | "short" | null }) {
+  const { bot, size = 96, mood = "idle", label, scene = false, full = false, react = null } = props;
   const src = spriteFor(bot, full);
   if (!src) return null;
   const name = CREATURES[bot].name;
   const sceneCls = scene ? `scene scene-${bot === "ASSESSOR" ? "A" : bot.slice(-1)}` : "";
   return (
-    <span className={`creature sprite mood-${mood} ${sceneCls} ${bot === "ASSESSOR" && !full ? "headshot" : ""}`}
+    <span className={`creature sprite mood-${mood} ${sceneCls} ${bot === "ASSESSOR" && !full ? "headshot" : ""} ${react ? `react-${react}` : ""}`}
           style={{ width: size, height: size, ["--phase" as string]: `${-((Math.max(0, BOTS.indexOf(bot)) * 1.3) % 7)}s` }} role="img" aria-label={label ?? `${name}${mood === "asleep" ? ", retired" : ""}`}>
       {mood === "busy" && <span className="glow" />}
       <img className="creature-body" src={src} alt="" draggable={false} />
@@ -55,8 +55,10 @@ const PIXELS: Record<string, string[]> = {
   pause: ["........", ".XX..XX.", ".XX..XX.", ".XX..XX.", ".XX..XX.", ".XX..XX.", ".XX..XX.", "........"],
   stop: ["........", "........", "..XXXX..", "..XXXX..", "..XXXX..", "..XXXX..", "........", "........"],
   kill: SKULL,
+  retired: ["........", ".XXXXXX.", ".....X..", "....X...", "...X....", "..X.....", ".XXXXXX.", "........"],
 };
-const SYMBOL_TEXT: Record<string, string> = { run: "Running", pause: "Paused", stop: "Stopped", kill: "Kill switch on" };
+const SYMBOL_TEXT: Record<string, string> = { run: "Running", pause: "Paused", stop: "Stopped", kill: "Kill switch on", retired: "Retired" };
+export type SymbolState = "run" | "pause" | "stop" | "kill" | "retired";
 
 /** Which symbol a bot shows. The kill switch overrides everything. */
 export function stateSymbol(status: string, kill: boolean): "run" | "pause" | "stop" | "kill" {
@@ -66,7 +68,7 @@ export function stateSymbol(status: string, kill: boolean): "run" | "pause" | "s
   return "stop";
 }
 
-export function StateSymbol({ state, size = 30 }: { state: "run" | "pause" | "stop" | "kill"; size?: number }) {
+export function StateSymbol({ state, size = 30 }: { state: SymbolState; size?: number }) {
   return (
     <span className={`state-symbol st-${state}`} title={SYMBOL_TEXT[state]} role="img" aria-label={SYMBOL_TEXT[state]}
           style={{ width: size, height: size }}>

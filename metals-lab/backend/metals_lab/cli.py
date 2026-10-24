@@ -19,6 +19,7 @@ from .mt5.gateway import TradingGateway, load_real_backend
 from .mt5.guard import check_account
 from .jsonutil import dumps as jdumps
 from .store import Store, now_iso
+from .strategies import BOT_IDS
 
 
 def _gateway(sim: bool):
@@ -96,7 +97,7 @@ def cmd_arm(cfg, a):
     bal = acct.balance
     print(f"\nDemo account verified (trade_mode == ACCOUNT_TRADE_MODE_DEMO), hedging, server {acct.server}.")
     print(f"Starting balance snapshot (only taken on first activation): {bal:.2f} {acct.currency}")
-    print(f"Each of 10 bots receives {cfg['capital']['bot_fraction']:.0%} = {bal * cfg['capital']['bot_fraction']:.2f} {acct.currency}")
+    print(f"Each of {len(BOT_IDS)} bots receives {cfg['capital']['bot_fraction']:.0%} = {bal * cfg['capital']['bot_fraction']:.2f} {acct.currency}")
     print("Automatic DEMO trading will start for bots whose status is RUNNING.")
     phrase = f"ARM DEMO {fp6}"
     typed = a.confirm if a.confirm is not None else input(f'Type "{phrase}" to arm: ').strip()

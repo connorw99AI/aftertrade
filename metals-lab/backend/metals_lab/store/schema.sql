@@ -104,7 +104,8 @@ CREATE TABLE IF NOT EXISTS positions (
   opened_at TEXT, closed_at TEXT,
   status TEXT NOT NULL,                             -- OPEN | CLOSED
   group_id TEXT, reserved_margin REAL, planned_risk REAL, max_hold_bars INTEGER,
-  bars_timeframe TEXT, signal_json TEXT, intent_id TEXT
+  bars_timeframe TEXT, signal_json TEXT, intent_id TEXT,
+  config_version INTEGER                            -- the bot's rule version when it opened
 );
 
 CREATE TABLE IF NOT EXISTS deals (
@@ -123,7 +124,8 @@ CREATE TABLE IF NOT EXISTS trades (
   entry_time TEXT, exit_time TEXT, entry_price REAL, exit_price REAL,
   gross REAL, commission REAL, swap REAL, fee REAL, net REAL,
   provisional INTEGER NOT NULL DEFAULT 1, finalized_at TEXT,
-  entry_rationale TEXT, exit_rationale TEXT
+  entry_rationale TEXT, exit_rationale TEXT,
+  config_version INTEGER                            -- the bot's rule version when the trade opened
 );
 
 CREATE TABLE IF NOT EXISTS events (

@@ -1,6 +1,10 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CloseBar, VerdictPill } from "@/components/Bits";
+import { closeness, VerdictPill } from "@/components/Bits";
+import { SessionRibbon } from "@/components/SessionRibbon";
+import { useSummary } from "@/components/Shell";
+import { Meter } from "@/components/ui";
 import { CandleChart } from "@/components/CandleChart";
 import { BOTS, Creature, CREATURES } from "@/components/Creature";
 import { RoleThinking } from "@/components/Thinking";
@@ -52,7 +56,7 @@ function LiveChart({ role, title, ticks, overlay, onTf, tf }: {
           {TFS.map((x) => <button key={x} className={x === tf ? "on" : ""} aria-pressed={x === tf} onClick={() => onTf(x)}>{x}</button>)}
         </div>
       </div>
-      {error ? <div className="warn danger">{error}</div> : <CandleChart data={merged} overlay={overlay} />}
+      {error ? <div className="notice notice-danger">{error}</div> : <CandleChart data={merged} overlay={overlay} />}
     </section>
   );
 }
@@ -63,6 +67,7 @@ export default function Live() {
   const [tf, setTf] = useState<Record<string, string>>({ GOLD: "M15", SILVER: "M15" });
   const [focus, setFocus] = useState<{ bot: string; role: string } | null>(null);
   const bots = BOTS;
+  const sum = useSummary();
   const overlay = (role: string) => (focus && focus.role === role ? thinking?.[focus.bot]?.roles?.[role]?.levels ?? [] : []);
   function pick(bot: string, role: string) {
     const same = focus?.bot === bot && focus?.role === role;
@@ -72,11 +77,12 @@ export default function Live() {
   }
   return (
     <>
-      <div className="page-head">
+      <div className="page-head"><div>
         <h1>Live</h1>
-        <p className="muted"><span className={`dot ${live ? "on" : ""}`} /> {live ? "Streaming prices from the terminal" : "Connecting to the price stream…"}.
+        <p className="lede"><span className={`dot ${live ? "on" : ""}`} /> {live ? "Streaming prices from the terminal" : "Connecting to the price stream…"}.
           Bots decide on completed candles in the backend; this page only shows what they see. Click a cell to put that bot&apos;s levels on the chart.</p>
-      </div>
+      </div></div>
+      {sum && <><SessionRibbon bots={sum.bots} serverTime={sum.server_time} storeKey="metal-lab-ribbon-live" /><div style={{ height: 16 }} /></>}
       <div className="live-charts">
         <LiveChart role="GOLD" title="Gold" ticks={ticks} overlay={overlay("GOLD")} tf={tf.GOLD} onTf={(x) => setTf({ ...tf, GOLD: x })} />
         <LiveChart role="SILVER" title="Silver" ticks={ticks} overlay={overlay("SILVER")} tf={tf.SILVER} onTf={(x) => setTf({ ...tf, SILVER: x })} />
@@ -90,7 +96,7 @@ export default function Live() {
               const th = thinking?.[b];
               return (
                 <tr key={b} className={th?.bot_status !== "RUNNING" ? "dim" : ""}>
-                  <td><span className="who"><Creature bot={b} size={30} mood={th?.bot_status === "RETIRED" ? "asleep" : th?.bot_status === "RUNNING" ? "idle" : "still"} /> {CREATURES[b].name} <span className="muted">{b}</span></span></td>
+                  <td><Link href={`/bot?id=${b}`} className="who"><Creature bot={b} size={30} mood={th?.bot_status === "RETIRED" ? "asleep" : th?.bot_status === "RUNNING" ? "idle" : "still"} /> {CREATURES[b].name}</Link></td>
                   <td>{th?.timeframe ?? "–"}</td>
                   {(["GOLD", "SILVER"] as const).map((role) => {
                     const r = th?.roles?.[role];
@@ -99,13 +105,13 @@ export default function Live() {
                       <td key={role}>
                         {r ? (
                           <button className={`cell ${on ? "on" : ""}`} onClick={() => pick(b, role)} title={r.summary}>
-                            <VerdictPill verdict={r.verdict} /> <CloseBar r={r} />
+                            <VerdictPill verdict={r.verdict} /> {(() => { const c = closeness(r, b.slice(-1) as "L" | "S"); return <Meter label="" met={c.met} total={c.total} title={`${c.met} of ${c.total} conditions for its own side met`} />; })()}
                           </button>
                         ) : <span className="muted">–</span>}
                       </td>
                     );
                   })}
-                  <td className="muted small">{th?.bar_time ? new Date(th.bar_time).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "–"}</td>
+                  <td className="muted small">{th?.bar_time ? `${new Date(th.bar_time).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC` : "–"}</td>
                 </tr>
               );
             })}

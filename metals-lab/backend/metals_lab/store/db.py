@@ -27,6 +27,16 @@ class Store:
         self.conn = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA.read_text())
+        self._add_missing_columns()
+
+    # columns added after the first release; CREATE TABLE IF NOT EXISTS does not add them to older databases
+    _LATER_COLUMNS = (("positions", "config_version", "INTEGER"), ("trades", "config_version", "INTEGER"))
+
+    def _add_missing_columns(self) -> None:
+        for table, col, kind in self._LATER_COLUMNS:
+            have = {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if col not in have:
+                self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
 
     # ------------------------------------------------------------- primitives
     def x(self, sql: str, params: Iterable[Any] = ()) -> sqlite3.Cursor:

@@ -8,11 +8,11 @@ Full rules, parameters and per-strategy citations: [STRATEGY_REFERENCE.md](STRAT
 
 Every strategy runs as two independent bots: `S04L` only takes long entries and `S04S` only takes short ones. Each half has its own magic number (`7710000 + strategy*10 + 1` long, `+ 2` short), its own 5% allocation (£150 on a £3,000 account), its own ledger and its own record, so a side that loses can be retired without retiring the strategy. S10 is a two-leg pair, so its halves are split by direction of the trade rather than by a single side: `S10L` buys silver and sells gold when silver is cheap on the ratio, `S10S` does the opposite.
 
-**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. It stops opening trades and keeps its own balance; the two halves never share money, and each starts with 5% of the starting balance. Un-retiring brings it back stopped with that balance. Labs from before this change moved a retired half's balance to the other half; un-retiring moves it back (an audited ledger entry). The Overview has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Overview.
+**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. It stops opening trades and keeps its own balance; the two halves never share money, and each starts with 5% of the starting balance. Un-retiring brings it back stopped with that balance. Labs from before this change moved a retired half's balance to the other half; un-retiring moves it back (an audited ledger entry). The Lab page has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Lab page.
 
 ## Assessor changes applied from the backtest review
 
-The Assessor's ranked suggestions from the October 2025 → October 2026 backtest were applied as defaults. They are **in-sample**: they were chosen on the same year they are judged on, so they will look better on that year than they really are. Validate them on an earlier year (download e.g. 2024-10 → 2025-10 on the Backtest page and run all 20 bots on that range) before trusting them.
+The Assessor's ranked suggestions from the October 2025 → October 2026 backtest were applied as defaults. They are **in-sample**: they were chosen on the same year they are judged on, so they will look better on that year than they really are. Validate them on an earlier year (download e.g. 2024-10 → 2025-10 on the Research page and run all 20 bots on that range) before trusting them.
 
 | Strategy | Filter now on by default | Why (backtest evidence) |
 |---|---|---|

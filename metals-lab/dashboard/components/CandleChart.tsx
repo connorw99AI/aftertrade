@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Any } from "@/lib/api";
+import { CREATURES } from "./Creature";
 
 type Candle = { t: string; o: number; h: number; l: number; c: number; forming?: boolean };
 
@@ -21,9 +22,9 @@ export function useNarrow(): boolean {
 
 function fmtTime(iso: string, tf: string) {
   const d = new Date(iso);
-  if (tf === "D1") return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  if (tf === "M1" || tf === "M5") return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  return d.toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  if (tf === "D1") return d.toLocaleDateString("en-GB", { month: "short", day: "numeric" });
+  if (tf === "M1" || tf === "M5") return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 export function CandleChart({ data, overlay = [] }: { data: Any; overlay?: { label: string; price: number }[] }) {
@@ -66,15 +67,22 @@ export function CandleChart({ data, overlay = [] }: { data: Any; overlay?: { lab
         );
       })}
       {pos.map((p, i) => {
-        const name = p.bot_id;
-        const lines: [string, number | null, string][] = [["entry", p.entry, `${name} ${p.side.toLowerCase()} ${p.volume}`],
-          ["sl", p.sl, `${name} stop`], ["tp", p.tp, `${name} target`]];
-        return lines.filter(([, v]) => v && v > 0).map(([k, v, label]) => (
-          <g key={`${i}-${k}`} className={`lvl lvl-${k}`}>
-            <line x1={0} x2={plotW} y1={y(v as number)} y2={y(v as number)} />
-            <text x={4 + (i % 3) * (narrow ? 110 : 140)} y={y(v as number) - 3}>{label}</text>
-          </g>
-        ));
+        // each bot's lines end in its own creature, so they read without labels; hover for the detail
+        const who = CREATURES[p.bot_id]?.name ?? p.bot_id;
+        const lines: [string, number | null, string][] = [["entry", p.entry, `${who}: ${p.side.toLowerCase()} ${p.volume} lots from ${Number(p.entry).toFixed(digits)}`],
+          ["sl", p.sl, `${who}: stop ${Number(p.sl).toFixed(digits)}`], ["tp", p.tp, `${who}: target ${Number(p.tp).toFixed(digits)}`]];
+        const ix = plotW - 26 - (i % 4) * 26;
+        return lines.filter(([, v]) => v && v > 0).map(([k, v, label]) => {
+          const sz = k === "entry" ? 22 : 15;
+          return (
+            <g key={`${i}-${k}`} className={`lvl lvl-${k}`}>
+              <title>{label}</title>
+              <line x1={0} x2={plotW} y1={y(v as number)} y2={y(v as number)} />
+              <image href={`/creatures/${p.bot_id}.png`} x={ix + (22 - sz) / 2} y={y(v as number) - sz / 2} width={sz} height={sz} />
+              {k !== "entry" && <text x={ix - 4} y={y(v as number) - 3} textAnchor="end">{k === "sl" ? "stop" : "target"}</text>}
+            </g>
+          );
+        });
       })}
       {overlay.map((o, i) => {
         const inside = o.price >= lo && o.price <= hi;
