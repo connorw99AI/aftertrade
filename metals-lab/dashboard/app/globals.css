@@ -515,3 +515,5 @@ svg.chart .marker-label { fill: var(--bronze-hi); font: 10.5px var(--f-mono); }
 .trade-note .v-unlucky { color: var(--st-pause); }
 .workshop { display: grid; gap: var(--s-3); }
 .workshop pre { white-space: pre-wrap; font-size: var(--t-12); background: var(--ink-deep); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--s-2); max-height: 260px; overflow: auto; }
+.workshop-head { align-items: center; gap: var(--s-3); }
+.workshop-head p { flex: 1; }

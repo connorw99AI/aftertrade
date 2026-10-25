@@ -17,6 +17,7 @@ const COLOUR: Record<string, string> = {
 export const CREATURES: Record<string, { name: string; colors: { a: string } }> = {
   ...Object.fromEntries(BOTS.map((b) => [b, { name: CHARACTERS[b].name, colors: { a: COLOUR[b] } }])),
   ASSESSOR: { name: "The Assessor", colors: { a: "#3D5BD9" } },
+  ENGINEER: { name: "The Engineer", colors: { a: "#D9A62E" } },
 };
 
 /** Bull (long) or bear (short) badge for a bot. */
@@ -29,6 +30,7 @@ export function SideIcon({ bot, size = 44 }: { bot: string; size?: number }) {
 /** Image for a bot or the Assessor. The Assessor uses its headshot everywhere except its own page (`full`). */
 function spriteFor(bot: string, full: boolean): string | null {
   if (bot === "ASSESSOR") return full ? "/brand/assessor.png" : "/brand/assessor-head.png";
+  if (bot === "ENGINEER") return full ? "/brand/engineer.png" : "/brand/engineer-head.png";
   return COLOUR[bot] ? `/creatures/${bot}.png` : null;
 }
 
@@ -39,7 +41,7 @@ export function Creature(props: { bot: string; size?: number; mood?: Mood; label
   const name = CREATURES[bot].name;
   const sceneCls = scene ? `scene scene-${bot === "ASSESSOR" ? "A" : bot.slice(-1)}` : "";
   return (
-    <span className={`creature sprite mood-${mood} ${sceneCls} ${bot === "ASSESSOR" && !full ? "headshot" : ""} ${react ? `react-${react}` : ""}`}
+    <span className={`creature sprite mood-${mood} ${sceneCls} ${(bot === "ASSESSOR" || bot === "ENGINEER") && !full ? "headshot" : ""} ${react ? `react-${react}` : ""}`}
           style={{ width: size, height: size, ["--phase" as string]: `${-((Math.max(0, BOTS.indexOf(bot)) * 1.3) % 7)}s` }} role="img" aria-label={label ?? `${name}${mood === "asleep" ? ", retired" : ""}`}>
       {mood === "busy" && <span className="glow" />}
       <img className="creature-body" src={src} alt="" draggable={false} />

@@ -231,7 +231,8 @@ function Workshop() {
   }
   return (
     <>
-      <div className="row-between">
+      <div className="row-between workshop-head">
+        <Creature bot="ENGINEER" size={120} full mood="idle" />
         <p className="muted"><b>The Engineer</b> writes up changes no setting can make: a new rule, a filter, a redesign. Each request says what to
           build, behind a setting that starts off, and how to test it. Copy it for Claude Code; once built, press Assess on the bot and the
           Assessor decides whether the new setting earns its place.</p>
