@@ -49,7 +49,8 @@ if (-not (Test-Path $stamp) -or (Get-Content $stamp -Raw).Trim() -ne $hash) {
   else { Write-Host "Updating the Python environment failed; it will be retried next launch." -ForegroundColor Yellow }
 }
 
-# 3. Apply settings agreed since setup to config\config.yaml (once each, backup kept next to it)
+# 3. Apply settings agreed since setup to config\config.yaml (once each, backup kept next to it), and any one-time
+#    fresh lab the operator asked for (old database archived, never while bot trades are open)
 & $vpy -m metals_lab.cli apply-settings
 
 # 4. Start: open the browser once the server answers, and keep the server in this window (close it to stop the lab)

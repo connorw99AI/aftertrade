@@ -266,12 +266,60 @@ def cmd_apply_settings(cfg, a):
         return 0
     if done:
         print(f"Updated {p} with: {', '.join(done)} (backup saved next to it)")
+    try:
+        msg = pending_lab_reset(p, Path(cfg["storage"]["db_path"]))
+    except Exception as e:  # never stop the lab from starting over this
+        msg = f"New lab skipped: {e}"
+    if msg:
+        print(msg)
     return 0
+
+
+def archive_db(p: Path) -> Path:
+    """Move the database (and its WAL files) to data/archive/ with a timestamp; nothing is deleted."""
+    import shutil
+    arch = p.parent / "archive"
+    arch.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    for suffix in ("", "-wal", "-shm"):
+        f = Path(str(p) + suffix)
+        if f.exists():
+            shutil.move(str(f), str(arch / f"{p.stem}-{stamp}{p.suffix}{suffix}"))
+    return arch
+
+
+# One-time fresh labs the operator asked for, run by the desktop launcher (apply-settings). The marker lives in
+# config.yaml, which survives the reset; the database does not.
+LAB_RESETS = ("2026-10-25-22-bots",)
+LAB_MARK = "# metal-lab new lab done: "
+
+
+def pending_lab_reset(cfg_path: Path, db_path: Path) -> str:
+    """Archive the database once per id in LAB_RESETS. Skipped (and retried next launch) while bot trades are open."""
+    if not cfg_path.exists():
+        return ""
+    text = cfg_path.read_text()
+    todo = [r for r in LAB_RESETS if LAB_MARK + r not in text]
+    if not todo:
+        return ""
+    if db_path.exists():
+        st = Store(db_path)
+        open_n = st.one("SELECT COUNT(*) n FROM positions WHERE status='OPEN'")["n"]
+        st.conn.close()
+        if open_n:
+            return (f"New lab postponed: {open_n} bot trade(s) are still open. Close them (Trades page, Open tab) and "
+                    "restart; the new lab runs on the next launch.")
+        arch = archive_db(db_path)
+        msg = (f"Started a fresh 22-bot lab; the old one is kept in {arch}. Arm it from the command line "
+               "(metals-lab arm) to give every bot its 1/22 share, then press Start.")
+    else:
+        msg = ""
+    cfg_path.write_text(text + "".join(f"{LAB_MARK}{r}\n" for r in todo))
+    return msg
 
 
 def cmd_new_lab(cfg, a):
     """Archive the current database (history kept) so the next start creates a fresh lab with new allocations."""
-    import shutil
     p = Path(cfg["storage"]["db_path"])
     if a.sim:
         p = p.with_name("sim_" + p.name)
@@ -288,13 +336,7 @@ def cmd_new_lab(cfg, a):
         print('This archives the database and starts a fresh lab: new balance snapshot and allocations on the next arm.')
         print('Run again with --confirm "NEW LAB" to proceed.')
         return 2
-    arch = p.parent / "archive"
-    arch.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    for suffix in ("", "-wal", "-shm"):
-        f = Path(str(p) + suffix)
-        if f.exists():
-            shutil.move(str(f), str(arch / f"{p.stem}-{stamp}{p.suffix}{suffix}"))
+    arch = archive_db(p)
     print(f"archived to {arch}; start the lab and arm again (metals-lab arm) to create the 22-bot allocations")
     return 0
 

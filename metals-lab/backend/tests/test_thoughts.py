@@ -219,3 +219,23 @@ def test_next_up_lists_bots_one_condition_from_an_entry():
     assert next_up(**{**base, "now": NOW.replace(hour=21)}) is None                   # outside its window
     blocked = {**th, "roles": {"GOLD": view([("Spread ok", False)], [("Broke the low", True), ("Bullish candle", False)], [])}}
     assert next_up(**{**base, "th": blocked}) is None                                  # a filter fails
+
+
+def test_launcher_starts_a_fresh_lab_once_and_waits_for_open_trades(tmp_path):
+    from metals_lab.cli import LAB_MARK, LAB_RESETS, pending_lab_reset
+    from metals_lab.store import Store
+    cfg_p, db_p = tmp_path / "config.yaml", tmp_path / "metals_lab.db"
+    cfg_p.write_text("risk:\n  risk_per_trade: 0.03\n")
+    st = Store(db_p)
+    st.x("INSERT INTO positions(position_key,bot_id,status) VALUES('k','S01L','OPEN')")
+    st.conn.close()
+    assert "postponed" in pending_lab_reset(cfg_p, db_p)                           # open trade: nothing happens
+    assert db_p.exists() and LAB_MARK not in cfg_p.read_text()
+    st = Store(db_p)
+    st.x("UPDATE positions SET status='CLOSED'")
+    st.conn.close()
+    assert "fresh 22-bot lab" in pending_lab_reset(cfg_p, db_p)
+    assert not db_p.exists() and any((tmp_path / "archive").iterdir())             # archived, not deleted
+    assert all(LAB_MARK + r in cfg_p.read_text() for r in LAB_RESETS)
+    Store(db_p).conn.close()
+    assert pending_lab_reset(cfg_p, db_p) == "" and db_p.exists()                  # only once
