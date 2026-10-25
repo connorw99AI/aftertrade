@@ -24,7 +24,7 @@ MIN_N = 10
 MIN_WINDOW_N = 20  # trades a metal needs in a session before the review suggests changing that metal's windows
 
 STOP_PARAMS = {"S01": "stop_atr", "S02": "stop_atr", "S05": "stop_atr", "S06": "stop_atr", "S07": "stop_atr",
-               "S08": "stop_n", "S09": "stop_atr", "S10": "leg_stop_atr"}
+               "S08": "stop_n", "S09": "stop_atr", "S10": "leg_stop_atr", "S11": "stop_atr"}
 TARGET_PARAMS = {"S01": "reward_risk", "S03": "reward_risk", "S05": "reward_risk", "S06": "reward_risk", "S04": "tp_range_mult"}
 
 # UK time (Europe/London), the clock the trading windows use

@@ -97,7 +97,7 @@ def cmd_arm(cfg, a):
     bal = acct.balance
     print(f"\nDemo account verified (trade_mode == ACCOUNT_TRADE_MODE_DEMO), hedging, server {acct.server}.")
     print(f"Starting balance snapshot (only taken on first activation): {bal:.2f} {acct.currency}")
-    print(f"Each of {len(BOT_IDS)} bots receives {cfg['capital']['bot_fraction']:.0%} = {bal * cfg['capital']['bot_fraction']:.2f} {acct.currency}")
+    print(f"Each of {len(BOT_IDS)} bots receives {cfg['capital']['bot_fraction']:.2%} = {bal * cfg['capital']['bot_fraction']:.2f} {acct.currency}")
     print("Automatic DEMO trading will start for bots whose status is RUNNING.")
     phrase = f"ARM DEMO {fp6}"
     typed = a.confirm if a.confirm is not None else input(f'Type "{phrase}" to arm: ').strip()
@@ -295,7 +295,7 @@ def cmd_new_lab(cfg, a):
         f = Path(str(p) + suffix)
         if f.exists():
             shutil.move(str(f), str(arch / f"{p.stem}-{stamp}{p.suffix}{suffix}"))
-    print(f"archived to {arch}; start the lab and arm again (metals-lab arm) to create the 20-bot allocations")
+    print(f"archived to {arch}; start the lab and arm again (metals-lab arm) to create the 22-bot allocations")
     return 0
 
 

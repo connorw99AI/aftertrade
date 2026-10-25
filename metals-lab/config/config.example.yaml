@@ -19,7 +19,7 @@ instruments:
 #   silver: {windows: [{days: [0,1,2,3,4], start: "01:00", end: "24:00"}], closures: ["2026-12-25"]}
 
 capital:
-  bot_fraction: 0.05             # 20 bots (10 strategies x long and short halves), 5% each of the starting balance
+  bot_fraction: 0.045454         # 22 bots (11 strategies x long and short halves), 1/22 each of the starting balance
 
 # Which metals each bot trades and when is a per-bot setting (bot page > Settings), in UK time:
 #   trade_gold: on, trade_silver: on, gold_windows: "00:00-24:00", silver_windows: "06:00-11:00, 13:00-17:00"

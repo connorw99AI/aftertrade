@@ -29,7 +29,7 @@ def test_assessor_reviews_automatically_when_a_trade_closes(armed, client):
     rows = armed.db.q("SELECT bot_id, source, trigger FROM reviews")
     assert any(r["bot_id"] == "S08L" and r["source"] == "demo" and r["trigger"] == "trade closed" for r in rows)
     a = client.get("/api/assessor").json()
-    assert len(a["cards"]) == 20 and a["last_review_at"]
+    assert len(a["cards"]) == 22 and a["last_review_at"]
     assert next(c for c in a["cards"] if c["bot_id"] == "S08L")["demo"]["grade"]["grade"] == "too early"
 
 
@@ -76,24 +76,3 @@ def test_date_range_download_and_backtest(armed, client):
     assert b["config"]["config"]["start"] == str(mid)
     assert client.post("/api/data/fetch", json={"start": str(end), "end": str(start)}).status_code == 400
 
-
-def test_applied_suggestion_is_recorded_and_folds_until_a_different_one_appears(armed, client):
-    from metals_lab import assessor
-    sug = {"id": "by_session:SILVER Asia 00-07", "title": "Silver Asia 00-07 UK loses", "kind": "parameter",
-           "strength": "moderate", "change": {"silver_windows": "07:00-24:00"}}
-    rid = assessor.store_review(armed.db, "S03L", "backtest:1", "manual", {"stats": {"n": 40}, "suggestions": [sug]})
-    armed.db.x("UPDATE bots SET status='RUNNING' WHERE bot_id='S03L'")
-    body = {"suggestion_id": sug["id"], "change": sug["change"], "operator": "pytest", "review_id": rid}
-    assert client.post("/api/review/S03L/apply", json=body).status_code == 409   # running: pause first
-    armed.db.x("UPDATE bots SET status='PAUSED' WHERE bot_id='S03L'")
-    row = client.post("/api/review/S03L/apply", json=body).json()
-    assert armed.strategy("S03L").p["silver_windows"] == "07:00-24:00" and armed.strategy("S03L").p["gold_windows"] == "00:00-24:00"
-    s = next(x for x in client.get("/api/assessor").json()["suggestions"] if x["bot_id"] == "S03L")
-    assert s["applied"]["config_version"] == row["config_version"] == 2
-    assert armed.db.one("SELECT 1 FROM config_audit WHERE bot_id='S03L' AND action='PARAMS'")
-    # a newer review suggesting a different change shows as open again
-    assessor.store_review(armed.db, "S03L", "backtest:2", "manual",
-                          {"stats": {"n": 60}, "suggestions": [{**sug, "change": {"silver_windows": "07:00-21:00"}}]})
-    s = next(x for x in client.get("/api/assessor").json()["suggestions"] if x["bot_id"] == "S03L")
-    assert s["applied"] is None
-    assert client.post("/api/review/S03L/apply", json={**body, "change": {}}).status_code == 409

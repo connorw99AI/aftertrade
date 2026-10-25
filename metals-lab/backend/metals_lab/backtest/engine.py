@@ -70,6 +70,8 @@ class _Pos:
     swap: float = 0.0
     spread_slip_cost: float = 0.0
     partial: bool = False
+    init_sl: Optional[float] = None   # the stop at entry; breakeven and trailing measure R from it
+    stop_moves: int = 0
 
 
 @dataclass
@@ -173,7 +175,7 @@ class Backtester:
         last_close = {r: np.nan for r in s.roles}
         last_spread = {r: 0.0 for r in s.roles}
         diag = {"decisions": 0, "signals": 0, "rejected_random": 0, "partial_fills": 0, "rejected_margin": 0,
-                "rejected_stops": 0, "skipped_min_lot": 0, "skipped_no_stop": 0, "blocked_auditor": 0,
+                "rejected_stops": 0, "stop_moves": 0, "skipped_min_lot": 0, "skipped_no_stop": 0, "blocked_auditor": 0,
                 "blocked_risk_pause": 0, "blocked_max_positions": 0, "blocked_daily_entry_cap": 0, "gap_fills": 0, "ambiguous_bars_tick_resolved": 0,
                 "group_leg_failures": 0, "daily_pauses": 0, "daily_profit_stops": 0, "daily_profit_locks": 0, "weekly_pauses": 0, "loss_streak_pauses": [], "blocked_cooldown": 0,
                 "blocked_lot_cap": 0, "blocked_daily_headroom": 0, "guard_closes": 0, "drawdown_pause_at": None, "drawdown_restarts": [], "swap_mode_unsupported": []}
@@ -216,7 +218,7 @@ class Backtester:
                 "r_multiple": round(net / p.planned_risk, 4) if p.planned_risk else None, "bars_held": p.bars_held,
                 "entry_rationale": p.signal.rationale, "entry_indicators": p.signal.indicators, "exit_rationale": rationale,
                 "group_id": p.group_id, "ambiguous_exit": ambiguous, "partial_fill": p.partial,
-                "stop": p.sl, "target": p.tp,
+                "stop": p.init_sl if p.init_sl is not None else p.sl, "final_stop": p.sl, "target": p.tp,
             })
             del positions[p.key]
             if net < 0:  # losing streak and cooldown, per the guard
@@ -271,7 +273,7 @@ class Backtester:
             positions[key] = _Pos(key, role, "LONG" if long else "SHORT", vol, fill, sig.stop_price, sig.target_price, t,
                                   self._loss(spec, "", fill, sig.stop_price, vol) + self._cost_per_lot(spec) * vol,
                                   sig, sig.max_hold_bars, sig.group_id, commission=com, spread_slip_cost=entry_cost,
-                                  partial=partial)
+                                  partial=partial, init_sl=sig.stop_price)
             return True
 
         def check_stops(p: _Pos, i: int, t: pd.Timestamp):
@@ -303,7 +305,7 @@ class Backtester:
             elif tp_hit:
                 first = "TP"
             if first == "SL":
-                close_pos(p, sl_px, t, "STOP_LOSS", "protective stop", ambiguous=ambiguous and first == "SL",
+                close_pos(p, sl_px, t, "STOP_LOSS", "protective stop" if not p.stop_moves else "moved stop (breakeven or trailing)", ambiguous=ambiguous and first == "SL",
                           exit_cost=slip * spec.contract_size * p.volume * fx)
             else:
                 close_pos(p, tp_px, t, "TAKE_PROFIT", "target reached", ambiguous=False)
@@ -434,8 +436,14 @@ class Backtester:
             if any(len(f) < 2 for f in frames.values()):
                 continue
             pviews = [PositionView(p.key, p.role, self.specs[p.role].symbol, p.side, p.volume, p.entry, p.opened_at.to_pydatetime(),
-                                   p.bars_held, p.sl, p.tp, p.max_hold, p.group_id) for p in positions.values()]
+                                   p.bars_held, p.sl, p.tp, p.max_hold, p.group_id, meta={"init_sl": p.init_sl})
+                      for p in positions.values()]
             ctx = StrategyContext(T.to_pydatetime(), frames, pviews, self.specs, weekend_flat_from=cfg.risk.weekend_flat_from)
+            for key, new_sl, _why in s.manage_stops(ctx):  # breakeven / trailing: takes effect from the next bar
+                if key in positions:
+                    positions[key].sl = new_sl
+                    positions[key].stop_moves += 1
+                    diag["stop_moves"] += 1
             diag["decisions"] += 1
             sigs = s.generate_signals(ctx)
             if not sigs:

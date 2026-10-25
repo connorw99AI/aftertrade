@@ -120,7 +120,15 @@ class Coordinator:
         if legacy and self.db.one("SELECT 1 FROM capital_snapshot"):
             self.db.alert("CRITICAL", "LAB_UPGRADE_NEEDED",
                           "this database holds the old 10-bot layout; run 'metals-lab new-lab' to archive it and start the "
-                          "20-bot (long/short) lab", blocks_entries=True)
+                          "long/short lab", blocks_entries=True)
+        if self.db.one("SELECT 1 FROM capital_snapshot"):
+            unfunded = [b for b in BOT_IDS if not self.db.one("SELECT 1 FROM ledger WHERE bot_id=? AND kind='ALLOCATION'", (b,))]
+            if unfunded:
+                self.db.alert("MEDIUM", "NEW_BOTS_UNFUNDED",
+                              f"{', '.join(unfunded)} joined after this lab was set up and have no money to trade. Backtest them now; "
+                              "run 'metals-lab new-lab' to start a lab where every bot gets an equal share", blocks_entries=False)
+            else:
+                self.db.resolve_alert("NEW_BOTS_UNFUNDED")
         for sid in BOT_IDS:
             params = (self.cfg.get("strategies", {}).get(sid, {}) or {}).get("params", {})
             build(sid, params)  # validates
@@ -512,8 +520,27 @@ class Coordinator:
             opened = datetime.fromisoformat(r["opened_at"])
             f = frames.get((r["role"], strat.primary_timeframe))
             held = int((f["time"] >= pd.Timestamp(opened).floor("min")).sum()) if f is not None else 0
+            try:
+                init_sl = json.loads(r["signal_json"] or "{}").get("stop_price")
+            except (TypeError, ValueError):
+                init_sl = None
             out.append(PositionView(r["position_key"], r["role"], r["symbol"], r["side"], r["volume_open"], r["entry_price"], opened,
-                                    held, r["sl"], r["tp"], r["max_hold_bars"], r["group_id"]))
+                                    held, r["sl"], r["tp"], r["max_hold_bars"], r["group_id"],
+                                    meta={"init_sl": init_sl if init_sl is not None else r["sl"]}))
+        return out
+
+    def _move_stops(self, bot: str, strat: Strategy, ctx: StrategyContext) -> list[dict]:
+        """Breakeven / trailing stop moves from the bot's exit options. Only the stored stop changes here; the protection
+        check at the start of each cycle sends it to MT5 (and alerts if the broker refuses it)."""
+        out = []
+        for key, new_sl, why in strat.manage_stops(ctx):
+            row = self.db.one("SELECT sl FROM positions WHERE position_key=? AND status='OPEN' AND bot_id=?", (key, bot))
+            if not row:
+                continue
+            self.db.x("UPDATE positions SET sl=? WHERE position_key=?", (new_sl, key))
+            info = {"position": key, "from": row["sl"], "to": new_sl, "why": why}
+            self.db.event("STOP_MOVED", bot, info)
+            out.append(info)
         return out
 
     def _think(self, bot: str, now: datetime) -> None:
@@ -597,11 +624,12 @@ class Coordinator:
         prepared = self.prepared(strat, frames)
         ctx = StrategyContext(now, prepared, self._positions_view(bot, strat, prepared), self.specs,
                               weekend_flat_from=self.cfg["risk"].get("weekend_flat_from"))
+        moved = self._move_stops(bot, strat, ctx) if ctx.positions else []
         sigs = strat.generate_signals(ctx)
         if status != "RUNNING":
             sigs = [s for s in sigs if s.intent.is_risk_reducing]  # paused: manage exits only
         mode = "LIVE" if armed and status == "RUNNING" else ("LIVE_EXIT" if armed else "SHADOW")
-        out = {"status": status, "signals": len(sigs), "mode": mode, "results": []}
+        out = {"status": status, "signals": len(sigs), "mode": mode, "results": [], "stops_moved": moved}
         if not sigs:
             return out
         view = LiveMarketView(self, prepared, now)

@@ -113,6 +113,14 @@ def apply_suggestion(db, coord, bot: str, suggestion_id: str, change: dict, oper
     record it as applied."""
     if not change:
         raise ValueError("this suggestion has no settings change to apply")
+    t = latest_test(db, bot)
+    ok = (t and t["status"] == "DONE" and t["result"] and suggestion_id.startswith("test:") and
+          any(c["verdict"] == "passed" and c["change"] == change and f"test:{c['id']}" == suggestion_id for c in t["result"]["candidates"]))
+    if not ok:
+        raise ValueError("only changes that passed the Assessor's test (more profit, no deeper worst drawdown, confirmed on later "
+                         "history) can be applied; press Test now first")
+    if t["stale"]:
+        raise ValueError("this bot's settings changed after the test ran; test again before applying")
     params = {**current_params(db, bot), **change}
     row = coord.update_params(bot, params, operator)
     db.x("INSERT INTO applied_suggestions(bot_id,suggestion_id,change_json,review_id,source,config_version,operator,applied_at) "
@@ -121,16 +129,65 @@ def apply_suggestion(db, coord, bot: str, suggestion_id: str, change: dict, oper
     return row
 
 
+def latest_test(db, bot: str) -> Optional[dict]:
+    """The newest change test for a bot (optimise.py), with ``stale`` when the bot's settings changed since it ran."""
+    r = db.one("SELECT * FROM optimisations WHERE bot_id=? ORDER BY id DESC LIMIT 1", (bot,))
+    if not r:
+        return None
+    cur = db.one("SELECT config_version FROM bots WHERE bot_id=?", (bot,))
+    out = {k: r[k] for k in ("id", "bot_id", "created_at", "finished_at", "status", "progress", "trigger", "dataset", "start", "end",
+                             "config_version", "error")}
+    out["result"] = json.loads(r["result_json"]) if r["result_json"] else None
+    out["stale"] = bool(cur and r["config_version"] is not None and cur["config_version"] != r["config_version"])
+    return out
+
+
+def _money(v: float) -> str:
+    return f"{v:+,.2f}"
+
+
+def tested_suggestion(t: dict, c: dict) -> dict:
+    """A passed change from a test, as a suggestion card with its numbers."""
+    res = t["result"]
+    bi, bo, ci, co = res["baseline"]["in"], res["baseline"]["out"], c["in"], c["out"]
+    p = res["period"]
+    ev = (f"Found on {p['start']} to {p['found_end']}: net {_money(bi['net'])} -> {_money(ci['net'])}, worst drawdown "
+          f"{bi['dd']:.1%} -> {ci['dd']:.1%} ({bi['n']} -> {ci['n']} trades). Confirmed on {p['confirm_start']} to {p['end']}: "
+          f"net {_money(bo['net'])} -> {_money(co['net'])}, worst drawdown {bo['dd']:.1%} -> {co['dd']:.1%} "
+          f"({bo['n']} -> {co['n']} trades). Best of {res['variants_tried']} variants tried, so expect less than this.")
+    return {"id": f"test:{c['id']}", "title": c["title"], "evidence": ev, "kind": "parameter", "change": c["change"],
+            "strength": None, "confidence": None, "rule_change": None, "gain": c.get("gain"), "verdict": c["verdict"],
+            "tested": {"test_id": t["id"], "baseline": res["baseline"], "candidate": {"in": ci, "out": co}, "period": p,
+                       "stale": t["stale"]}}
+
+
+def suggestions_for(db, b: str) -> list[dict]:
+    """One bot's suggestions: changes that passed the profit-and-drawdown test, then rule ideas (untested, need code).
+    Review settings changes that have not been through a test yet are listed as untested and cannot be applied."""
+    t = latest_test(db, b)
+    tested = t and t["status"] == "DONE" and t["result"]
+    rows = []
+    if tested:
+        rows += [{**tested_suggestion(t, c), "bot_id": b, "source": f"tested on {t['dataset']} history", "review_id": None,
+                  "reviewed_at": t["finished_at"]} for c in t["result"]["candidates"] if c["verdict"] == "passed"]
+    for prefix in ("demo", "backtest"):
+        rv = latest(db, b, prefix)
+        if not rv:
+            continue
+        for s in rv.get("suggestions", []):
+            if s.get("rule_change"):
+                rows.append({**s, "bot_id": b, "source": rv["source"], "review_id": rv["id"], "reviewed_at": rv["created_at"]})
+            elif s.get("change") and not tested:
+                rows.append({**s, "bot_id": b, "source": rv["source"], "review_id": rv["id"], "reviewed_at": rv["created_at"],
+                             "untested": True})
+    return rows
+
+
 def suggestions_ranked(db) -> list[dict]:
     rows = []
     for b in BOT_IDS:
-        for prefix in ("demo", "backtest"):
-            rv = latest(db, b, prefix)
-            if not rv:
-                continue
-            for s in rv.get("suggestions", []):
-                if s.get("change") or s.get("rule_change"):
-                    rows.append({**s, "bot_id": b, "source": rv["source"], "review_id": rv["id"], "reviewed_at": rv["created_at"]})
+        rows += suggestions_for(db, b)
     rows = [x for b in BOT_IDS for x in mark_applied(db, b, [r for r in rows if r["bot_id"] == b])]
-    # still-open suggestions first, strongest first; applied ones after
-    return sorted(rows, key=lambda s: (bool(s.get("applied")), STRENGTH_ORDER.get(s.get("strength"), 3), s["bot_id"]))
+    # open tested changes first (largest confirmed gain first), then untested ideas; applied ones last
+    return sorted(rows, key=lambda s: (bool(s.get("applied")), not s.get("tested"), -(s.get("gain") or 0),
+                                       STRENGTH_ORDER.get(s.get("strength"), 3), s["bot_id"]))

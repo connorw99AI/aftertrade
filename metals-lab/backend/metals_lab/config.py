@@ -18,7 +18,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "instruments": {"gold": None, "silver": None, "reference_symbols": []},
     "sessions": {},                     # optional explicit session windows per role (server time)
-    "capital": {"bot_fraction": 0.05,      # 20 bots (10 strategies x long/short halves), 5% each
+    "capital": {"bot_fraction": 0.045454,  # 22 bots (11 strategies x long/short halves), 1/22 each
                 "apply_assessor_retirements": False},  # true: a fresh lab starts with the assessor's flagged halves retired
     "risk": {
         "risk_per_trade": 0.03,             # default; a bot may override it with strategies.<id>.risk_per_trade
@@ -56,6 +56,9 @@ DEFAULTS: dict[str, Any] = {
         "max_spread_points": {"GOLD": 80, "SILVER": 80},
         "stop_buffer_points": 5,
         "require_stop": True,
+    },
+    "assessor": {
+        "auto_test": True,                  # after each backtest on MT5 history, test candidate changes for that bot (optimise.py)
     },
     "auditor": {
         "ruleset_version": "metals-audit-1.0",

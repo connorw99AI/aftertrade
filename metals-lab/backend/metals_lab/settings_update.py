@@ -32,6 +32,8 @@ UPDATES: list[tuple[str, str, Optional[dict[str, str]]]] = [
     ("2026-10-25-silver-006", "risk", {"big_lot": "{GOLD: 0.1, SILVER: 0.06}"}),
     # the all-metals / all-hours switches are replaced by each bot's own gold/silver switches and trading windows
     ("2026-10-25-windows", "trading", None),
+    # S11 (session momentum) makes 22 bots: each gets 1/22 of the starting balance on the next new-lab
+    ("2026-10-25-22-bots", "capital", {"bot_fraction": "0.045454"}),
 ]
 
 MARK = "# metal-lab settings applied: "

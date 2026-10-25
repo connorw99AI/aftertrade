@@ -196,3 +196,13 @@ CREATE TABLE IF NOT EXISTS applied_suggestions (
   review_id INTEGER, source TEXT, config_version INTEGER, operator TEXT, applied_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_applied_bot ON applied_suggestions(bot_id, suggestion_id);
+
+-- the assessor's tests of candidate changes (optimise.py): one row per run, newest per bot is shown
+CREATE TABLE IF NOT EXISTS optimisations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bot_id TEXT NOT NULL, created_at TEXT NOT NULL, finished_at TEXT,
+  status TEXT NOT NULL,                 -- QUEUED | RUNNING | DONE | FAILED
+  progress TEXT, trigger TEXT, dataset TEXT, start TEXT, "end" TEXT,
+  config_version INTEGER, params_json TEXT, result_json TEXT, error TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_optimisations_bot ON optimisations(bot_id, id);

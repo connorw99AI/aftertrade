@@ -50,11 +50,11 @@ def test_fetch_then_backtest_on_terminal_history_in_account_currency(client, arm
 
 def test_run_all_and_clear(client):
     r = client.post("/api/backtests/run-all", json={"dataset": "synthetic", "synthetic_days": 15}).json()
-    assert len(r["ids"]) == 20
+    assert len(r["ids"]) == 22
     rows = _wait(client, r["ids"], limit=3000)
     assert all(rows[i]["status"] == "DONE" for i in r["ids"]), [rows[i].get("error") for i in r["ids"]]
     c = client.post("/api/backtests/clear").json()
-    assert c["deleted_backtests"] == 20 and client.get("/api/backtests").json() == []
+    assert c["deleted_backtests"] == 22 and client.get("/api/backtests").json() == []
 
 
 def test_fx_from_tick_value():

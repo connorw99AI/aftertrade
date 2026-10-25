@@ -509,3 +509,139 @@ class VolatilityCompressionBreakout(Strategy):
             }
         return out
 
+
+
+class SessionMomentum(Strategy):
+    strategy_id = "S11"
+    ASSESSOR_FILTERS = {}
+    name = "Session Momentum (first half hour -> last half hour)"
+    style = Style.DAY
+    timeframes = ("M5",)
+    primary_timeframe = "M5"
+    min_history_bars = 400  # enough M5 bars to hold the previous session's close
+    magic_offset = 11
+    description = ("Intraday momentum: the move from the previous session's close to the end of the first half hour of the "
+                   "New York metals session tends to continue into the session's last half hour. One trade per metal per "
+                   "day, opened at the start of the last half hour and closed at the session close.")
+    long_rules = ("At session_close - 30 min (New York time): if the first-half-hour return (previous session close -> "
+                  "session_open + 30 min) is above +min_move, OPEN_LONG.")
+    short_rules = "Mirror: first-half-hour return below -min_move -> OPEN_SHORT."
+    exit_rules = ("Close at session_close (New York). Stop stop_atr x ATR(14, M5) from entry; no fixed target. "
+                  "max_hold_bars is a safety cap.")
+    invalidation_rules = "Stop hit, or the session close."
+    filters = "Spread guard; the first half hour must be complete and the previous session's close known; one entry per day."
+    citations = (
+        "Gao, L., Han, Y., Li, S. Z. & Zhou, G. (2018) 'Market intraday momentum', Journal of Financial Economics 129(2):394-414 "
+        "- the first half-hour return predicts the last half-hour return (S&P 500 ETF 1993-2013 and other ETFs and index futures).",
+        "A commodity-futures study (University of Hull repository) reports the same predictability in four commodity futures; "
+        "whether gold or silver were among them is not confirmed here.",
+        "Studies of Chinese metal futures found the day-session effect disappeared there (Pacific-Basin Finance Journal 80, 2023).",
+    )
+    limitations = ("Evidence is strongest for US equities; for spot gold and silver it is unproven and must be tested on your "
+                   "own MT5 history. The session hours follow COMEX (08:20-13:30 New York); spot metals trade around the clock, "
+                   "so the 'open' here is a convention. Few trades (one per metal per day) means results take months to judge.")
+    PARAMS = {
+        "tz": Param("America/New_York", "Session clock (follows US summer time).", ()),
+        "session_open": Param("08:20", "New York: COMEX metals open.", ()),
+        "session_close": Param("13:30", "New York: COMEX metals close.", ()),
+        "min_move": Param(0.0, "Smallest first-half-hour return (as a fraction, 0.001 = 0.1%) that counts as a direction.",
+                          (0.0, 0.001, 0.002)),
+        "stop_atr": Param(2.0, "Stop distance in ATR(14) of M5 bars.", (1.5, 2.0, 3.0)),
+        "max_hold_bars": Param(8, "Safety cap (40 min of M5 bars).", ()),
+        "max_spread_atr": Param(0.25, "Cost guard.", ()),
+    }
+
+    @property
+    def session_text(self):
+        close = _hhmm(self.p["session_close"]) - 30
+        return f"{close // 60:02d}:{close % 60:02d}-{self.p['session_close']} New York (the session's last half hour)"
+
+    def session_windows(self, day):
+        close = _hhmm(self.p["session_close"])
+        start = f"{(close - 30) // 60:02d}:{(close - 30) % 60:02d}"
+        return [local_window(day, self.p["tz"], start, self.p["session_close"])]
+
+    def prepare(self, frames):
+        out = {}
+        o, c = _hhmm(self.p["session_open"]), _hhmm(self.p["session_close"])
+        for key, df in frames.items():
+            df = df.copy()
+            df["atr"] = ind.atr(df, 14)
+            d, mins = _local_minutes(df, self.p["tz"])
+            day = pd.Series(pd.to_datetime(d).values, index=df.index)
+            in_sess = (mins >= o) & (mins < c)
+            # the session's close price: close of its last bar; the previous session's is carried to the next day
+            last_close = df["close"].where(in_sess).groupby(day).last().dropna()  # days with a session only (no weekends)
+            prev_close = last_close.shift(1)
+            df["prev_close"] = day.map(prev_close)
+            # price at the end of the first half hour: close of the bar that ends at open + 30 min
+            first = df["close"].where(mins == o + 25).groupby(day).transform("max")
+            df["first_close"] = first.where(mins >= o + 30)
+            df["r_first"] = df["first_close"] / df["prev_close"] - 1.0
+            df["entry_bar"] = mins == c - 35          # this bar closes at the start of the last half hour
+            df["exit_bar"] = mins >= c - 5            # bars closing at or after the session close
+            df["sday"] = day
+            out[key] = df
+        return out
+
+    def entry_signals(self, ctx):
+        sigs = []
+        for role in self.roles:
+            if ctx.position(role) or not ctx.has(role, "M5", 20):
+                continue
+            r = ctx.last(role, "M5")
+            if not r["entry_bar"] or pd.isna(r["r_first"]) or pd.isna(r["atr"]):
+                continue
+            if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
+                continue
+            mv = float(r["r_first"])
+            if abs(mv) <= self.p["min_move"] or mv == 0:
+                continue
+            vals = {"first_half_hour_return": mv, "prev_session_close": r["prev_close"], "first_half_hour_close": r["first_close"],
+                    "close": r["close"], "atr": r["atr"]}
+            dist = self.p["stop_atr"] * r["atr"]
+            if mv > 0:
+                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, f"first half hour up {mv:+.2%}: ride it into the close", vals,
+                                        stop_price=r["close"] - dist, max_hold_bars=self.p["max_hold_bars"]))
+            else:
+                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, f"first half hour down {mv:+.2%}: ride it into the close", vals,
+                                        stop_price=r["close"] + dist, max_hold_bars=self.p["max_hold_bars"]))
+        return sigs
+
+    def exit_signals(self, ctx):
+        out = []
+        for pos in ctx.positions:
+            r = ctx.last(pos.role, "M5")
+            if r["exit_bar"] or r["sday"] != pd.Timestamp(pd.Timestamp(pos.opened_at).tz_convert(self.p["tz"]).date()):
+                out.append(self.close_signal(ctx, pos, f"session close ({self.p['session_close']} New York)", {"close": r["close"]}))
+        return out
+
+    def diagnose(self, ctx):
+        out = {}
+        for role in self.roles:
+            if not ctx.has(role, "M5", 20):
+                out[role] = {"waiting": "not enough bars yet"}
+                continue
+            r = ctx.last(role, "M5")
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            mv = None if pd.isna(r["r_first"]) else float(r["r_first"])
+            known = mv is not None
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [x for x in (level("Previous session close", r["prev_close"]),
+                                       level("First half hour close", r["first_close"])) if x],
+                "filters": [
+                    chk(f"First half hour complete ({self.p['session_open']} + 30 min New York)", known,
+                        f"return {mv:+.2%}" if known else "not yet today"),
+                    chk(f"Session's last half hour starts ({self.session_text})", bool(r["entry_bar"]),
+                        "entries only at the start of the last half hour"),
+                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
+                        f"spread {fmt(spr, d)}"),
+                ],
+                "long": [chk(f"First half hour up more than {self.p['min_move']:.2%}", known and mv > self.p["min_move"],
+                             f"{mv:+.2%}" if known else "")],
+                "short": [chk(f"First half hour down more than {self.p['min_move']:.2%}", known and mv < -self.p["min_move"],
+                              f"{mv:+.2%}" if known else "")],
+            }
+        return out

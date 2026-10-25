@@ -11,8 +11,7 @@ import { Button, EmptyState, PctDir, Pill, Pnl, Sparkline, Stat, Stats, Table } 
 import { Creature, CREATURES, SideIcon, StateSymbol, stateSymbol } from "@/components/Creature";
 import { useSummary } from "@/components/Shell";
 import { CHARACTERS } from "@/components/characters";
-import { AppliedSuggestion, applySuggestion, changeText } from "@/components/Suggestion";
-import { Compare2 } from "@/components/TestResult";
+import { AppliedSuggestion, applySuggestion, changeText, TestNumbers, TestStatus, testNow } from "@/components/Suggestion";
 import { TradingWindows } from "@/components/TradingWindows";
 import { Any, api, confirmAction, minutes, money, pct, ukMinutes, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
@@ -146,23 +145,21 @@ function ReviewTab({ b, initialSource }: { b: Any; initialSource: string }) {
   const [source, setSource] = useState(initialSource || "demo");
   const { data: runs } = usePoll<Any[]>("/api/backtests", 15000);
   const { data: rv, error, reload } = usePoll<Any>(`/api/review/${id}?source=${encodeURIComponent(source)}`, 0);
-  const [tests, setTests] = useState<Record<string, Any>>({});
+  const { data: test, reload: reloadTest } = usePoll<Any>(`/api/optimise/${id}`, 5000);
   const [msg, setMsg] = useState<string | null>(null);
   const mine = (runs ?? []).filter((r) => r.strategy_id === id && r.status === "DONE");
-  async function test(s: Any) {
-    setMsg(null);
-    try {
-      const ds = source.startsWith("backtest:") && runs?.find((r) => `backtest:${r.id}` === source)?.dataset_key === "synthetic" ? "synthetic" : "mt5";
-      const r = await api.post<Any>(`/api/review/${id}/test`, { change: s.change, dataset: ds });
-      setTests({ ...tests, [s.id]: r });
-    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
-  }
+  const busy = test && (test.status === "QUEUED" || test.status === "RUNNING");
+  useEffect(() => { if (test?.status === "DONE") reload(); }, [test?.id, test?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   async function apply(s: Any) {
     try {
       const m = await applySuggestion(id, s, b.config_version ?? 1);
       if (m) { setMsg(m); reload(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
+  async function runTest() {
+    try { setMsg(await testNow(id)); reloadTest(); } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  }
+  const locked = b.status === "RUNNING" || b.open_positions.length > 0;
   const st = rv?.stats;
   return (
     <>
@@ -178,22 +175,32 @@ function ReviewTab({ b, initialSource }: { b: Any; initialSource: string }) {
       {error && <div className="notice notice-danger">{error}</div>}
       {msg && <div className="notice">{msg}</div>}
       {!rv ? <p className="empty">Reviewing…</p> : <>
-        <h2>Suggestions</h2>
+        <div className="section-head"><h2>Tested changes</h2>
+          <Button size="sm" onClick={runTest} disabled={!!busy}>{busy ? "Testing…" : "Test now"}</Button></div>
+        <p className="muted small">Offered only when a backtest shows more net profit and no deeper worst drawdown, on the history it was found on
+          and again on later history.</p>
+        <TestStatus t={test} />
+        <div className="suggestions">
+          {(rv.tested ?? []).map((s: Any) => s.applied ? <AppliedSuggestion key={s.id} s={s} /> : (
+            <div key={s.id} className="suggestion k-parameter">
+              <div className="row-between"><b>{s.title}</b>{s.gain != null && <Pill tone="strong">confirmed {money(s.gain, true)}</Pill>}</div>
+              <p>Change: <code>{changeText(s.change)}</code></p>
+              <TestNumbers t={s.tested} />
+              <div className="actions">
+                <Button size="sm" onClick={() => apply(s)} disabled={locked || s.tested.stale}
+                        title={s.tested.stale ? "Settings changed after this test; test again" : locked ? "Pause the bot and close its trades first" : ""}>Apply</Button>
+              </div>
+            </div>))}
+          {test?.status === "DONE" && !(rv.tested ?? []).length && <p className="muted small">No change passed the last test. The bot stays as it is.</p>}
+        </div>
+        <h2>Ideas from the trade review</h2>
         <div className="suggestions">
           {rv.suggestions.map((s: Any) => s.applied ? <AppliedSuggestion key={s.id} s={s} /> : (
-            <div key={s.id} className={`suggestion k-${s.kind}`}>
-              <div className="row-between"><b>{s.title}</b>{s.confidence && <Pill>confidence: {s.confidence}</Pill>}</div>
+            <div key={s.id} className={`suggestion k-${s.untested ? "untested" : s.kind}`}>
+              <div className="row-between"><b>{s.title}</b>{s.untested && <Pill tone="muted">not tested</Pill>}</div>
               <p className="muted">{s.evidence}</p>
-              {s.change && <p>Proposed change: <code>{changeText(s.change)}</code></p>}
+              {s.change && <p>Idea: <code>{changeText(s.change)}</code> (tested with the other changes when you press Test now)</p>}
               {s.rule_change && <p>Needs a rule change: <i>{s.rule_change}</i> (ask for it to be coded and tested).</p>}
-              {s.change && (
-                <div className="actions">
-                  <Button size="sm" onClick={() => test(s)}>Test on history</Button>
-                  <Button size="sm" onClick={() => apply(s)} disabled={b.status === "RUNNING" || b.open_positions.length > 0}
-                          title={b.status === "RUNNING" ? "Pause the bot first" : ""}>Apply</Button>
-                </div>
-              )}
-              {tests[s.id] && <Compare2 ids={tests[s.id]} />}
             </div>
           ))}
         </div>

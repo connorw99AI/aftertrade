@@ -261,3 +261,50 @@ def test_guard_lot_caps(specs):
     assert len(res.trades) and res.trades["volume"].max() <= 0.2 + 1e-9
     capped = Backtester(EveryBar(), {("GOLD", "H1"): frame(FLAT * 2)}, specs, cfg(risk=RiskParams(risk_per_trade=0.5, max_lots_per_bot=0.001))).run()
     assert len(capped.trades) == 0 and capped.diagnostics["blocked_lot_cap"] > 0
+
+
+def test_breakeven_and_trailing_stops_move_only_towards_profit():
+    from datetime import datetime, timedelta, timezone
+    from metals_lab.domain import PositionView
+    from metals_lab.strategies.base import StrategyContext
+    from metals_lab.mt5.sim import default_symbols
+    from metals_lab.instruments import spec_from_info
+    spec = spec_from_info("GOLD", default_symbols()["XAUUSD"])
+    t0 = datetime(2026, 3, 2, 10, tzinfo=timezone.utc)
+    times = pd.date_range(t0 - timedelta(minutes=5 * 40), periods=60, freq="5min", tz="UTC")
+    close = np.r_[np.full(40, 2000.0), np.linspace(2000, 2012, 20)]          # flat, then up 12 after entry
+    df = pd.DataFrame({"time": times, "open": close, "high": close + 0.5, "low": close - 0.5, "close": close, "spread": 10})
+    pos = PositionView("k", "GOLD", "XAUUSD", "LONG", 0.1, 2000.0, t0, sl=1996.0, tp=2008.0, meta={"init_sl": 1996.0})
+    ctx = StrategyContext(times[-1].to_pydatetime() + timedelta(minutes=5), {("GOLD", "M5"): df}, [pos], {"GOLD": spec})
+    be = build("S03L", {"breakeven_r": 1.0}).manage_stops(ctx)
+    assert be == [("k", 2000.0, "breakeven after +1R")]                     # +12.5 >= 1R (4): stop to entry
+    tr = build("S03L", {"trail_atr": 2.0}).manage_stops(ctx)
+    assert tr and 2000.0 < tr[0][1] < float(close[-1])                       # trails below price, above entry
+    pos.sl = 2011.0                                                          # already tighter than the trail
+    assert build("S03L", {"trail_atr": 2.0}).manage_stops(ctx) == []         # never loosens
+    assert build("S03L", {}).manage_stops(ctx) == []                         # off by default
+    assert "trail_atr" not in build("S10L").params                           # a pair's legs exit together
+
+
+def test_trailing_drops_the_fixed_target_and_the_backtest_moves_stops(specs):
+    from metals_lab.strategies import STRATEGY_CLASSES
+    from conftest import frames_for_strategy
+    s = build("S08L", {"trail_atr": 3.0})
+    frames = frames_for_strategy(STRATEGY_CLASSES["S08"])
+    res = Backtester(s, frames, specs, BacktestConfig(initial_capital=10_000.0)).run()
+    if len(res.trades):
+        assert res.trades["target"].isna().all()
+        assert res.diagnostics["stop_moves"] > 0
+
+
+def test_session_momentum_trades_the_last_half_hour_and_exits_at_the_close(specs):
+    from metals_lab.data import synthetic
+    s = build("S11L")
+    frames = synthetic.frames_for(("M5",), days=40)
+    res = Backtester(s, frames, specs, BacktestConfig(initial_capital=10_000.0)).run()
+    assert len(res.trades) > 5
+    ny = pd.to_datetime(res.trades["entry_time"], utc=True).dt.tz_convert("America/New_York")
+    assert ((ny.dt.hour * 60 + ny.dt.minute) == 13 * 60).all()               # entries at 13:00 New York (close 13:30 - 30 min)
+    assert (res.trades["side"] == "LONG").all()
+    out = pd.to_datetime(res.trades["exit_time"], utc=True).dt.tz_convert("America/New_York")
+    assert ((out.dt.hour * 60 + out.dt.minute) <= 13 * 60 + 35).all()        # flat by the session close (stop or close)

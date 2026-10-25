@@ -20,6 +20,8 @@ from metals_lab.timeutil import utc_now
 
 from conftest import approve, make_open_proposal
 
+ALLOC = round(200_000 * 0.045454, 2)  # each of the 22 bots gets 1/22 of the simulated 200,000 balance
+
 
 def open_position(c, **kw):
     p = make_open_proposal(c, **kw)
@@ -187,7 +189,7 @@ def test_manual_trade_and_deposit_block_entries(armed):
     audit, risk = approve(c, p)
     assert risk.decision == Decision.REJECTED and any("BLOCKING_ALERTS" in x for x in risk.reasons)
     # deposit is visible but not distributed
-    assert all(c.ledger.allocation(b) == 10000.0 for b in BOT_IDS)
+    assert all(c.ledger.allocation(b) == ALLOC for b in BOT_IDS)
 
 
 def test_close_still_possible_while_paused_and_killed(armed):
@@ -321,10 +323,10 @@ def test_shadow_mode_records_decisions_without_orders(coord, sim):
 
 def test_shadow_mode_sizes_on_would_be_allocation(coord):
     b = coord.bot_book("S08L")
-    assert b.shadow and b.allocation == 10000.0  # 5% of the 200,000 simulated balance, not 0
+    assert b.shadow and b.allocation == ALLOC  # 1/22 of the 200,000 simulated balance, not 0
     coord.arm("pytest")
     real = coord.bot_book("S08L")
-    assert not real.shadow and real.allocation == 10000.0
+    assert not real.shadow and real.allocation == ALLOC
 
 
 def test_per_bot_risk_override_and_cap(armed):
@@ -467,11 +469,11 @@ def test_missing_stop_and_target_are_restored(armed):
 def test_retiring_a_half_keeps_its_balance_on_its_own_book(armed):
     c = armed
     out = c.retire("S08L", "assessor says longs lose", "pytest")
-    assert out["equity"] == 10000.0
-    assert c.bot_book("S08L").equity == c.bot_book("S08S").equity == 10000.0  # halves are independent
+    assert out["equity"] == ALLOC
+    assert c.bot_book("S08L").equity == c.bot_book("S08S").equity == ALLOC  # halves are independent
     assert c.db.one("SELECT status FROM bots WHERE bot_id='S08L'")["status"] == "RETIRED"
     out2 = c.unretire("S08L", "pytest")
-    assert out2["from_other_half"] == out2["from_pool"] == 0.0 and c.bot_book("S08L").equity == 10000.0
+    assert out2["from_other_half"] == out2["from_pool"] == 0.0 and c.bot_book("S08L").equity == ALLOC
     assert c.db.one("SELECT status FROM bots WHERE bot_id='S08L'")["status"] == "STOPPED"
 
 
@@ -479,10 +481,10 @@ def test_unretire_returns_a_balance_moved_by_an_older_lab(armed):
     c = armed
     c.retire("S07S", "x", "pytest")
     c.ledger.transfer_equity("S07S", "S07L", "x", "pytest")  # what retiring did before the halves were independent
-    assert c.bot_book("S07L").equity == 20000.0 and c.bot_book("S07S").equity == 0
+    assert c.bot_book("S07L").equity == pytest.approx(2 * ALLOC) and c.bot_book("S07S").equity == 0
     out = c.unretire_all("pytest")
-    assert [o["bot_id"] for o in out] == ["S07S"] and out[0]["from_other_half"] == 10000.0
-    assert c.bot_book("S07L").equity == c.bot_book("S07S").equity == 10000.0
+    assert [o["bot_id"] for o in out] == ["S07S"] and out[0]["from_other_half"] == pytest.approx(ALLOC)
+    assert c.bot_book("S07L").equity == pytest.approx(ALLOC) and c.bot_book("S07S").equity == pytest.approx(ALLOC)
     assert c.unretire("S07S", "pytest")["from_other_half"] == 0.0  # nothing moved twice
 
 
@@ -504,7 +506,7 @@ def test_fresh_lab_starts_with_assessor_retirements(cfg, sim):
     c.arm("pytest")
     st = {r["bot_id"]: r["status"] for r in c.db.q("SELECT bot_id, status FROM bots")}
     assert st["S03S"] == "RETIRED" and st["S03L"] == "STOPPED" and st["S01L"] == st["S01S"] == "RETIRED"
-    assert all(c.bot_book(b).allocation == 10000.0 for b in ("S03L", "S03S", "S01L", "S08L"))  # every half its own 5%
+    assert all(c.bot_book(b).allocation == ALLOC for b in ("S03L", "S03S", "S01L", "S08L"))  # every half its own share
 
 
 def test_clock_check_ignores_stale_prices_and_flags_a_real_mismatch(armed):

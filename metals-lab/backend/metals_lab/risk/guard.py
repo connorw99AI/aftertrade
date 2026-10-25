@@ -1,6 +1,6 @@
 """Per-bot guard rules ported from the Metal Lab MT5 risk guard (MetalLabRiskGuard.mqh), applied to every bot.
 
-The MQL5 guard protects one account from inside an expert advisor. Here each of the 20 bots is guarded on its own
+The MQL5 guard protects one account from inside an expert advisor. Here each bot is guarded on its own
 balance by the risk engine (live) and the backtester, with the same functions so both agree:
 
 - weekly loss limit (from the bot's balance at the start of the UTC week; holds for the rest of the week)

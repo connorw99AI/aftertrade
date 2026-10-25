@@ -8,11 +8,11 @@ Full rules, parameters and per-strategy citations: [STRATEGY_REFERENCE.md](STRAT
 
 Every strategy runs as two independent bots: `S04L` only takes long entries and `S04S` only takes short ones. Each half has its own magic number (`7710000 + strategy*10 + 1` long, `+ 2` short), its own 5% allocation (£150 on a £3,000 account), its own ledger and its own record, so a side that loses can be retired without retiring the strategy. S10 is a two-leg pair, so its halves are split by direction of the trade rather than by a single side: `S10L` buys silver and sells gold when silver is cheap on the ratio, `S10S` does the opposite.
 
-**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. It stops opening trades and keeps its own balance; the two halves never share money, and each starts with 5% of the starting balance. Un-retiring brings it back stopped with that balance. Labs from before this change moved a retired half's balance to the other half; un-retiring moves it back (an audited ledger entry). The Lab page has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Lab page.
+**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. It stops opening trades and keeps its own balance; the two halves never share money, and each starts with 1/22 of the starting balance (5% in labs set up before S11). Un-retiring brings it back stopped with that balance. Labs from before this change moved a retired half's balance to the other half; un-retiring moves it back (an audited ledger entry). The Lab page has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Lab page.
 
 ## Assessor changes applied from the backtest review
 
-The Assessor's ranked suggestions from the October 2025 → October 2026 backtest were applied as defaults. They are **in-sample**: they were chosen on the same year they are judged on, so they will look better on that year than they really are. Validate them on an earlier year (download e.g. 2024-10 → 2025-10 on the Research page and run all 20 bots on that range) before trusting them.
+The Assessor's ranked suggestions from the October 2025 → October 2026 backtest were applied as defaults. They are **in-sample**: they were chosen on the same year they are judged on, so they will look better on that year than they really are. Validate them on an earlier year (download e.g. 2024-10 → 2025-10 on the Research page and run all the bots on that range) before trusting them.
 
 | Strategy | Hours the backtest preferred, UTC (not applied: every bot starts all day) | Why (backtest evidence) |
 |---|---|---|
@@ -43,13 +43,56 @@ from 20:00 UTC (S06 also stops entering at 18:00 on Fridays) and the broker's ow
 auditor. Expect more losing trades in the hours the backtest flagged, and wider spreads in quiet hours (the spread
 guards stay).
 
-The Assessor's metal and time suggestions write into these settings when you press Apply (the bot must be paused and
-flat): "gold loses while silver wins" switches gold off; a session that loses on one metal while that metal's other
-sessions win removes those hours from that metal's windows only. Sessions are UK time (Asia 00-07, London 07-12,
-London/NY 12-16, New York 16-21, Late 21-24) and measured per metal; a window change is only suggested when that metal
-has at least 20 trades in the session. Applied suggestions are recorded and fold to one line ("Applied in settings vN")
-until a newer review suggests something different. The older `metals`, `hours_utc` and `trading.all_metals/all_hours`
-settings are gone; values still saved are ignored.
+## How the Assessor decides what to suggest
+
+The Assessor's goal is more net profit without deeper losses. Ideas from the trade review alone (cut a losing session,
+lower a target) often trade profit for fewer losses, so no settings change is offered until it has been **tested**
+(`metals_lab/optimise.py`):
+
+1. After every backtest on MT5 history (or **Test now** on the bot's Review tab), the Assessor backtests the bot as it
+   is and with each candidate change, on the same history (`assessor.auto_test: true`).
+2. The history is split by time: the first 70% is where a change is *found*, the last 30% is where it must be *confirmed*.
+3. A change passes when net profit is higher **and the worst drawdown is no deeper** (0.1 percentage point tolerance),
+   first on the found-on period and then again on the confirm-on period. With fewer than 10 trades in the confirm-on
+   period it is "unconfirmed"; helping only where it was found is "probably noise". Neither can be applied.
+4. Candidates go both ways, not just cuts: wider and tighter stops, nearer and further targets, shorter and longer holds,
+   the breakeven and trailing exits on or off, adding back a metal or hours that were cut, plus the review's own ideas
+   (switch off a losing metal, remove a losing UK-time session from that metal's windows; those need 20+ trades in the
+   session). Up to 14 variants per bot.
+5. Passed changes are ranked by the profit they added on the confirm-on period. Every card shows both periods: net
+   profit, worst drawdown and trades, now vs with the change. Trying many variants and keeping the best still favours
+   luck, so expect less than shown.
+
+Apply only works for a change that passed and whose test is current (the bot's settings have not changed since). It is
+recorded and folds to one line ("Applied in settings vN"). Rule ideas that need code stay as text, marked untested.
+The older `metals`, `hours_utc` and `trading.all_metals/all_hours` settings are gone; values still saved are ignored.
+
+## Exit options: breakeven and trailing stop
+
+Every bot except the S10 pair has two exit settings, both off by default:
+
+- `breakeven_r`: once a trade is this many R in profit (R = distance from entry to the original stop), the stop moves to
+  the entry price.
+- `trail_atr`: the stop follows this many ATR(14) behind the best price since entry. When it is on, the fixed target is
+  dropped so winners can run; the strategy's own exit signals and maximum hold still apply.
+
+A stop only ever moves towards profit and stays on the right side of price (respecting the broker's minimum stop
+distance). Backtests move it at each bar close; live, the lab stores the new stop and the per-cycle protection check
+sends it to MT5 (if the broker refuses, entries are blocked and an alert is raised, as for any missing stop). The
+Assessor tests both options per bot; turn them on only when a test passes.
+
+## S11 Session Momentum (added October 2026)
+
+Based on Gao, Han, Li and Zhou (2018), "Market intraday momentum": the return from the previous session's close to the
+end of the first half hour predicts the last half hour's return (shown for US stock ETFs and index futures; a
+commodity-futures study reports the same, but gold and silver are not confirmed). S11 uses the COMEX metals session
+(08:20-13:30 New York): at 13:00 New York it goes long (S11L) if the first half hour was up, short (S11S) if it was
+down, and closes at 13:30. Stop 2 ATR(14) on M5; one trade per metal per day. Unproven for spot metals: backtest it on
+your own MT5 history before trusting it.
+
+With S11 there are 22 bots, each with 1/22 (about 4.5%) of the starting balance (`capital.bot_fraction: 0.045454`; the
+desktop launcher updates your config once). A lab that was set up with 20 bots keeps their 5% shares and S11 has no
+money until you run `metals-lab new-lab`; until then it can be backtested and tested by the Assessor.
 
 No half is retired by default. The Assessor flagged S01L, S01S, S02L, S02S (no edge on either side), S03S, S06S, S07S (shorts lost), S04L and S05L (longs lost); set `capital.apply_assessor_retirements: true` to start a fresh lab with those retired. Retire them yourself once demo results agree. Each filter is a normal setting (`sides`, the metal switches and windows) shown on the bot page, so you can change or remove it.
 

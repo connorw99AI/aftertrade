@@ -33,6 +33,8 @@ Trades short M5 pullbacks to the 20-EMA in the direction of the M15 trend (M15 E
 | `use_session` | off | – | on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now). |
 | `start_hour` | 7 | – | UTC start of liquid hours (used when use_session is on). |
 | `end_hour` | 20 | – | UTC end of liquid hours. |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
 | `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
 | `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
@@ -76,6 +78,8 @@ Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter
 | `entry_end` | 07:00 | – | London time: no new entries after this. |
 | `flat_time` | 07:45 | – | London time: flatten before the 08:00 London open. |
 | `max_spread_atr` | 0.2 | 0.15, 0.2 | Cost guard. |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
 | `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
 | `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
@@ -116,6 +120,8 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 | `use_session` | off | – | on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now). |
 | `session_start` | 08:00 | – | London time: London open. |
 | `session_end` | 21:00 | – | London time: end of the New York afternoon. |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 12-21 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
 | `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
 | `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
@@ -158,6 +164,8 @@ Builds the first half hour of the New York session (08:30-09:00 New York time, w
 | `tp_range_mult` | 1.5 | 1.0, 1.5, 2.0 | Target as multiple of the range. |
 | `max_hold_bars` | 84 | – | Safety cap (7h of M5 bars). |
 | `max_spread_atr` | 0.2 | – | Cost guard. |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
 | `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
 | `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
@@ -200,6 +208,8 @@ Marks the London-morning range (08:00-13:00 London). After a decisive break duri
 | `reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Target multiple. |
 | `max_hold_bars` | 96 | – | Safety cap (8h of M5 bars). |
 | `max_spread_atr` | 0.2 | – | Cost guard. |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | short | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -81 vs shorts +190. |
 | `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
 | `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
@@ -239,6 +249,8 @@ Detects M15 volatility compression (Bollinger Bands inside Keltner Channels for 
 | `max_hold_bars` | 64 | 32, 64, 96 | 16 hours of M15 bars. |
 | `release_window` | 4 | 0, 2, 4, 8 | Bars after the release in which a breakout still counts (1 hour). |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are smaller than H1). |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 0-7,16-24 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
 | `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
 | `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
@@ -277,6 +289,8 @@ Buys sharp M15 pullbacks only when the hourly regime is up (H1 close > H1 SMA200
 | `adx_max` | 40 | 35, 40, 50 | Skip runaway trends. |
 | `max_hold_bars` | 32 | 16, 32, 48 | 8 hours of M15 bars. |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 12-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
 | `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
 | `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
@@ -312,6 +326,8 @@ Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-
 | `max_hold_bars` | 96 | 48, 96 | One day of M15 bars (safety cap). |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
 | `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | both | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 7-12,16-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
 | `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
 | `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
@@ -350,6 +366,8 @@ Each metal is held long or short according to the sign of its own volatility-sca
 | `max_hold_bars` | 48 | 24, 48, 96 | 12 hours of M15 bars. |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
 | `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | both | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 0-7,21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
 | `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
 | `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
@@ -398,3 +416,43 @@ Intraday relative-value strategy on the log gold/silver ratio (M15). When the ra
 - Gatev, E., Goetzmann, W. & Rouwenhorst, K.G. (2006) 'Pairs Trading: Performance of a Relative-Value Arbitrage Rule', Review of Financial Studies 19(3):797-827 (equities; methodology reference).
 - Lucey, B. & co-authors, Trinity College Dublin IIIS DP 55 - dynamic cointegration of gold and silver (weekly COMEX 1978-2002).
 - MPRA paper 109830 - fractional cointegration between gold and silver.
+
+## S11 Session Momentum (first half hour -> last half hour)
+- Style: day | instruments: GOLD, SILVER | timeframes: M5 (decisions on completed M5 bars) | min history: 400 bars | magic: 7710011
+
+Intraday momentum: the move from the previous session's close to the end of the first half hour of the New York metals session tends to continue into the session's last half hour. One trade per metal per day, opened at the start of the last half hour and closed at the session close.
+
+**Long (OPEN_LONG / CLOSE_LONG).** At session_close - 30 min (New York time): if the first-half-hour return (previous session close -> session_open + 30 min) is above +min_move, OPEN_LONG.
+
+**Short (OPEN_SHORT / COVER_SHORT).** Mirror: first-half-hour return below -min_move -> OPEN_SHORT.
+
+**Exits, stops, targets, max holding.** Close at session_close (New York). Stop stop_atr x ATR(14, M5) from entry; no fixed target. max_hold_bars is a safety cap.
+
+**Invalidation.** Stop hit, or the session close.
+
+**Spread, liquidity and volatility filters.** Spread guard; the first half hour must be complete and the previous session's close known; one entry per day.
+
+**Limitations.** Evidence is strongest for US equities; for spot gold and silver it is unproven and must be tested on your own MT5 history. The session hours follow COMEX (08:20-13:30 New York); spot metals trade around the clock, so the 'open' here is a convention. Few trades (one per metal per day) means results take months to judge.
+
+| Parameter | Default | Research grid | Rationale |
+|---|---|---|---|
+| `tz` | America/New_York | – | Session clock (follows US summer time). |
+| `session_open` | 08:20 | – | New York: COMEX metals open. |
+| `session_close` | 13:30 | – | New York: COMEX metals close. |
+| `min_move` | 0.0 | 0.0, 0.001, 0.002 | Smallest first-half-hour return (as a fraction, 0.001 = 0.1%) that counts as a direction. |
+| `stop_atr` | 2.0 | 1.5, 2.0, 3.0 | Stop distance in ATR(14) of M5 bars. |
+| `max_hold_bars` | 8 | – | Safety cap (40 min of M5 bars). |
+| `max_spread_atr` | 0.25 | – | Cost guard. |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
+| `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+
+**Sources.**
+
+- Gao, L., Han, Y., Li, S. Z. & Zhou, G. (2018) 'Market intraday momentum', Journal of Financial Economics 129(2):394-414 - the first half-hour return predicts the last half-hour return (S&P 500 ETF 1993-2013 and other ETFs and index futures).
+- A commodity-futures study (University of Hull repository) reports the same predictability in four commodity futures; whether gold or silver were among them is not confirmed here.
+- Studies of Chinese metal futures found the day-session effect disappeared there (Pacific-Basin Finance Journal 80, 2023).

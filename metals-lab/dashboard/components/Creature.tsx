@@ -3,14 +3,14 @@ import { CHARACTERS } from "./characters";
 
 export type Mood = "idle" | "still" | "asleep" | "hurt" | "busy" | "happy";
 
-export const BOTS = ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10"].flatMap((s) => [`${s}L`, `${s}S`]);
+export const BOTS = ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "S09", "S10", "S11"].flatMap((s) => [`${s}L`, `${s}S`]);
 
 /** Body colour of each sprite, for chart lines and legends. Longs are blues and greens, shorts reds and oranges. */
 const COLOUR: Record<string, string> = {
   S01L: "#9BEA2E", S01S: "#EA7461", S02L: "#40EA6E", S02S: "#EA3732", S03L: "#3371EA", S03S: "#EA8332",
   S04L: "#4EBEEA", S04S: "#EA3140", S05L: "#76DCEA", S05S: "#EAA06F", S06L: "#327EEA", S06S: "#EA7E35",
   S07L: "#62EAB2", S07S: "#EA302E", S08L: "#2A44B8", S08S: "#EAA12E", S09L: "#4FEA51", S09S: "#EA5059",
-  S10L: "#35EADC", S10S: "#EA5F2E",
+  S10L: "#35EADC", S10S: "#EA5F2E", S11L: "#8A5CF0", S11S: "#E0A030",
 };
 
 /** Display name and colour per bot, used everywhere a bot is shown. */

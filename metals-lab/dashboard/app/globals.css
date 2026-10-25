@@ -497,3 +497,12 @@ svg.chart .marker-label { fill: var(--bronze-hi); font: 10.5px var(--f-mono); }
 .windows-editor .chip { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 10px; font-size: var(--t-13); font-variant-numeric: tabular-nums; }
 .windows-editor .chip button { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 2px; font-size: 1em; }
 .windows-editor .switch { display: inline-flex; gap: 6px; align-items: center; font-size: var(--t-13); }
+.test-numbers { font-size: var(--t-13); margin: var(--s-1) 0; }
+.test-numbers td, .test-numbers th { padding: 4px 8px; }
+.test-status summary { cursor: pointer; }
+.test-status .tried { list-style: none; padding: 0; margin: var(--s-1) 0 0; display: grid; gap: 4px; font-size: var(--t-13); }
+.test-status .tried li { border-left: 3px solid var(--line-2); padding-left: var(--s-2); }
+.test-status .tried li.v-passed { border-left-color: var(--st-run); }
+.test-status .tried li.v-noise, .test-status .tried li.v-unconfirmed { border-left-color: var(--bronze-hi); }
+.suggestion.k-untested { border-left-style: dashed; }
+.tests-list { display: grid; gap: var(--s-2); }

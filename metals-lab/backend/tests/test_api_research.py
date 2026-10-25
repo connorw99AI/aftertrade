@@ -26,19 +26,19 @@ def test_api_contracts(client):
     assert s["terminal_kind"] == "SIMULATED" and s["account"]["state"] == "DEMO" and s["armed"] is True
     assert "login" not in json.dumps(s["account"])
     bots = client.get("/api/bots").json()
-    assert len(bots) == 20
+    assert len(bots) == 22
     for b in bots:
         for k in ("bot_id", "name", "style", "symbols", "status", "book", "risk_budget_per_trade", "open_positions",
                   "closed_net_pnl", "return_pct", "max_drawdown_closed_pct", "last_signal", "last_audit", "last_risk", "magic"):
             assert k in b
-        assert b["book"]["allocation"] == 10000.0
+        assert b["book"]["allocation"] == round(200_000 * 0.045454, 2)  # 1/22 each
     d = client.get("/api/bots/S04L").json()
     assert d["strategy"]["citations"] and d["strategy"]["long_rules"]
     assert client.get("/api/strategies").status_code == 200
-    assert client.get("/api/risk").json()["capital_snapshot"]["bot_fraction"] == 0.05
+    assert client.get("/api/risk").json()["capital_snapshot"]["bot_fraction"] == 0.045454
     assert client.get("/api/auditor/decisions").status_code == 200
     assert isinstance(client.get("/api/events?after=0").json(), list)
-    assert len(client.get("/api/compare").json()) == 20
+    assert len(client.get("/api/compare").json()) == 22
 
 
 def test_no_arm_endpoint_exists(client):

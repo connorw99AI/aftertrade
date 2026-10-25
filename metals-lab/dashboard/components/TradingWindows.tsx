@@ -96,7 +96,7 @@ export function TradingWindows({ bot, onDone }: { bot: Any; onDone: () => void }
                   {!locked && w !== ALL_DAY && <button type="button" aria-label={`Remove ${w}`} onClick={() => setWindows(m, list.filter((x) => x !== w))}>×</button>}
                 </span>))}
               {!locked && <>
-                <input aria-label={`Add a ${m} window`} placeholder="06:00-11:00" size={11} value={adding[m]}
+                <input aria-label={`Add a ${m} window`} placeholder="HH:MM-HH:MM" size={11} value={adding[m]}
                   onChange={(e) => setAdding({ ...adding, [m]: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(m); } }} />
                 <Button size="sm" type="button" onClick={() => add(m)}>Add</Button>
                 {vals[`${m}_windows`] !== ALL_DAY && <Button size="sm" type="button" tone="ghost" onClick={() => setWindows(m, [])}>All day</Button>}

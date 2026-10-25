@@ -4,10 +4,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { botAction, StatusBadge, Tabs } from "@/components/Bits";
 import { Creature, CREATURES } from "@/components/Creature";
-import { AppliedSuggestion, applySuggestion, changeText } from "@/components/Suggestion";
-import { Compare2 } from "@/components/TestResult";
+import { AppliedSuggestion, applySuggestion, changeText, TestNumbers, TestStatus, testNow } from "@/components/Suggestion";
 import { Button, domainOf, EmptyState, Pill, Pnl, ProgressBar, Sparkline, Table } from "@/components/ui";
-import { Any, api, confirmAction, when } from "@/lib/api";
+import { Any, api, money, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
 import { blockDetail, capitalise, reasonText } from "@/lib/wording";
 
@@ -67,7 +66,7 @@ function Leaderboard() {
   const need = Number(String(rk?.rule ?? "").match(/(\d+) closed/)?.[1] ?? 50);
   return (
     <>
-      <p className="muted">Rule for a live candidate: {rk?.rule ?? "…"}. Picking the best of {rows.length || 20} bots still favours luck, so treat the top as a shortlist and test it on history it has never seen.
+      <p className="muted">Rule for a live candidate: {rk?.rule ?? "…"}. Picking the best of {rows.length || 22} bots still favours luck, so treat the top as a shortlist and test it on history it has never seen.
         Every chart below uses the same scale, so a flat line is a bot that has barely traded.</p>
       <div className="multiples">
         {rows.map((r) => {
@@ -105,19 +104,38 @@ function Leaderboard() {
   );
 }
 
+function SuggestionCard({ s, st, onApply, onTest }: { s: Any; st: Any; onApply: (s: Any) => void; onTest: (bot: string) => void }) {
+  const stale = s.tested?.stale;
+  return (
+    <div className={`suggestion k-${s.untested ? "untested" : s.kind}`}>
+      <div className="row-between">
+        <Link href={`/bot?id=${s.bot_id}&tab=review`} className="who"><Creature bot={s.bot_id} size={30} mood="still" /> {CREATURES[s.bot_id]?.name}</Link>
+        {s.tested ? <Pill tone="strong">{s.gain != null ? `confirmed ${money(s.gain, true)}` : "passed"}</Pill>
+          : s.untested ? <Pill tone="muted">not tested</Pill> : null}
+      </div>
+      <b>{s.title}</b>
+      {s.change && <p>Change: <code>{changeText(s.change)}</code></p>}
+      {s.tested ? <TestNumbers t={s.tested} /> : <p className="muted small">{s.evidence}</p>}
+      {s.tested && <p className="tiny muted">Best of several variants tried, so expect less than this. Tested {when(s.reviewed_at)}.</p>}
+      {s.untested && <p className="tiny muted">An idea from the trade review. It is not offered until a backtest shows it adds profit without a deeper worst drawdown.</p>}
+      {s.rule_change && <p>Needs a rule change: <i>{s.rule_change}</i> (untested; ask for it to be coded).</p>}
+      <div className="actions">
+        {s.tested && <Button size="sm" onClick={() => onApply(s)} disabled={stale || st?.status === "RUNNING"}
+          title={stale ? "The bot's settings changed after this test; test again" : st?.status === "RUNNING" ? "Pause the bot first" : ""}>Apply</Button>}
+        {(s.untested || stale) && <Button size="sm" onClick={() => onTest(s.bot_id)}>{stale ? "Test again" : "Test now"}</Button>}
+        {(s.id === "no_edge" || s.id === "costs") && st?.status !== "RETIRED" && <Button size="sm" tone="ghost" onClick={() => botAction(s.bot_id, "retire")}>Retire</Button>}
+      </div>
+    </div>
+  );
+}
+
 function Suggestions({ data, reload }: { data: Any; reload: () => void }) {
   const { data: bots } = usePoll<Any[]>("/api/bots", 15000);
-  const [tests, setTests] = useState<Record<string, Any>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const status = (b: string) => bots?.find((x) => x.bot_id === b);
   const sugg: Any[] = data?.suggestions ?? [];
-  async function test(s: Any, key: string) {
-    setMsg(null);
-    try {
-      const ds = String(s.source).includes("synthetic") ? "synthetic" : "mt5";
-      setTests({ ...tests, [key]: await api.post<Any>(`/api/review/${s.bot_id}/test`, { change: s.change, dataset: ds }) });
-    } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
-  }
+  const tests = Object.entries((data?.tests ?? {}) as Record<string, Any>).filter(([, t]) => t);
+  const busy = tests.filter(([, t]) => t.status === "QUEUED" || t.status === "RUNNING");
   async function apply(s: Any) {
     try {
       const b = await api.get<Any>(`/api/bots/${s.bot_id}`);
@@ -125,36 +143,29 @@ function Suggestions({ data, reload }: { data: Any; reload: () => void }) {
       if (m) { setMsg(m); reload(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
-  if (!sugg.length) return <EmptyState>No suggestions yet. They appear once a bot has 10 or more closed trades in demo or a backtest.</EmptyState>;
+  async function test(bot: string) {
+    try { setMsg(await testNow(bot)); reload(); } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  }
   return (
     <>
+      <p className="muted">A change is only offered when a backtest shows it adds net profit without a deeper worst drawdown, on the history
+        it was found on (first 70%) and again on later history it was not found on (last 30%). Changes are tested after every backtest on MT5 history.</p>
       {msg && <div className="notice">{msg}</div>}
-      <div className="suggestions">
-        {sugg.map((s) => {
-          const key = `${s.bot_id}-${s.id}-${s.review_id}`;
-          const st = status(s.bot_id);
-          if (s.applied) return <AppliedSuggestion key={key} s={s} who={CREATURES[s.bot_id]?.name} />;
-          return (
-            <div key={key} className={`suggestion k-${s.kind}`}>
-              <div className="row-between">
-                <Link href={`/bot?id=${s.bot_id}&tab=review`} className="who"><Creature bot={s.bot_id} size={30} mood="still" /> {CREATURES[s.bot_id]?.name}</Link>
-                {(s.strength || s.confidence) && <Pill tone={s.strength === "strong" ? "strong" : s.strength === "moderate" ? "moderate" : "muted"}>{s.strength ?? s.confidence}</Pill>}
-              </div>
-              <b>{s.title}</b>
-              <p className="muted small">{s.evidence}</p>
-              <p className="tiny muted">From {s.source}, {when(s.reviewed_at)}</p>
-              {s.change && <p>Change: <code>{changeText(s.change)}</code></p>}
-              {s.rule_change && <p>Needs a rule change: <i>{s.rule_change}</i></p>}
-              <div className="actions">
-                {s.change && <Button size="sm" onClick={() => test(s, key)}>Test on history</Button>}
-                {s.change && <Button size="sm" onClick={() => apply(s)} disabled={st?.status === "RUNNING"} title={st?.status === "RUNNING" ? "Pause the bot first" : ""}>Apply</Button>}
-                {(s.id === "no_edge" || s.id === "costs") && st?.status !== "RETIRED" && <Button size="sm" tone="ghost" onClick={() => botAction(s.bot_id, "retire")}>Retire</Button>}
-              </div>
-              {tests[key] && <Compare2 ids={tests[key]} />}
-            </div>
-          );
-        })}
-      </div>
+      {busy.length > 0 && <p className="small"><Pill tone="info">Testing</Pill> {busy.map(([b, t]) => `${CREATURES[b]?.name}: ${t.progress}`).join(" · ")}</p>}
+      {!sugg.length ? <EmptyState>No suggestions yet. Run backtests on MT5 history; each bot&apos;s changes are tested afterwards.</EmptyState> : (
+        <div className="suggestions">
+          {sugg.map((s) => s.applied
+            ? <AppliedSuggestion key={`${s.bot_id}-${s.id}`} s={s} who={CREATURES[s.bot_id]?.name} />
+            : <SuggestionCard key={`${s.bot_id}-${s.id}-${s.review_id}`} s={s} st={status(s.bot_id)} onApply={apply} onTest={test} />)}
+        </div>)}
+      {tests.length > 0 && <>
+        <h2>Every change tried</h2>
+        <div className="tests-list">{tests.map(([b, t]) => (
+          <div key={b} className="panel" style={{ padding: "var(--s-2) var(--s-3)" }}>
+            <Link href={`/bot?id=${b}&tab=review`} className="who"><Creature bot={b} size={22} mood="still" /> {CREATURES[b]?.name}</Link>
+            <TestStatus t={t} />
+          </div>))}</div>
+      </>}
     </>
   );
 }

@@ -15,7 +15,7 @@ Lifecycle per decision time ``t`` (close time of the last completed bar):
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 from zoneinfo import ZoneInfo
@@ -128,7 +128,13 @@ class Strategy(ABC):
         f = cls.ASSESSOR_FILTERS
         why = f.get("evidence", "No assessor change; trades every side, metal and hour.")
         win = "UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day)."
-        return {**cls.PARAMS,
+        exits = {} if cls.pair_trades else {  # a pair's legs exit together on its own signal
+            "breakeven_r": Param(0.0, "Move the stop to the entry price once a trade is this many R in profit "
+                                      "(R = the distance to the original stop). 0 = off.", (0.0, 0.5, 1.0, 1.5)),
+            "trail_atr": Param(0.0, "Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only "
+                                    "ever tightens. When on, the fixed target is dropped so winners can run. 0 = off.",
+                               (0.0, 2.0, 3.0, 4.0))}
+        return {**cls.PARAMS, **exits,
                 "sides": Param(f.get("sides", "both"), f"Which sides may open: both, long or short. {why}"),
                 "trade_gold": Param(f.get("trade_gold", "on"), "on: this bot may open gold trades; off: it does not trade gold."),
                 "trade_silver": Param(f.get("trade_silver", "on"), "on: this bot may open silver trades; off: it does not trade silver."),
@@ -192,7 +198,48 @@ class Strategy(ABC):
                 return []
             silver = next((x for x in sigs if x.role == "SILVER"), None)
             return sigs if silver is not None and side_allowed(silver.intent, self.p["sides"]) else []
-        return [s for s in sigs if side_allowed(s.intent, self.p["sides"]) and metal_open(self.p, s.role, ctx.now)]
+        out = [s for s in sigs if side_allowed(s.intent, self.p["sides"]) and metal_open(self.p, s.role, ctx.now)]
+        if float(self.p.get("trail_atr") or 0) > 0:  # the trailing stop replaces the fixed target
+            out = [replace(s, target_price=None) if s.intent.is_opening else s for s in out]
+        return out
+
+    def manage_stops(self, ctx: StrategyContext) -> list[tuple[str, float, str]]:
+        """Stop moves for open trades from the bot's exit options (breakeven, ATR trail): [(position key, new stop, why)].
+        A stop only ever moves towards profit, and stays on the right side of the last close. Same code live and in backtests."""
+        be, trail = float(self.p.get("breakeven_r") or 0), float(self.p.get("trail_atr") or 0)
+        if not ctx.positions or (be <= 0 and trail <= 0):
+            return []
+        from ..indicators import atr
+        out = []
+        for pos in ctx.positions:
+            f = ctx.frames.get((pos.role, self.primary_timeframe))
+            if f is None or len(f) < 15 or pos.sl is None:
+                continue
+            since = f[f["time"] >= pd.Timestamp(pos.opened_at).floor("min")]
+            if since.empty:
+                continue
+            long = pos.side == "LONG"
+            best = float(since["high"].max()) if long else float(since["low"].min())
+            close = float(f["close"].iloc[-1])
+            init = float(pos.meta.get("init_sl", pos.sl))
+            r = abs(pos.entry_price - init)
+            cands = []
+            if be > 0 and r > 0 and (best - pos.entry_price if long else pos.entry_price - best) >= be * r:
+                cands.append((pos.entry_price, f"breakeven after +{be:g}R"))
+            if trail > 0:
+                a = float(atr(f.iloc[-30:], 14).iloc[-1])
+                if a == a and a > 0:
+                    cands.append((best - trail * a if long else best + trail * a, f"trailing {trail:g} ATR behind the best price"))
+            spec = ctx.specs.get(pos.role)
+            gap = max(spec.stops_level_points * spec.point, spec.point) if spec else 0.0
+            for px, why in sorted(cands, key=lambda c: -c[0] if long else c[0]):
+                px = spec.round_price(px) if spec else px
+                better = px > pos.sl if long else px < pos.sl
+                valid = px < close - gap if long else px > close + gap
+                if better and valid:
+                    out.append((pos.key, px, why))
+                    break
+        return out
 
     def _filter_checks(self, ctx: StrategyContext, role: str) -> tuple[list, list, list]:
         from .filters import ALL_DAY, METAL_PARAMS, UK, in_windows, metal_on, parse_windows

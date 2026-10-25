@@ -19,15 +19,15 @@ SCAN_PARAMS = {"S02": {"max_spread_atr": 5.0}, "S01": {"max_spread_atr": 5.0}, "
                "S05": {"max_spread_atr": 5.0}}
 
 
-def test_ten_distinct_strategies_with_full_metadata():
-    assert len(STRATEGY_CLASSES) == 10
+def test_eleven_distinct_strategies_with_full_metadata():
+    assert len(STRATEGY_CLASSES) == 11
     styles = [c.style for c in STRATEGY_CLASSES.values()]
-    assert styles.count(Style.SCALP) == 3 and styles.count(Style.DAY) == 7
+    assert styles.count(Style.SCALP) == 3 and styles.count(Style.DAY) == 8
     tfs = [c.primary_timeframe for c in STRATEGY_CLASSES.values()]
     # operator rule: nothing trades slower than M15, and only one bot trades M1
-    assert {tf: tfs.count(tf) for tf in set(tfs)} == {"M5": 5, "M15": 5}  # no one-minute entries: deep history for every bot
+    assert {tf: tfs.count(tf) for tf in set(tfs)} == {"M5": 6, "M15": 5}  # no one-minute entries: deep history for every bot
     names = {c.name for c in STRATEGY_CLASSES.values()}
-    assert len(names) == 10
+    assert len(names) == 11
     for sid, cls in STRATEGY_CLASSES.items():
         s = cls()
         d = s.describe()
@@ -43,9 +43,9 @@ def test_ten_distinct_strategies_with_full_metadata():
 
 def test_magic_numbers_unique_and_reversible():
     from metals_lab.strategies import BOT_IDS
-    assert len(BOT_IDS) == 20
+    assert len(BOT_IDS) == 22
     mags = {magic_for(b) for b in BOT_IDS}
-    assert len(mags) == 20
+    assert len(mags) == 22
     for b in BOT_IDS:
         assert strategy_for_magic(magic_for(b)) == b
     assert strategy_for_magic(0) is None
