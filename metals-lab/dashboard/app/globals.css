@@ -517,3 +517,12 @@ svg.chart .marker-label { fill: var(--bronze-hi); font: 10.5px var(--f-mono); }
 .workshop pre { white-space: pre-wrap; font-size: var(--t-12); background: var(--ink-deep); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--s-2); max-height: 260px; overflow: auto; }
 .workshop-head { align-items: center; gap: var(--s-3); }
 .workshop-head p { flex: 1; }
+.action-now { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: var(--s-4); padding: var(--s-3); margin-bottom: var(--s-3); }
+.action-now h2 { margin: 0 0 var(--s-2); font-size: var(--t-16); }
+.action-now ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.action-now li { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.2fr) auto; gap: 2px var(--s-2); align-items: center;
+  border-left: 3px solid var(--line-2); padding-left: var(--s-2); }
+.action-now li .tiny { grid-column: 1 / -1; }
+.action-now li.signal { border-left-color: var(--st-run); }
+.action-now .what { font-size: var(--t-13); }
+.action-now .pl { text-align: right; font-variant-numeric: tabular-nums; }

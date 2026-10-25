@@ -464,7 +464,8 @@ class Strategy(ABC):
             else:
                 verdict = "NO_ENTRY"
                 f_ok = sum(1 for c in d.get("filters", []) if c["ok"])
-                best = max(("long", "short"), key=lambda k: sum(1 for c in d.get(k, []) if c["ok"]))
+                own = self.p.get("sides")  # a bot trades one side: describe that side (S10: long = silver cheap)
+                best = own if own in ("long", "short") else max(("long", "short"), key=lambda k: sum(1 for c in d.get(k, []) if c["ok"]))
                 n_ok = sum(1 for c in d.get(best, []) if c["ok"])
                 summary = (f"no entry: {n_ok} of {len(d.get(best, []))} {best} conditions met, "
                            f"{f_ok} of {len(d.get('filters', []))} filters passed")

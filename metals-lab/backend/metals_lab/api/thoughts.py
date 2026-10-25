@@ -116,3 +116,30 @@ def thought(*, side: str, status: str, kill: bool, stopped_for_day: Optional[str
         return f"{lead}Everything lines up for a {metal} {word}; waiting for the bar to close."
     return (f"{lead}{rd.get('setup_met', 0)} of {rd.get('setup_total', 0)} conditions for a {metal} {word}; "
             f"missing: {_lower_first(missing[0]['label'])}.")
+
+
+def next_up(*, side: str, status: str, kill: bool, stopped_for_day: Optional[str], opens: list[dict], th: Optional[dict],
+            metals: str, window: Optional[dict], now: datetime, cooldown_until: Optional[datetime] = None) -> Optional[dict]:
+    """The metal this bot is closest to entering on, if it is close: every filter passes (so it is inside that metal's
+    window) and at most one of its own entry conditions is missing, or it has an entry signal on the latest bar."""
+    if kill or status != "RUNNING" or opens or stopped_for_day or (cooldown_until and now < cooldown_until):
+        return None
+    if window and window.get("intervals") is not None and not in_window(window["intervals"], now):
+        return None
+    roles = (th or {}).get("roles") or {}
+    best = None
+    for r in allowed_roles(roles, metals):
+        v = roles[r]
+        if not v or "waiting" in v:
+            continue
+        signal = str(v.get("verdict", "")).startswith("ENTRY")
+        filters = [c for c in v.get("filters") or [] if not c.get("label", "").lower().startswith("metal allowed")]
+        own = [c for c in (v.get("long" if side == "L" else "short") or []) if "trades allowed" not in c.get("label", "").lower()]
+        missing = [c["label"] for c in own if not c.get("ok")]
+        if not signal and (any(not c.get("ok") for c in filters) or len(missing) > 1):
+            continue
+        cand = {"metal": METAL[r], "role": r, "signal": signal, "met": len(own) - len(missing), "total": len(own),
+                "missing": missing, "as_of": (th or {}).get("bar_time")}
+        if best is None or (cand["signal"], -len(cand["missing"])) > (best["signal"], -len(best["missing"])):
+            best = cand
+    return best

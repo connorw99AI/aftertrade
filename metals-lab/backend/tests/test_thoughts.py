@@ -202,3 +202,20 @@ def test_live_losing_streak_pauses_the_bot_until_start(armed):
     armed.set_bot_status("S01L", "RUNNING", operator="pytest")
     armed.db.set_control("streak_reset:S01L", "2099-12-31T00:00:00+00:00")  # Start clears the streak (the trades above are future-dated)
     assert armed.guard_state("S01L")["streak"] == 0
+
+
+def test_next_up_lists_bots_one_condition_from_an_entry():
+    from metals_lab.api.thoughts import next_up
+    th = {"bar_time": "x", "roles": {
+        "GOLD": view([("Spread ok", True)], [("Broke the low", True), ("Bullish candle", False)], []),
+        "SILVER": view([("Spread ok", True)], [("Broke the low", False), ("Bullish candle", False)], [])}}
+    base = dict(side="L", status="RUNNING", kill=False, stopped_for_day=None, opens=[], th=th, metals="both", window=WINDOW, now=NOW)
+    n = next_up(**base)
+    assert n["metal"] == "gold" and n["missing"] == ["Bullish candle"] and n["met"] == 1 and not n["signal"]
+    sig = {**th, "roles": {**th["roles"], "SILVER": view([("Spread ok", True)], [("Broke the low", False)], [], verdict="ENTRY_LONG")}}
+    assert next_up(**{**base, "th": sig})["metal"] == "silver"                       # an entry signal comes first
+    assert next_up(**{**base, "status": "PAUSED"}) is None
+    assert next_up(**{**base, "opens": [{"role": "GOLD"}]}) is None                   # already in a trade
+    assert next_up(**{**base, "now": NOW.replace(hour=21)}) is None                   # outside its window
+    blocked = {**th, "roles": {"GOLD": view([("Spread ok", False)], [("Broke the low", True), ("Bullish candle", False)], [])}}
+    assert next_up(**{**base, "th": blocked}) is None                                  # a filter fails

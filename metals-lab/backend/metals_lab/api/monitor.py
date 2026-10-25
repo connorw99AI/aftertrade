@@ -22,7 +22,7 @@ from ..strategies import bot_class, bot_name, is_bot
 from ..strategies.filters import metals_text
 from ..timeutil import utc_now
 from ..risk.daily import TEXT as DAILY_TEXT, daily_stop
-from .thoughts import allowed_roles, readiness, thought
+from .thoughts import allowed_roles, next_up, readiness, thought
 
 
 class CloseBody(BaseModel):
@@ -106,6 +106,8 @@ def register(app: FastAPI, state, auth) -> None:
                 "metals": metals, "config_version": row["config_version"],
                 "readiness": {r: v for r, v in ready.items() if v},
                 "trading_window": window,
+                "next_up": next_up(side=b[3], status=row["status"], kill=kill, stopped_for_day=stopped_for_day, opens=opens, th=th,
+                                   metals=metals, window=window, now=now, cooldown_until=cooldown_until),
                 "thought": thought(side=b[3], status=row["status"], kill=kill, stopped_for_day=stopped_for_day, opens=opens,
                                    th=th, metals=metals, window=window, now=now, pause_reason=row["pause_reason"],
                                    cooldown_until=cooldown_until),

@@ -1,12 +1,12 @@
 # Strategy research notes
 
-Ten explicit, rule-based hypotheses, each run as two bots (a long half and a short half, 20 bots in all), for spot/CFD gold and silver. None of them is a proven edge. The defaults are starting hypotheses taken from the cited sources or from common practice. Their job is to be tested on your broker's real data, not trusted.
+Eleven explicit, rule-based hypotheses, each run as two bots (a long half and a short half, 22 bots in all), for spot/CFD gold and silver. None of them is a proven edge. The defaults are starting hypotheses taken from the cited sources or from common practice. Their job is to be tested on your broker's real data, not trusted.
 
 Full rules, parameters and per-strategy citations: [STRATEGY_REFERENCE.md](STRATEGY_REFERENCE.md) (generated from code).
 
 ## Long and short halves
 
-Every strategy runs as two independent bots: `S04L` only takes long entries and `S04S` only takes short ones. Each half has its own magic number (`7710000 + strategy*10 + 1` long, `+ 2` short), its own 5% allocation (£150 on a £3,000 account), its own ledger and its own record, so a side that loses can be retired without retiring the strategy. S10 is a two-leg pair, so its halves are split by direction of the trade rather than by a single side: `S10L` buys silver and sells gold when silver is cheap on the ratio, `S10S` does the opposite.
+Every strategy runs as two independent bots: `S04L` only takes long entries and `S04S` only takes short ones. Each half has its own magic number (`7710000 + strategy*10 + 1` long, `+ 2` short), its own 1/22 allocation (£227.27 on the £5,000 demo), its own ledger and its own record, so a side that loses can be retired without retiring the strategy. S10 is a two-leg pair, so its halves are split by direction of the trade rather than by a single side: `S10L` buys silver and sells gold when silver is cheap on the ratio, `S10S` does the opposite.
 
 **Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. It stops opening trades and keeps its own balance; the two halves never share money, and each starts with 1/22 of the starting balance (5% in labs set up before S11). Un-retiring brings it back stopped with that balance. Labs from before this change moved a retired half's balance to the other half; un-retiring moves it back (an audited ledger entry). The Lab page has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Lab page.
 
@@ -120,7 +120,7 @@ Trend bots read direction from a slower chart and enter on a faster one (the com
 
 ## Distribution and why
 
-Timeframes were set by the operator: nothing slower than M15, only one bot on M1. That gives one bot on M1, four on M5 and five on M15. The former swing strategies (S07, S08, S09) now run intraday on M15, so there is no swing bot any more.
+Timeframes were set by the operator: nothing slower than M15 for entries and no M1. Six strategies enter on M5 (S01-S05 and S11; S01 also reads the M15 trend) and five on M15 (S06-S10; S07-S09 also read the H1 trend). The former swing strategies (S07, S08, S09) now run intraday on M15, so there is no swing bot any more.
 
 | Bot | Timeframe | Style | Mechanism |
 |---|---|---|---|
@@ -141,7 +141,7 @@ S07, S08, S09 and S10 on M15 are adaptations. The cited evidence for all four is
 
 **Trade frequency.** The operator target is about 5 trades per bot per day, and the risk engine caps each bot at 5 new trades per UTC day (`risk.max_entries_per_bot_per_day`; a two-leg S10 group counts once). Filters were loosened to trade more often. On synthetic data, S03 and S07 reach roughly 3-5 a day, S01 fewer since it moved to M5 entries, and S08, S09 and S10 roughly 2-3. The session strategies (S02 Asian range, S04 New York opening range, S05 London range, S06 squeeze) are built around one setup per session, so expect about 1 a day from each. Real-market frequency will differ from the synthetic figures. Trading more often is not evidence of edge: each extra trade pays the spread again.
 
-They are deliberately not ten renamings of one idea. They differ in mechanism (trend, mean reversion, failed break, volatility regime, cross-sectional relative value), horizon and entry trigger.
+They are deliberately not eleven renamings of one idea. They differ in mechanism (trend, mean reversion, failed break, volatility regime, cross-sectional relative value), horizon and entry trigger.
 
 ## Evidence base and how strong it is
 
@@ -162,31 +162,31 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 - Every exposure change is labelled `OPEN_LONG`, `CLOSE_LONG`, `OPEN_SHORT` or `COVER_SHORT`. A buy is never ambiguous.
 - Decisions use completed bars only. Orders fill at the next bar's open in backtests, and on the next live tick after the bar closes in live trading.
 - Each opening carries a protective stop that is sent to the server with the order.
-- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. Operator policy is a **0.1 lot minimum** (`risk.min_lot`): when the budget allows more, the bot trades more; when it allows less, it still trades 0.1. With `min_lot: 0`, a trade whose broker minimum exceeds the budget is skipped instead.
+- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. Operator policy is a minimum size per metal: tighter stops trade the larger size (`risk.big_lot`: gold 0.1, silver 0.06) when its loss at the stop is at most 30% of the bot (`big_lot_max_risk`), wider stops the smaller one (`risk.min_lot`: gold 0.05, silver 0.03). When 3% of the bot allows more, it trades more. With `min_lot: 0`, a trade whose broker minimum exceeds the budget is skipped instead.
 - S10 opens two legs as one trade group. Both legs must pass the auditor and risk checks; if one leg fails after the other has filled, the filled leg is closed. The money popup fires only when the whole group has closed.
 - Strategy rules are never rewritten automatically. Parameter changes are an operator action, allowed only while the bot is paused and flat, and each change is versioned and logged.
 
 ## A consequence you should know before arming
 
-The operator runs a £3,000 demo. With 20 independent bots at 5% each, every bot starts with £150. Operator choices:
+The operator runs a £5,000 demo. With 22 independent bots at 1/22 each, every bot starts with £227.27. Operator choices:
 
 - **Two trade sizes, chosen by the strategy's stop** (the stop is always the strategy's own; risk limits never move it):
   - Tighter stops: **gold 0.1, silver 0.06** (`big_lot`), used when that size loses at most 30% of the bot at the stop (`big_lot_max_risk: 0.30`).
   - Wider stops: **gold 0.05, silver 0.03** (`min_lot`).
   - No per-trade cap (`max_trade_risk: 0`): no trade is skipped for its stop being wide, so one wide-stop loss can exceed 30% of a bot.
-  - A bot trades more than these only when 3% of its balance allows it, which at £150 is rare.
+  - A bot trades more than these only when 3% of its balance allows it, which at £227 is rare.
 
-- What that means (from the terminal's own figures, GBP account): gold 0.1 lot is about **£7.50 per $1 move** and 0.05 about £3.75; silver 0.06 lot is about **£225 per $1 move** and 0.03 about £115 (scaled from the terminal's 0.04/0.02 figures). On a £150 bot the larger size is used for gold stops up to about $6 and silver stops up to about 20 cents. Examples at the smaller size: a $15 gold stop loses about £56 (37%); a 40-cent silver stop about £46 (31%).
-- Leverage (1:500) sets the margin, not the loss. Margin for 0.1 lot gold is lots × 100 oz × price ÷ 500, roughly £50-80, and each bot must cover it from its own free balance, so two open gold trades can use most of a £150 bot. The loss at the stop is the same at any leverage.
+- What that means (from the terminal's own figures, GBP account): gold 0.1 lot is about **£7.50 per $1 move** and 0.05 about £3.75; silver 0.06 lot is about **£225 per $1 move** and 0.03 about £115 (scaled from the terminal's 0.04/0.02 figures). On a £227 bot the larger size is used for gold stops up to about $9 and silver stops up to about 30 cents. Examples at the smaller size: a $15 gold stop loses about £56 (25%); a 40-cent silver stop about £46 (20%).
+- Leverage (1:500) sets the margin, not the loss. Margin for 0.1 lot gold is lots × 100 oz × price ÷ 500, roughly £50-80, and each bot must cover it from its own free balance, so two open gold trades can use half or more of a £227 bot. The loss at the stop is the same at any leverage.
 - **Daily stops** (new entries only; open trades keep running, so a day can end worse):
   - **Loss stop 30%** (`daily_loss_pause: 0.30`): down 30% on the day.
   - **Profit lock** (`daily_lock_from: 0.05`, `daily_giveback: 0.5`): once a bot is up 5% or more on the day, it stops for the day if it gives back half of its best gain that day. Three wins then losses: it stops with about half the day's gain kept.
   - **No daily profit stop** (`daily_profit_stop: 0`).
   - A daily stop, once hit, holds until the UTC day ends even if equity recovers.
-- **Drawdown pause at 50%** (`max_drawdown_pause: 0.50`): a bot that falls 50% (£75 from £150) from its best balance stops opening trades until the operator restarts it. Open trades keep being managed.
+- **Drawdown pause at 50%** (`max_drawdown_pause: 0.50`): a bot that falls 50% (£114 from £227) from its best balance stops opening trades until the operator restarts it. Open trades keep being managed.
 - **No pre-trade risk caps** (`pre_trade_limits: false`): per-trade risk, margin-share and exposure caps are off. Still enforced before each entry: the bot's own free capital covers the margin, the account margin level stays above 300%, at most 2 open trades and 5 new trades a day per bot, and the daily stops.
 - **News checks are off** (`news.enabled: false`).
 - **Flat for the weekend** (`weekend_flat_from: "20:00"`): from Friday 20:00 UTC every bot closes its positions and opens nothing until Sunday 22:00 UTC. Overnight holds on weekdays are allowed.
 - Exposure caps are per bot (`exposure_scope: per_bot`) at 200× equity; they only stop extreme stacking.
 
-**Choosing a live candidate** (Ranking page): a bot is eligible after at least 50 closed demo trades and a profit after costs; eligible bots are ranked by smallest maximum drawdown, then net profit. Picking the best of ten still favours luck, so treat the top rank as a shortlist and check it with the research tools (walk-forward, deflated Sharpe, cost stress) before risking money.
+**Choosing a live candidate** (Ranking page): a bot is eligible after at least 50 closed demo trades and a profit after costs; eligible bots are ranked by smallest maximum drawdown, then net profit. Picking the best of 22 bots still favours luck, so treat the top rank as a shortlist and check it with the research tools (walk-forward, deflated Sharpe, cost stress) before risking money.

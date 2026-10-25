@@ -12,6 +12,12 @@ const VERDICT: Record<string, { text: string; tone: string }> = {
   WAITING_DATA: { text: "Waiting for data", tone: "v-wait" },
 };
 
+function ownTitle(bot: string, th: Any): string {
+  const long = bot.endsWith("L");
+  if (th?.strategy_id === "S10") return long ? "Silver-cheap entry (buy silver, sell gold)" : "Gold-cheap entry (buy gold, sell silver)";
+  return long ? "Long entry" : "Short entry";
+}
+
 function Checks({ title, items }: { title: string; items: Any[] }) {
   if (!items?.length) return null;
   const met = items.filter((c) => c.ok).length;
@@ -49,10 +55,8 @@ export function RoleThinking({ bot, th, role, compact = false }: { bot: string; 
       {open && !("waiting" in r) && (
         <div className="thinking-body">
           <Checks title="Filters (must all pass)" items={r.filters} />
-          <div className="checks-sides">
-            <Checks title="Long entry" items={r.long} />
-            <Checks title="Short entry" items={r.short} />
-          </div>
+          {/* each bot trades one side only, so only that side's conditions are shown (S10: L = silver cheap, S = gold cheap) */}
+          <Checks title={ownTitle(bot, th)} items={bot.endsWith("L") ? r.long : r.short} />
           <p className="muted small">As of the {th.timeframe} bar closing {when(th.as_of)}. {th.note}</p>
         </div>
       )}

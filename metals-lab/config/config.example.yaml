@@ -45,7 +45,7 @@ risk:
   min_account_margin_level: 300
   max_account_margin_used: 0.5
   exposure_scope: per_bot          # exposure caps judge each bot as if it had its own account
-  max_metals_gross_exposure: 200.0 # position value / bot equity (0.1 lot of gold is roughly 250x a 150 bot)
+  max_metals_gross_exposure: 200.0 # position value / bot equity (0.1 lot of gold is roughly 165x a £227 bot)
   max_same_direction_exposure: 200.0
   max_spread_points: {GOLD: 80, SILVER: 80}
   commission_per_lot_side_estimate: 0.0   # set to your demo's commission for planning; actual commission comes from deals

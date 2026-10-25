@@ -1,6 +1,6 @@
 # Metal Lab
 
-A demo-only MetaTrader 5 laboratory for gold and silver. Ten independently configurable strategy bots, each a pixel creature with its own virtual portfolio, share one MT5 **demo** account. Every trade goes strategy → independent market auditor → central risk engine → demo executor. Live accounts are technically blocked.
+A demo-only MetaTrader 5 laboratory for gold and silver. 22 independently configurable bots (11 strategies, each run as a long half and a short half), each a pixel creature with its own virtual portfolio, share one MT5 **demo** account. Every trade goes strategy → independent market auditor → central risk engine → demo executor. Live accounts are technically blocked.
 
 This makes no claim of profitability. No real-market backtests have been run yet, so there is no evidence either way.
 
@@ -56,7 +56,7 @@ cd backend && pip install -e . && cd .. && metals-lab --sim serve
 
 | Item | Status |
 |---|---|
-| Backend, ten strategies (20 long/short bots), Assessor, backtester, research, auditor, risk, ledgers, reconciliation, API, dashboard | Implemented; automated tests pass against a simulated terminal |
+| Backend, eleven strategies (22 long/short bots), Assessor and Engineer, backtester, research, auditor, risk, ledgers, reconciliation, API, dashboard | Implemented; automated tests pass against a simulated terminal |
 | Real MT5 demo connection | **Not verified.** Built in a Linux container where the Windows-only MetaTrader5 package cannot run |
 | Demo execution against a real terminal | **Not operational until verified on your PC** |
 | Demo orders submitted | **None** |

@@ -87,13 +87,13 @@ Six pages, each named for a job. Old addresses (/positions, /history, /compare, 
 
 | Page | What it is for |
 |---|---|
-| Lab | Every bot as a creature card: state symbol, bull or bear plaque, today's P&L on the art, a one-line thought written from its live checklist ("1 of 3 conditions for a gold long; missing: …", "Off duty. My window opens at 16:00 UTC."), a readiness meter per metal, equity, today and trades, one Start/Pause button and a ⋯ menu (open, its trades, stop, retire). Zoom changes cards per row; phones get a compact two-column roster. "On duty now" opens a 24-hour strip per bot showing when it can trade today. Retired bots collapse to one line. |
+| Lab | Every bot as a creature card: state symbol, bull or bear plaque, today's P&L on the art, a one-line thought written from its live checklist ("1 of 3 conditions for a gold long; missing: …", "Off duty on gold until 13:00 UK time."), a readiness meter per metal, equity, today and trades, one Start/Pause button and a ⋯ menu (open, its trades, stop, retire). Zoom changes cards per row; phones get a compact two-column roster. **Action now** at the top lists every bot in a trade (entry, profit now, money at the stop and target, time open) and every bot about to enter (inside its window, all filters passing, at most one entry condition missing, or an entry signal on the latest bar). "On duty now" opens a 24-hour UK-time strip per bot showing when it can trade today. Retired bots collapse to one line. |
 | Bot page | Who it is, its trading window, rules version (v1, v2… each parameter save is a new version) and Start/Pause/Stop/Retire. Live tab: equity with a sparkline, today, return, trades today; a decision pipeline per metal (Session → Filters → Setup → Sizing → Auditor → Risk → Order) showing where today's entry stopped, with the full checklist one click away; the last 7 days of signals; the last decision as a sentence; open trades with a stop-to-target bar; the equity curve with rule changes marked. Tabs for Trades, Review and Rules & settings. |
 | Live | Gold and silver charts from the live price stream, each open trade's lines ending in its creature; the on-duty strip; every bot's verdict and readiness. Bots decide in the backend on completed candles; the page only displays. |
 | Trades | Open: every trade with live P&L, a bar from stop to target with entry and the current price marked, and whether MT5 still holds the stop and target; close one, one bot's, or all. Closed: a daily P&L calendar for the last eight weeks (click a day to filter), filters, every closed trade with its rules version and reasons, CSV download. |
 | Assessor | Grades (a progress bar until there are enough trades to judge), Leaderboard (one small equity chart per bot on the same scale with the live-candidate checks, and the ranking table), Suggestions to test and apply, and Blocked trades (why trades did or did not happen, what the auditor and risk engine blocked, stops and targets put back). |
-| Research | Download MT5 history (with a coverage timeline of what you have, and a list of every download with Delete and Delete all; live trading never reads these files), run one bot or all 20 over a date range with your live risk settings, results by bot name, the newest run opened automatically, and backtest results next to demo results. |
-| System | Risk controls and every limit written as a sentence, account and capital, the audit log grouped ("Initial allocation, all 20 bots, £500.00 each"), the market auditor, the MT5 connection, the full decision Log filterable by bot, and research Experiments. |
+| Research | Download MT5 history (with a coverage timeline of what you have, and a list of every download with Delete and Delete all; live trading never reads these files), run one bot or all 22 over a date range with your live risk settings, results by bot name, the newest run opened automatically, and backtest results next to demo results. |
+| System | Risk controls and every limit written as a sentence, account and capital, the audit log grouped ("Initial allocation, all 22 bots, £227.27 each" on a £5,000 demo), the market auditor, the MT5 connection, the full decision Log filterable by bot, and research Experiments. |
 
 The bell at the top right holds open alerts on every page; resolve them from its drawer.
 
@@ -104,7 +104,7 @@ The bell at the top right holds open alerts on every page; resolve them from its
 ```
 
 1. The command re-verifies DEMO, hedging, Algo Trading, instruments and clock.
-2. It shows the starting balance snapshot and the per-bot allocation (5% each; retired halves get nothing).
+2. It shows the starting balance snapshot and the per-bot allocation (1/22 each, £227.27 on a £5,000 demo; labs set up before S11 keep 5% each).
 3. It asks you to type `ARM DEMO <6-char fingerprint>`.
 
 On the first activation for an account, the balance is snapshotted once and the allocations are created. Re-arming later never resets them.
@@ -116,10 +116,10 @@ On the first activation for an account, the balance is snapshotted once and the 
 
 ## 5. Historical data and research
 
-The Research page does the common steps from the dashboard: **Download history from MT5** for a From/To date range (M1, M5, M15, H1 for both metals), **Run all 20 bots** over a date range, **Clear old results**. Backtests run in a separate process, so the dashboard and the trading loop stay responsive while they run. A year of M1 data makes the M1 bot's backtest take a few minutes. The command line does the same and more:
+The Research page does the common steps from the dashboard: **Download history from MT5** for a From/To date range (M5, M15, H1 for both metals; set MT5's Tools → Options → Charts → Max bars in chart to Unlimited and restart MT5 first, or downloads stop at about 100,000 bars), **Run all 22 bots** over a date range, **Clear old results**. Backtests run in separate processes (two at a time), so the dashboard and the trading loop stay responsive while they run. The command line does the same and more:
 
 ```
-metals-lab fetch-history --days 730 --tf M1 M5 M15 H1        # Parquet cache + manifest + quality report
+metals-lab fetch-history --days 730 --tf M5 M15 H1        # Parquet cache + manifest + quality report
 metals-lab fetch-history --days 30 --tf M5 --ticks              # bars built from ticks (real spreads); history depth varies by broker
 metals-lab backtest --strategy S08 --capital 1000
 metals-lab research --strategy S08 --trials 20                  # train/validation/test, walk-forward, sensitivity, cost stress, DSR
@@ -141,7 +141,7 @@ Old databases have ten bots with the old magic numbers. The new loop does not re
 1. Close every open trade first (the command refuses while any are open).
 2. Stop the lab (Ctrl+C), then `git pull`.
 3. In `config\config.yaml` set `capital: bot_fraction: 0.05`.
-4. `.venv\Scripts\metals-lab new-lab --confirm "NEW LAB"`. This moves the old database to `data\archive\` (nothing is deleted) and starts a fresh one with 20 bots.
+4. `.venv\Scripts\metals-lab new-lab --confirm "NEW LAB"`. This moves the old database to `data\archive\` (nothing is deleted) and starts a fresh one with 22 bots.
 5. `scripts\windows\start.bat`, then `metals-lab arm --operator "Your Name"`. The balance is snapshotted again and allocations are created.
 6. Start the halves you want from the Lab page.
 

@@ -73,7 +73,7 @@ function change(a: Any): string {
   return String(n ?? "");
 }
 
-/** Rows of the same action, operator and minute become one line ("Initial allocation: 20 bots, £500.00 each"). */
+/** Rows of the same action, operator and minute become one line ("Initial allocation: 22 bots, £227.27 each"). */
 function groupAudit(rows: Any[]): Any[] {
   const out: Any[] = [];
   for (const a of rows) {
