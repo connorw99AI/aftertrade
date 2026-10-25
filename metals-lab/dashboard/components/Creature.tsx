@@ -10,7 +10,7 @@ const COLOUR: Record<string, string> = {
   S01L: "#9BEA2E", S01S: "#EA7461", S02L: "#40EA6E", S02S: "#EA3732", S03L: "#3371EA", S03S: "#EA8332",
   S04L: "#4EBEEA", S04S: "#EA3140", S05L: "#76DCEA", S05S: "#EAA06F", S06L: "#327EEA", S06S: "#EA7E35",
   S07L: "#62EAB2", S07S: "#EA302E", S08L: "#2A44B8", S08S: "#EAA12E", S09L: "#4FEA51", S09S: "#EA5059",
-  S10L: "#35EADC", S10S: "#EA5F2E", S11L: "#8A5CF0", S11S: "#D9783A",
+  S10L: "#35EADC", S10S: "#EA5F2E", S11L: "#3CC4E8", S11S: "#D9783A",
 };
 
 /** Display name and colour per bot, used everywhere a bot is shown. */

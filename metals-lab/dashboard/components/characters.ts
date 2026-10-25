@@ -1,4 +1,4 @@
-/* The 22 creatures: one per bot. Each is its own character; long bots are blues, greens and violet, short bots reds and oranges. */
+/* The 22 creatures: one per bot. Each is its own character; long bots are blues and greens, short bots reds and oranges. */
 
 export type Character = { name: string; side: "long" | "short"; looks: string; personality: string };
 
@@ -63,8 +63,8 @@ export const CHARACTERS: Record<string, Character> = {
   S10S: { name: "Sunflare", side: "short",
     looks: "An orange-red fan-crested alien with a hollow ring in its chest and gold trim.",
     personality: "Contrarian. When gold is cheap next to silver it buys gold and sells silver, betting they drift back together." },
-  S11L: { name: "Violet Vigil", side: "long",
-    looks: "A violet riveted robot with a crescent head, three teal eye-lamps, a glowing chest core and pincer hands.",
+  S11L: { name: "Aqua Vigil", side: "long",
+    looks: "An aqua-blue riveted robot with a crescent head, three lime eye-lamps, a glowing lime chest core and pincer hands.",
     personality: "Patient. Watches how New York opens; if the first half hour rose, it buys for the last half hour and leaves at the close." },
   S11S: { name: "Copper Vigil", side: "short",
     looks: "A copper riveted robot with a crescent head, three teal eye-lamps, a glowing chest core and pincer hands.",
