@@ -206,3 +206,16 @@ CREATE TABLE IF NOT EXISTS optimisations (
   config_version INTEGER, params_json TEXT, result_json TEXT, error TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_optimisations_bot ON optimisations(bot_id, id);
+
+-- the Engineer's change requests: rule changes no setting can make, written up for a developer (Claude Code)
+CREATE TABLE IF NOT EXISTS change_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bot_id TEXT NOT NULL, created_at TEXT NOT NULL, status TEXT NOT NULL,   -- OPEN | DONE | DISMISSED
+  title TEXT, rule TEXT, evidence TEXT, spec_md TEXT, assessment_id INTEGER, closed_at TEXT, operator TEXT
+);
+
+-- the Assessor's note on each closed demo/live trade
+CREATE TABLE IF NOT EXISTS trade_assessments (
+  trade_id TEXT PRIMARY KEY, bot_id TEXT NOT NULL, created_at TEXT NOT NULL, verdict TEXT, note_json TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_trade_assessments_bot ON trade_assessments(bot_id);

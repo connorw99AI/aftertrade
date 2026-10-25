@@ -1,17 +1,21 @@
-"""The Assessor's tester: a change is only suggested if it makes the bot more money without a deeper worst drawdown,
-both on the period it was found on and on a later period it was not found on.
+"""The Assessor's tuner: looks for settings that make a bot more money without a deeper worst drawdown, and checks
+the result on history it never tuned on.
 
-For each bot it backtests the bot as it is (the baseline) and with each candidate change, on the same history:
+The bot's history is split by time into three parts:
 
-- the history is split by time: the first 70% is the "found on" period, the last 30% the "confirm on" period;
-- a candidate passes the found-on period when net profit is higher and the worst drawdown is no deeper than the baseline's;
-- only those are run on the confirm-on period, where they must pass the same test again;
-- passed changes are ranked by how much net profit they added on the confirm-on period.
+- search (first 60%): every candidate change is backtested here against the bot as it currently stands;
+- choose (next 20%): the changes that beat it on search must beat it here too; the best one is kept;
+- final (last 20%): looked at once, at the end, to check the whole tuned bot against the original.
 
-Candidates come from the trade review (cutting losing sessions or a losing metal) and from trying the main settings in
-both directions: wider and tighter stops, nearer and further targets, shorter and longer holds, the breakeven and
-trailing-stop exits on and off, and adding back hours or a metal that were cut. Trying many variants and keeping the
-best still favours luck; the number of variants tried is shown with the result.
+"Beats" means more net profit and a worst drawdown no deeper. Tuning runs in up to three rounds: each round searches
+again on top of the changes kept so far. Re-using the choose period across rounds makes it less of a fair test, which
+is why the final period exists: if the tuned bot does not beat the original there, it is reported as probably overfit
+and not offered.
+
+Candidates come from the trade review (cut a losing session or metal) and from trying the main settings in both
+directions: wider and tighter stops, nearer and further targets, shorter and longer holds, the breakeven and
+trailing-stop exits on and off, and adding back hours or a metal that were cut. Trying many variants still favours
+luck; the number tried is reported with the result.
 """
 from __future__ import annotations
 
@@ -25,20 +29,24 @@ from .review import STOP_PARAMS, TARGET_PARAMS
 from .strategies import bot_class, build
 from .strategies.filters import ALL_DAY, METAL_PARAMS, parse_windows
 
-SPLIT = 0.7               # share of the history the changes are found on; the rest confirms them
-MIN_CONFIRM_TRADES = 10   # fewer trades than this in the confirm-on period: too few to call it confirmed
+SPLITS = (0.6, 0.8)       # search | choose | final, by time
+ROUNDS = 3
+MIN_CONFIRM_TRADES = 10   # fewer trades than this in a checking period: too few to call it confirmed
 DD_TOLERANCE = 0.001      # worst drawdown may be this much deeper (0.1 percentage point) and still count as "no deeper"
 MAX_CANDIDATES = 14
 
 Metrics = dict  # {"net_pnl", "max_drawdown", "n_trades"}
 RunFn = Callable[[dict, str, str], Metrics]  # (params, start YYYY-MM-DD, end YYYY-MM-DD inclusive) -> metrics
+RunManyFn = Callable[[list[tuple[dict, str, str]]], list[Metrics]]
 
 
-def split_period(start: str, end: str) -> tuple[str, str, str]:
-    """(start, last day found-on, end) with the found-on period ending at SPLIT of the range."""
+def split_periods(start: str, end: str) -> dict:
+    """The three periods as {"search": (a, b), "choose": (a, b), "final": (a, b)}, inclusive days."""
     a, b = pd.Timestamp(start), pd.Timestamp(end)
-    cut = a + (b - a) * SPLIT
-    return str(a.date()), str(cut.date()), str(b.date())
+    c1, c2 = a + (b - a) * SPLITS[0], a + (b - a) * SPLITS[1]
+    d = lambda t: str(t.date())
+    nxt = lambda t: d(t + timedelta(days=1))
+    return {"search": (d(a), d(c1)), "choose": (nxt(c1), d(c2)), "final": (nxt(c2), d(b))}
 
 
 def _round(v: float) -> float:
@@ -114,43 +122,83 @@ def beats(c: dict, b: dict) -> bool:
     return c["net"] > b["net"] and c["dd"] >= b["dd"] - DD_TOLERANCE
 
 
-def evaluate(bot: str, params: dict, review_suggestions: list[dict], start: str, end: str, run: RunFn,
-             progress: Optional[Callable[[str], None]] = None) -> dict:
-    """Backtest the baseline and every candidate as described above. ``run`` performs one backtest."""
-    a, cut, b = split_period(start, end)
-    after = str((pd.Timestamp(cut) + timedelta(days=1)).date())
-    cands = candidates(bot, params, review_suggestions)
+def _diff(base: dict, new: dict) -> dict:
+    return {k: v for k, v in new.items() if base.get(k) != v}
+
+
+def evaluate(bot: str, params: dict, review_suggestions: list[dict], start: str, end: str, run: Optional[RunFn] = None,
+             progress: Optional[Callable[[str], None]] = None, run_many: Optional[RunManyFn] = None,
+             rounds: int = ROUNDS) -> dict:
+    """Tune the bot in up to ``rounds`` rounds as described above. ``run_many`` runs several backtests (in parallel);
+    with only ``run`` given they run one after another."""
+    many = run_many or (lambda jobs: [run(*j) for j in jobs])
+    per = split_periods(start, end)
     say = progress or (lambda _m: None)
-    total = 2 + len(cands)
-    say(f"baseline (1 of {total})")
-    base_in, base_out = _m(run(params, a, cut)), None
-    results = []
-    for i, c in enumerate(cands):
-        say(f"{c['title']} ({i + 2} of {total})")
-        r_in = _m(run({**params, **c["change"]}, a, cut))
-        res = {**c, "in": r_in, "out": None}
-        if beats(r_in, base_in):
-            if base_out is None:
-                base_out = _m(run(params, after, b))
-            r_out = _m(run({**params, **c["change"]}, after, b))
-            res["out"] = r_out
-            if not beats(r_out, base_out):
-                res["verdict"] = "noise"        # helped where it was found, not on the later period
-            elif min(r_out["n"], base_out["n"]) < MIN_CONFIRM_TRADES:
-                res["verdict"] = "unconfirmed"  # helped on both, but too few later trades to trust it
+    current = dict(params)
+    out_rounds, kept, tried = [], [], 0
+    first_base = None
+    for r in range(1, rounds + 1):
+        cands = [c for c in candidates(bot, current, review_suggestions if r == 1 else []) if c["id"] not in {k["id"] for k in kept}]
+        if not cands:
+            break
+        tried += len(cands)
+        say(f"round {r} of {rounds}: testing {len(cands)} changes on the search period")
+        res = many([(current, *per["search"])] + [({**current, **c["change"]}, *per["search"]) for c in cands])
+        base_s, cand_s = _m(res[0]), [_m(x) for x in res[1:]]
+        rows = [{**c, "search": m, "choose": None} for c, m in zip(cands, cand_s)]
+        good = [x for x in rows if beats(x["search"], base_s)]
+        base_c = None
+        if good:
+            say(f"round {r} of {rounds}: checking {len(good)} on the choose period")
+            res = many([(current, *per["choose"])] + [({**current, **x["change"]}, *per["choose"]) for x in good])
+            base_c = _m(res[0])
+            for x, m in zip(good, res[1:]):
+                x["choose"] = _m(m)
+        if first_base is None:
+            first_base = {"search": base_s, "choose": base_c}
+        for x in rows:
+            if x["choose"] is None:
+                x["verdict"], x["gain"] = "no_help", None
+            elif not beats(x["choose"], base_c):
+                x["verdict"], x["gain"] = "noise", _round(x["choose"]["net"] - base_c["net"])
+            elif min(x["choose"]["n"], base_c["n"]) < MIN_CONFIRM_TRADES:
+                x["verdict"], x["gain"] = "unconfirmed", _round(x["choose"]["net"] - base_c["net"])
             else:
-                res["verdict"] = "passed"
-            res["gain"] = _round(r_out["net"] - base_out["net"])
+                x["verdict"], x["gain"] = "kept_candidate", _round(x["choose"]["net"] - base_c["net"])
+        order = {"kept_candidate": 0, "unconfirmed": 1, "noise": 2, "no_help": 3}
+        rows.sort(key=lambda x: (order[x["verdict"]], -(x["gain"] or 0)))
+        best = rows[0] if rows and rows[0]["verdict"] == "kept_candidate" else None
+        if best:
+            best["verdict"] = "kept"
+            current = {**current, **best["change"]}
+            kept.append({"round": r, "id": best["id"], "title": best["title"], "change": best["change"],
+                         "search": best["search"], "choose": best["choose"], "gain": best["gain"]})
+        for x in rows:
+            if x["verdict"] == "kept_candidate":
+                x["verdict"] = "passed_not_best"
+        out_rounds.append({"round": r, "baseline": {"search": base_s, "choose": base_c}, "candidates": rows,
+                           "kept": best["id"] if best else None})
+        if not best:
+            break
+    tuned = None
+    if kept:
+        say("final check on history the tuning never saw")
+        res = many([(params, *per["final"]), (current, *per["final"])])
+        of, tf = _m(res[0]), _m(res[1])
+        if not beats(tf, of):
+            verdict = "overfit"
+        elif min(tf["n"], of["n"]) < MIN_CONFIRM_TRADES:
+            verdict = "unconfirmed"
         else:
-            res["verdict"] = "no_help"
-            res["gain"] = None
-        results.append(res)
-    order = {"passed": 0, "unconfirmed": 1, "noise": 2, "no_help": 3}
-    results.sort(key=lambda r: (order[r["verdict"]], -(r["gain"] or 0), -(r["in"]["net"] - base_in["net"])))
-    return {"period": {"start": a, "found_end": cut, "confirm_start": after, "end": b},
-            "baseline": {"in": base_in, "out": base_out}, "candidates": results, "variants_tried": len(cands),
-            "rule": "more net profit and a worst drawdown no deeper than now, on the found-on period and again on the "
-                    f"later confirm-on period ({int(SPLIT * 100)}% / {100 - int(SPLIT * 100)}% of the history)"}
+            verdict = "passed"
+        last = kept[-1]
+        tuned = {"change": _diff(params, current), "steps": kept, "verdict": verdict, "gain": _round(tf["net"] - of["net"]),
+                 "original": {"search": first_base["search"], "choose": first_base["choose"], "final": of},
+                 "tuned": {"search": last["search"], "choose": last["choose"], "final": tf}}
+    return {"periods": per, "rounds": out_rounds, "tuned": tuned, "variants_tried": tried,
+            "rule": "more net profit and a worst drawdown no deeper than the bot as it stands; search on the first 60% of "
+                    "the history, keep the best on the next 20%, up to three rounds, then check the tuned bot once on the "
+                    "last 20%"}
 
 
 def period_of_backtest(row: dict) -> Optional[tuple[str, str]]:

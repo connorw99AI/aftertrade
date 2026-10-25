@@ -57,6 +57,15 @@ class ApplySuggestionBody(BaseModel):
     source: Optional[str] = None
 
 
+class OperatorBody(BaseModel):
+    operator: str = Field(min_length=1)
+
+
+class RequestStatusBody(BaseModel):
+    status: str                        # DONE | DISMISSED | OPEN
+    operator: str = Field(min_length=1)
+
+
 class OptimiseBody(BaseModel):
     dataset: Optional[str] = None      # default: the dataset of the bot's latest finished backtest
     start: Optional[str] = None        # default: that backtest's period
@@ -153,6 +162,7 @@ def compute_backtest(body: dict, cfg: dict, cache_dir: str, capital: float, curr
 
 
 _POOL = None
+POOL_WORKERS = 2  # backtests run in separate processes, this many at a time (config assessor.parallel_backtests)
 
 
 def _pool():
@@ -160,12 +170,14 @@ def _pool():
     if _POOL is None:
         import multiprocessing as mp
         from concurrent.futures import ProcessPoolExecutor
-        _POOL = ProcessPoolExecutor(max_workers=1, mp_context=mp.get_context("spawn"))
+        _POOL = ProcessPoolExecutor(max_workers=max(1, int(POOL_WORKERS)), mp_context=mp.get_context("spawn"))
     return _POOL
 
 
 def register(app: FastAPI, state, auth) -> None:
+    global POOL_WORKERS
     db = state.db
+    POOL_WORKERS = int(state.cfg.get("assessor", {}).get("parallel_backtests", POOL_WORKERS) or 1)
     fetch_job: dict = {"state": "IDLE"}
 
     def default_capital() -> float:
@@ -289,25 +301,44 @@ def register(app: FastAPI, state, auth) -> None:
     test_q: "_queue.Queue[int]" = _queue.Queue()
     worker: dict = {"thread": None}
 
-    def latest_backtest(bot: str, backtest_id: Optional[int] = None) -> Optional[dict]:
-        if backtest_id is not None:
-            return db.one("SELECT id, dataset_key, equity_json FROM backtests WHERE id=?", (backtest_id,))
+    def latest_backtest(bot: str) -> Optional[dict]:
         return db.one("SELECT id, dataset_key, equity_json FROM backtests WHERE strategy_id=? AND metrics_json IS NOT NULL "
                       "ORDER BY id DESC LIMIT 1", (bot,))
 
-    def queue_test(bot: str, dataset: Optional[str], start: Optional[str], end: Optional[str], trigger: str,
-                   backtest_id: Optional[int] = None) -> dict:
+    def history_range(bot: str) -> Optional[tuple[str, str]]:
+        """The span every chart this bot needs is downloaded for (MT5 history), as (first day, last day)."""
+        cls = bot_class(bot)
+        starts, ends = [], []
+        mans = state.datasets.manifests()
+        for r in cls.roles:
+            for tf in cls.timeframes:
+                q = [m.get("quality", {}) for m in mans if m["provenance"].get("source") == "MT5_TERMINAL"
+                     and m["provenance"]["role"] == r and m["provenance"]["timeframe"] == tf]
+                st = [x["start"] for x in q if x.get("start")]
+                en = [x["end"] for x in q if x.get("end")]
+                if not st or not en:
+                    return None
+                starts.append(min(st)); ends.append(max(en))
+        a, b = str(max(starts))[:10], str(min(ends))[:10]
+        return (a, b) if a < b else None
+
+    def queue_test(bot: str, dataset: Optional[str], start: Optional[str], end: Optional[str], trigger: str) -> dict:
+        """Queue one overall assessment of a bot: a full-history backtest, its review and key failures, then tuning."""
         from ..optimise import period_of_backtest
         busy = db.one("SELECT * FROM optimisations WHERE bot_id=? AND status IN ('QUEUED','RUNNING') ORDER BY id DESC LIMIT 1", (bot,))
         if busy:
             return busy
         if not (start and end and dataset):
-            bt = latest_backtest(bot, backtest_id)
-            per = period_of_backtest(bt) if bt else None
-            if not per:
-                raise RuntimeError("run a backtest of this bot first; its period and data are what the changes are tested on")
-            start, end = start or per[0], end or per[1]
-            dataset = dataset or ("synthetic" if bt["dataset_key"] == "synthetic" else "mt5")
+            rng = history_range(bot) if dataset in (None, "mt5") else None
+            if rng:
+                dataset = "mt5"
+            else:
+                bt = latest_backtest(bot)
+                rng = period_of_backtest(bt) if bt else None
+                if not rng:
+                    raise RuntimeError("download MT5 history (or run a backtest of this bot) first; the bot is assessed on that history")
+                dataset = dataset or ("synthetic" if bt["dataset_key"] == "synthetic" else "mt5")
+            start, end = start or rng[0], end or rng[1]
         row = db.one("SELECT config_version FROM bots WHERE bot_id=?", (bot,))
         cur = db.x("INSERT INTO optimisations(bot_id,created_at,status,progress,trigger,dataset,start,\"end\",config_version) "
                    "VALUES(?,?,?,?,?,?,?,?,?)", (bot, now_iso(), "QUEUED", "waiting", trigger, dataset, start, end,
@@ -318,36 +349,105 @@ def register(app: FastAPI, state, auth) -> None:
             worker["thread"].start()
         return db.one("SELECT * FROM optimisations WHERE id=?", (cur.lastrowid,))
 
-    def test_worker():
+    def assess(oid: int) -> None:
+        import pandas as pd
         from .. import assessor
         from ..optimise import evaluate
+        from ..review import key_failures
+        row = db.one("SELECT * FROM optimisations WHERE id=?", (oid,))
+        bot = row["bot_id"]
+        params = current_params(bot)
+        db.x("UPDATE optimisations SET status='RUNNING', params_json=?, config_version=(SELECT config_version FROM bots "
+             "WHERE bot_id=?) WHERE id=?", (json.dumps(params), bot, oid))
+        say = lambda m: db.x("UPDATE optimisations SET progress=? WHERE id=?", (m, oid))
+        # 1) the bot as it stands, over the whole history: its review and what is failing
+        say("backtesting the whole history")
+        jb = BacktestBody(strategy_id=bot, params=params, dataset=row["dataset"], start=row["start"], end=row["end"])
+        jid = create_job(jb)
+        state.jobs[jid] = "RUNNING"
+        out = _pool().submit(compute_backtest, jb.model_dump(), state.cfg, str(state.datasets.root), default_capital(),
+                             account_currency()).result()
+        db.x("UPDATE backtests SET metrics_json=?, diagnostics_json=?, reliability_json=?, trades_json=?, equity_json=?, config_json=?, "
+             "dataset_key=? WHERE id=?", (out["metrics"], out["diagnostics"], out["reliability"], out["trades"], out["equity"],
+                                         out["config"], out["dataset_key"], jid))
+        state.jobs[jid] = "DONE"
+        rv = assessor.review_backtest(db, bot, jid, state.datasets)
+
+        # 2) tuning, several backtests at a time
+        def run_many(jobs):
+            futs = [_pool().submit(compute_backtest, BacktestBody(strategy_id=bot, params=p, dataset=row["dataset"], start=a, end=b)
+                                   .model_dump(), state.cfg, str(state.datasets.root), default_capital(), account_currency())
+                    for p, a, b in jobs]
+            return [json.loads(f.result()["metrics"]) for f in futs]
+
+        res = evaluate(bot, params, rv.get("suggestions", []), row["start"], row["end"], progress=say, run_many=run_many)
+        df = pd.DataFrame(rv.get("trades") or [])
+        if not df.empty:
+            df["entry_time"] = pd.to_datetime(df["entry_time"], utc=True, format="mixed")
+        res["failures"] = key_failures(df, rv.get("stats") or {}, res)
+        res["backtest_id"] = jid
+        rv["failures"] = res["failures"]
+        assessor.store_review(db, bot, f"assessment:{oid}", row["trigger"] or "assessment", rv)
+        t = res.get("tuned")
+        db.x("UPDATE optimisations SET status='DONE', progress=?, result_json=?, finished_at=? WHERE id=?",
+             ((f"tuned in {len(t['steps'])} step(s): {t['verdict']}" if t else "no change beat the bot as it stands")
+              + f"; {len(res['failures'])} key failure(s)", json.dumps(res, default=str), now_iso(), oid))
+        db.event("ASSESSOR_TESTED", bot, {"assessment": oid, "verdict": t["verdict"] if t else None})
+        try:
+            assessor.raise_change_requests(db, bot, oid, rv, res)
+        except Exception as e:
+            db.event("ASSESSOR_ERROR", bot, {"assessment": oid, "error": f"change requests: {e}"})
+
+    def test_worker():
         while True:
             try:
                 oid = test_q.get(timeout=5)
             except _queue.Empty:
                 return
-            row = db.one("SELECT * FROM optimisations WHERE id=?", (oid,))
-            bot = row["bot_id"]
             try:
-                params = current_params(bot)
-                db.x("UPDATE optimisations SET status='RUNNING', params_json=?, config_version=(SELECT config_version FROM bots "
-                     "WHERE bot_id=?) WHERE id=?", (json.dumps(params), bot, oid))
-                rv = assessor.latest(db, bot, "backtest") or {}
-
-                def run(p: dict, start: str, end: str) -> dict:
-                    body = BacktestBody(strategy_id=bot, params=p, dataset=row["dataset"], start=start, end=end)
-                    out = _pool().submit(compute_backtest, body.model_dump(), state.cfg, str(state.datasets.root),
-                                         default_capital(), account_currency()).result()
-                    return json.loads(out["metrics"])
-
-                res = evaluate(bot, params, rv.get("suggestions", []), row["start"], row["end"], run,
-                               progress=lambda m: db.x("UPDATE optimisations SET progress=? WHERE id=?", (m, oid)))
-                db.x("UPDATE optimisations SET status='DONE', progress=?, result_json=?, finished_at=? WHERE id=?",
-                     (f"{sum(1 for c in res['candidates'] if c['verdict'] == 'passed')} of {res['variants_tried']} changes passed",
-                      json.dumps(res, default=str), now_iso(), oid))
-                db.event("ASSESSOR_TESTED", bot, {"optimisation": oid, "passed": [c["id"] for c in res["candidates"] if c["verdict"] == "passed"]})
+                assess(oid)
             except Exception as e:
                 db.x("UPDATE optimisations SET status='FAILED', error=?, finished_at=? WHERE id=?", (str(e)[:500], now_iso(), oid))
+
+    @app.post("/api/optimise/all", dependencies=[Depends(auth)])
+    def optimise_all(body: OptimiseBody):
+        """Assess every bot (queued; one at a time, several backtests in parallel)."""
+        queued, skipped = [], []
+        for b in BOT_IDS:
+            if db.one("SELECT status FROM bots WHERE bot_id=?", (b,))["status"] == "RETIRED":
+                skipped.append({"bot_id": b, "why": "retired"})
+                continue
+            try:
+                queued.append(queue_test(b, body.dataset, body.start, body.end, "test all")["bot_id"])
+            except RuntimeError as e:
+                skipped.append({"bot_id": b, "why": str(e)})
+        return {"queued": queued, "skipped": skipped}
+
+    @app.post("/api/assessor/clear-suggestions", dependencies=[Depends(auth)])
+    def assessor_clear_suggestions(body: OperatorBody):
+        from .. import assessor
+        return assessor.clear_suggestions(db, body.operator)
+
+    @app.post("/api/assessor/clear-history", dependencies=[Depends(auth)])
+    def assessor_clear_history(body: OperatorBody):
+        from .. import assessor
+        return assessor.clear_history(db, body.operator)
+
+    @app.get("/api/workshop")
+    def workshop(status: Optional[str] = None):
+        """The Engineer's change requests: rule changes no setting can make, written up for a developer."""
+        from .. import assessor
+        return assessor.change_requests(db, status)
+
+    @app.post("/api/workshop/{rid}/status", dependencies=[Depends(auth)])
+    def workshop_status(rid: int, body: RequestStatusBody):
+        if body.status not in ("DONE", "DISMISSED", "OPEN"):
+            raise HTTPException(400, "status must be DONE, DISMISSED or OPEN")
+        if not db.one("SELECT 1 FROM change_requests WHERE id=?", (rid,)):
+            raise HTTPException(404)
+        db.x("UPDATE change_requests SET status=?, closed_at=?, operator=? WHERE id=?",
+             (body.status, None if body.status == "OPEN" else now_iso(), body.operator, rid))
+        return db.one("SELECT * FROM change_requests WHERE id=?", (rid,))
 
     @app.post("/api/optimise/{bot}", dependencies=[Depends(auth)])
     def optimise_bot(bot: str, body: OptimiseBody):
@@ -374,18 +474,7 @@ def register(app: FastAPI, state, auth) -> None:
             db.x("UPDATE backtests SET metrics_json=?, diagnostics_json=?, reliability_json=?, trades_json=?, equity_json=?, config_json=?, "
                  "dataset_key=? WHERE id=?", (out["metrics"], out["diagnostics"], out["reliability"], out["trades"], out["equity"],
                                              out["config"], out["dataset_key"], job_id))
-            try:
-                from .. import assessor
-                assessor.store_review(db, body.strategy_id, f"backtest:{job_id}", "backtest finished",
-                                      assessor.review_backtest(db, body.strategy_id, job_id, state.datasets))
-            except Exception as e:  # a failed review never fails the backtest
-                db.event("ASSESSOR_ERROR", body.strategy_id, {"backtest": job_id, "error": str(e)})
-            state.jobs[job_id] = "DONE"
-            if body.dataset != "synthetic" and state.cfg.get("assessor", {}).get("auto_test", True):
-                try:
-                    queue_test(body.strategy_id, body.dataset, None, None, "backtest finished", job_id)
-                except Exception as e:
-                    db.event("ASSESSOR_ERROR", body.strategy_id, {"backtest": job_id, "error": f"could not queue tests: {e}"})
+            state.jobs[job_id] = "DONE"  # the Assessor judges the bot overall (Assess / Test all / after Run all), not each run
         except Exception as e:
             db.x("UPDATE backtests SET diagnostics_json=? WHERE id=?",
                  (json.dumps({"error": str(e), "trace": traceback.format_exc()[-2000:]}), job_id))
@@ -420,6 +509,12 @@ def register(app: FastAPI, state, auth) -> None:
             for jid, jb in jobs:
                 state.jobs[jid] = "RUNNING"
                 run_one(jid, jb)
+            if body.dataset != "synthetic" and state.cfg.get("assessor", {}).get("auto_test", True):
+                for b in BOT_IDS:  # one overall assessment per bot once the whole run is done
+                    try:
+                        queue_test(b, "mt5", None, None, "run all finished")
+                    except RuntimeError:
+                        pass
 
         threading.Thread(target=run, daemon=True).start()
         return {"ids": [j for j, _ in jobs], "status": "QUEUED"}
@@ -495,7 +590,7 @@ def register(app: FastAPI, state, auth) -> None:
         cards = []
         for b in BOT_IDS:
             row = db.one("SELECT status, pause_reason FROM bots WHERE bot_id=?", (b,))
-            demo, bt = assessor.latest(db, b, "demo"), assessor.latest(db, b, "backtest")
+            demo, bt = assessor.latest(db, b, "demo"), assessor.latest(db, b, "assessment") or assessor.latest(db, b, "backtest")
             cards.append({"bot_id": b, "name": bot_name(b), "status": row["status"] if row else None,
                           "pause_reason": row["pause_reason"] if row else None,
                           "demo": {"grade": assessor.grade(demo), "stats": (demo or {}).get("stats"), "at": (demo or {}).get("created_at")},
@@ -504,6 +599,7 @@ def register(app: FastAPI, state, auth) -> None:
         last = db.one("SELECT created_at FROM reviews ORDER BY id DESC LIMIT 1")
         return {"suggestions": assessor.suggestions_ranked(db), "cards": cards,
                 "tests": {b: assessor.latest_test(db, b) for b in BOT_IDS},
+                "workshop_open": db.one("SELECT COUNT(*) n FROM change_requests WHERE status='OPEN'")["n"],
                 "blocks": sorted(({**g, "bots": sorted(g["bots"])} for g in blocks.values()), key=lambda g: -g["count"]),
                 "protection": db.q("SELECT ts, kind, bot_id, payload_json FROM events WHERE kind IN ('PROTECTION_RESTORED','PROTECTION_FAILED') "
                                    "ORDER BY id DESC LIMIT 30"),

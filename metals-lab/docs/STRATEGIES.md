@@ -43,29 +43,45 @@ from 20:00 UTC (S06 also stops entering at 18:00 on Fridays) and the broker's ow
 auditor. Expect more losing trades in the hours the backtest flagged, and wider spreads in quiet hours (the spread
 guards stay).
 
-## How the Assessor decides what to suggest
+## How the Assessor works
 
-The Assessor's goal is more net profit without deeper losses. Ideas from the trade review alone (cut a losing session,
-lower a target) often trade profit for fewer losses, so no settings change is offered until it has been **tested**
-(`metals_lab/optimise.py`):
+**Backtests: one overall assessment per bot** (`metals_lab/optimise.py`). It runs when you press **Assess** (bot page,
+Review tab) or **Test all bots** (Assessor page), and once for every bot when **Run all** on MT5 history finishes. A
+single backtest run is no longer reviewed on its own. Each assessment:
 
-1. After every backtest on MT5 history (or **Test now** on the bot's Review tab), the Assessor backtests the bot as it
-   is and with each candidate change, on the same history (`assessor.auto_test: true`).
-2. The history is split by time: the first 70% is where a change is *found*, the last 30% is where it must be *confirmed*.
-3. A change passes when net profit is higher **and the worst drawdown is no deeper** (0.1 percentage point tolerance),
-   first on the found-on period and then again on the confirm-on period. With fewer than 10 trades in the confirm-on
-   period it is "unconfirmed"; helping only where it was found is "probably noise". Neither can be applied.
-4. Candidates go both ways, not just cuts: wider and tighter stops, nearer and further targets, shorter and longer holds,
-   the breakeven and trailing exits on or off, adding back a metal or hours that were cut, plus the review's own ideas
-   (switch off a losing metal, remove a losing UK-time session from that metal's windows; those need 20+ trades in the
-   session). Up to 14 variants per bot.
-5. Passed changes are ranked by the profit they added on the confirm-on period. Every card shows both periods: net
-   profit, worst drawdown and trades, now vs with the change. Trying many variants and keeping the best still favours
-   luck, so expect less than shown.
+1. Backtests the bot as it stands over all the MT5 history downloaded for its charts, reviews those trades and names its
+   **key failures** in plain words: no edge (loses, and no setting fixes it), costs eating the moves, winners turning
+   into losers, profit from a handful of trades, most losses from one side or metal, only working in one year, too few
+   trades to judge.
+2. **Tunes** it in up to three rounds. History is split by time: search (first 60%), choose (next 20%), final (last 20%).
+   Each round tries up to 14 changes on search (stops wider/tighter, targets nearer/further, holds shorter/longer,
+   breakeven and trailing exits on/off, adding back a cut metal or hours, plus the review's own ideas). Changes that make
+   more net profit with no deeper worst drawdown are checked on choose; the best is kept, and the next round searches on
+   top of it.
+3. Checks the tuned bot **once** on the final 20%, which tuning never saw. Only if it beats the original there (more net
+   profit, worst drawdown no deeper, 10+ trades) is the tuned change offered; otherwise it is reported as probably
+   overfit. Re-using the choose period across rounds is exactly why this last check exists.
 
-Apply only works for a change that passed and whose test is current (the bot's settings have not changed since). It is
-recorded and folds to one line ("Applied in settings vN"). Rule ideas that need code stay as text, marked untested.
-The older `metals`, `hours_utc` and `trading.all_metals/all_hours` settings are gone; values still saved are ignored.
+Apply takes the whole tuned change in one step and only works while the assessment is current (the bot's settings have
+not changed since). Applied changes are recorded and fold to one line. Two backtests run at a time
+(`assessor.parallel_backtests`); a full assessment is roughly 30-60 backtests, so assessing all 22 bots on a year or
+more of M5 history takes hours.
+
+**Demo trading: every trade and the whole bot.** When a trade closes, the Assessor writes a note on it (shown on the bot's
+Trades tab and in History): why it entered and exited, the result in R, how far it went for and against (in R), slippage
+against the planned price, rule issues (no stop, closed by hand), and a verdict: good trade, unlucky (went +1R then
+reversed), poor setup (never went its way), execution problem (bad fill or no stop) or scratch. Then the whole bot is
+reviewed again.
+
+**Clearing.** *Clear suggestions* removes open suggestions and finished assessments so new tests start from a clean list
+(applied records stay). *Clear Assessor history* removes every review, assessment, applied record, trade note and
+Workshop request. Neither touches backtests, trades, settings or the settings audit log; both need your name and are
+logged.
+
+**The Engineer (Workshop tab).** Rule ideas and key failures that no setting can fix are written up as change requests:
+the problem, the evidence, the rule to build (as a new setting that starts off), and how to test it. **Copy for Claude
+Code** puts the request on the clipboard to hand to a developer session; once it is built, press Assess and the Assessor
+decides whether the new setting earns its place. Nothing is coded or changed automatically.
 
 ## Exit options: breakeven and trailing stop
 

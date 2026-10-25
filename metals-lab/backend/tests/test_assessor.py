@@ -41,14 +41,14 @@ def test_history_shows_entry_and_exit_per_leg(armed, client):
     assert leg["entry_price"] and leg["exit_price"] and leg["sl"] and leg["tp"] and leg["price_move"] is not None
 
 
-def test_assessor_reviews_finished_backtests_and_run_all(armed, client):
+def test_backtests_are_not_reviewed_one_by_one_but_review_all_still_works(armed, client):
     r = client.post("/api/backtests", json={"strategy_id": "S09L", "dataset": "synthetic", "synthetic_days": 20}).json()
     for _ in range(600):
         if client.get(f"/api/backtests/{r['id']}").json()["status"] != "RUNNING":
             break
         time.sleep(0.1)
-    assert armed.db.one("SELECT 1 FROM reviews WHERE bot_id='S09L' AND source=? AND trigger='backtest finished'", (f"backtest:{r['id']}",))
-    assert client.post("/api/assessor/run").json()["reviews"] >= 20
+    assert not armed.db.one("SELECT 1 FROM reviews WHERE bot_id='S09L' AND trigger='backtest finished'")  # judged overall instead
+    assert client.post("/api/assessor/run").json()["reviews"] >= 22
 
 
 def test_date_range_download_and_backtest(armed, client):

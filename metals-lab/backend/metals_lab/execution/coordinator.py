@@ -285,6 +285,10 @@ class Coordinator:
         """The assessor re-reviews every bot that just closed a trade. Never allowed to break the loop."""
         from .. import assessor
         bots = {r["bot_id"] for t in trade_ids for r in self.db.q("SELECT bot_id FROM trades WHERE trade_id=?", (t,))}
+        try:
+            assessor.assess_trades(self.db, trade_ids, self)  # one note per trade, then the whole bot again
+        except Exception as e:  # pragma: no cover - defensive
+            log.warning("trade notes failed: %s", e)
         for b in sorted(bots):
             try:
                 assessor.store_review(self.db, b, "demo", "trade closed", assessor.review_demo(self.db, b, self))

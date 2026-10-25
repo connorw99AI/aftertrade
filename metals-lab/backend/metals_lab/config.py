@@ -58,7 +58,8 @@ DEFAULTS: dict[str, Any] = {
         "require_stop": True,
     },
     "assessor": {
-        "auto_test": True,                  # after each backtest on MT5 history, test candidate changes for that bot (optimise.py)
+        "auto_test": True,                  # after Run all on MT5 history, assess and tune every bot once (optimise.py)
+        "parallel_backtests": 2,            # backtests the Assessor (and the Backtest page) run at the same time
     },
     "auditor": {
         "ruleset_version": "metals-audit-1.0",

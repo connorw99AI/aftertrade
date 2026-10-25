@@ -40,53 +40,88 @@ export function AppliedSuggestion({ s, who }: { s: Any; who?: React.ReactNode })
 const pctDD = (v: number | null | undefined) => (v == null ? "–" : `${(v * 100).toFixed(1)}%`);
 const signed = (v: number | null | undefined) => (v == null ? "–" : money(v, true));
 
-/** Numbers behind a tested change: the bot as it is vs with the change, where it was found and where it was confirmed. */
+/** The tuned bot against the bot as it stands, on the three periods: search, choose and the untouched final check. */
 export function TestNumbers({ t }: { t: Any }) {
-  const p = t.period, b = t.baseline, c = t.candidate;
-  const row = (label: string, range: string, base: Any, cand: Any) => cand && base ? (
-    <tr><td>{label}<div className="tiny muted">{range}</div></td>
-      <td className="n">{signed(base.net)} → <b>{signed(cand.net)}</b></td>
-      <td className="n">{pctDD(base.dd)} → <b>{pctDD(cand.dd)}</b></td>
-      <td className="n">{base.n} → {cand.n}</td></tr>) : null;
+  const p = t.periods, o = t.original, n = t.tuned;
+  const row = (label: string, k: string, note: string) => o?.[k] && n?.[k] ? (
+    <tr key={k}><td>{label}<div className="tiny muted">{p[k][0]} to {p[k][1]} · {note}</div></td>
+      <td className="n">{signed(o[k].net)} → <b>{signed(n[k].net)}</b></td>
+      <td className="n">{pctDD(o[k].dd)} → <b>{pctDD(n[k].dd)}</b></td>
+      <td className="n">{o[k].n} → {n[k].n}</td></tr>) : null;
   return (
     <div className="table-wrap"><table className="test-numbers">
       <thead><tr><th>Period</th><th className="n">Net profit</th><th className="n">Worst drawdown</th><th className="n">Trades</th></tr></thead>
       <tbody>
-        {row("Found on", `${p.start} to ${p.found_end}`, b.in, c.in)}
-        {row("Confirmed on", `${p.confirm_start} to ${p.end}`, b.out, c.out)}
+        {row("Search", "search", "changes tried here")}
+        {row("Choose", "choose", "best change kept here")}
+        {row("Final check", "final", "never used for tuning")}
       </tbody>
     </table></div>
   );
 }
 
-/** Queue a test of candidate changes for a bot. Returns a message. */
+/** Queue an overall assessment of a bot. Returns a message. */
 export async function testNow(bot: string): Promise<string> {
   const r = await api.post<Any>(`/api/optimise/${bot}`, {});
-  return r.status === "RUNNING" ? `${CREATURES[bot]?.name} is being tested now.` : `${CREATURES[bot]?.name} is queued for testing.`;
+  return r.status === "RUNNING" ? `${CREATURES[bot]?.name} is being assessed now.` : `${CREATURES[bot]?.name} is queued for assessment.`;
 }
 
 const VERDICT: Record<string, string> = {
-  passed: "Passed", unconfirmed: "Helped, but too few later trades to confirm", noise: "Helped where found, not later (probably noise)",
-  no_help: "Did not add profit without a deeper drawdown",
+  kept: "Kept", passed_not_best: "Passed, but another change did better", unconfirmed: "Helped, but too few trades to confirm",
+  noise: "Helped on search, not on choose (probably noise)", no_help: "Did not add profit without a deeper drawdown",
+};
+const FINAL: Record<string, string> = {
+  passed: "passed the final check", overfit: "failed the final check: probably overfit, not offered",
+  unconfirmed: "too few trades in the final check to confirm, not offered",
 };
 
-/** Where a bot's latest test stands, and every change it tried with the result. */
-export function TestStatus({ t }: { t: Any }) {
-  if (!t) return <p className="muted small">Not tested yet. Changes are tested after each backtest on MT5 history, or press Test now.</p>;
-  if (t.status === "QUEUED" || t.status === "RUNNING")
-    return <p className="small"><Pill tone="info">{t.status === "QUEUED" ? "Queued" : "Testing"}</Pill> {t.progress}</p>;
-  if (t.status === "FAILED") return <p className="small notice-danger">Test failed: {t.error}</p>;
-  const res = t.result;
+/** Key failures the Assessor found in the strategy. */
+export function Failures({ items }: { items: Any[] }) {
+  if (!items?.length) return null;
   return (
-    <details className="test-status">
-      <summary className="small">Tested {when(t.finished_at)} on {t.dataset === "synthetic" ? "synthetic data" : "MT5 history"} ({res.period.start} to {res.period.end}): {t.progress}
-        {t.stale && <span className="muted"> · settings changed since, test again</span>}</summary>
-      <p className="tiny muted">Rule: {res.rule}. {res.variants_tried} variants tried; the best of many looks better than it will be.</p>
-      <ul className="tried">{res.candidates.map((c: Any) => (
-        <li key={c.id} className={`v-${c.verdict}`}><b>{c.title}</b> <span className="muted">— {VERDICT[c.verdict]}.</span>
-          <span className="tiny muted"> Found on: {signed(res.baseline.in.net)} → {signed(c.in.net)}, drawdown {pctDD(res.baseline.in.dd)} → {pctDD(c.in.dd)}
-            {c.out && res.baseline.out ? `; later: ${signed(res.baseline.out.net)} → ${signed(c.out.net)}, drawdown ${pctDD(res.baseline.out.dd)} → ${pctDD(c.out.dd)}` : ""}</span></li>))}
-      </ul>
-    </details>
+    <ul className="failures">{items.map((f: Any) => (
+      <li key={f.code}><b>{f.title}</b>{f.needs_code && <span className="tiny muted"> · needs a code change (sent to the Workshop)</span>}
+        <div className="small muted">{f.detail}</div></li>))}</ul>
   );
 }
+
+/** Where a bot's latest assessment stands: progress, key failures, and every change tried in each round. */
+export function TestStatus({ t }: { t: Any }) {
+  if (!t) return <p className="muted small">Not assessed yet. Press Assess, Test all bots, or run all backtests on MT5 history.</p>;
+  if (t.status === "QUEUED" || t.status === "RUNNING")
+    return <p className="small"><Pill tone="info">{t.status === "QUEUED" ? "Queued" : "Assessing"}</Pill> {t.progress}</p>;
+  if (t.status === "FAILED") return <p className="small notice-danger">Assessment failed: {t.error}</p>;
+  const res = t.result;
+  const tu = res.tuned;
+  return (
+    <div className="test-status">
+      <p className="small">Assessed {when(t.finished_at)} on {t.dataset === "synthetic" ? "synthetic data" : "MT5 history"} ({t.start} to {t.end}).{" "}
+        {tu ? <>Tuned in {tu.steps.length} step(s), {FINAL[tu.verdict]}.</> : <>No change beat the bot as it stands.</>}
+        {t.stale && <span className="muted"> Settings changed since; assess again.</span>}</p>
+      <Failures items={res.failures} />
+      <details>
+        <summary className="small">Every change tried ({res.variants_tried})</summary>
+        <p className="tiny muted">Rule: {res.rule}. The best of many looks better than it will be.</p>
+        {res.rounds.map((r: Any) => (
+          <div key={r.round}>
+            <div className="small"><b>Round {r.round}</b> {r.kept ? "" : "· nothing kept"}</div>
+            <ul className="tried">{r.candidates.map((c: Any) => (
+              <li key={c.id} className={`v-${c.verdict}`}><b>{c.title}</b> <span className="muted">— {VERDICT[c.verdict]}.</span>
+                <span className="tiny muted"> Search: {signed(r.baseline.search.net)} → {signed(c.search.net)}, drawdown {pctDD(r.baseline.search.dd)} → {pctDD(c.search.dd)}
+                  {c.choose && r.baseline.choose ? `; choose: ${signed(r.baseline.choose.net)} → ${signed(c.choose.net)}, drawdown ${pctDD(r.baseline.choose.dd)} → ${pctDD(c.choose.dd)}` : ""}</span></li>))}
+            </ul>
+          </div>))}
+      </details>
+    </div>
+  );
+}
+
+/** The Assessor's note on one closed trade: verdict, best/worst point in R, slippage, rule issues. */
+export function TradeNote({ n }: { n: Any }) {
+  if (!n) return <span className="muted tiny">–</span>;
+  const extra = [n.best_r != null ? `best +${n.best_r}R` : null, n.worst_r != null ? `worst -${n.worst_r}R` : null,
+    n.slippage_r ? `slippage ${n.slippage_r}R` : null, ...(n.rule_issues ?? [])].filter(Boolean).join(" · ");
+  return <div className="trade-note" title={n.summary}><b className={`v-${n.verdict}`}>{n.label}</b>
+    <div className="muted">{n.summary}</div>{extra && <div className="muted tiny">{extra}</div>}</div>;
+}
+

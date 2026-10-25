@@ -9,6 +9,7 @@ import { Button, DateInput, EmptyState, Pnl, Stat, Stats, Table } from "@/compon
 import { Any, api, apiBase, confirmAction, minutes, money, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
 import { RangeBar } from "@/components/RangeBar";
+import { TradeNote } from "@/components/Suggestion";
 
 const dp = (sym: string) => (String(sym).startsWith("XAG") ? 3 : 2);
 const px = (v: Any, sym: string) => (v == null ? "–" : Number(v).toFixed(dp(sym)));
@@ -115,6 +116,7 @@ function TradeRow({ t, open, onToggle }: { t: Any; open: boolean; onToggle: () =
               <dt>Why it exited</dt><dd>{t.exit_rationale || "–"}</dd>
               <dt>Result</dt><dd>gross {money(t.gross, true)}, commission {money(t.commission, true)}, swap {money(t.swap, true)}, net <Pnl v={t.net} />{t.r_multiple != null ? ` (${t.r_multiple}R)` : ""}</dd>
               <dt>Held</dt><dd>{minutes(t.minutes_held)}, from {when(t.entry_time)} to {when(t.exit_time)}{t.config_version ? `, under rules v${t.config_version}` : ""}</dd>
+              <dt>Assessor</dt><dd><TradeNote n={t.assessment} /></dd>
             </dl>
           </div>
         </td></tr>

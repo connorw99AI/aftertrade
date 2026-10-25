@@ -294,3 +294,51 @@ def review(bot: str, df: pd.DataFrame, params: dict, bars: Optional[dict] = None
             [{"id": "sample", "title": "No closed trades yet", "kind": "info", "evidence": "", "change": None}],
             "trades": [] if df.empty else df.assign(entry_time=df["entry_time"].astype(str), exit_time=df["exit_time"].astype(str))
             .replace({np.nan: None}).to_dict("records")}
+
+
+def key_failures(df: pd.DataFrame, stats: dict, tuning: Optional[dict] = None) -> list[dict]:
+    """What is breaking this strategy, in plain words: [{"code", "title", "detail", "needs_code"}].
+    ``needs_code`` marks failures no setting can fix; the Engineer writes those up as change requests."""
+    out: list[dict] = []
+    n = stats.get("n", 0)
+
+    def add(code, title, detail, needs_code=False):
+        out.append({"code": code, "title": title, "detail": detail, "needs_code": needs_code})
+
+    if n < 30:
+        add("few_trades", "Too few trades to judge", f"{n} trades over the whole history; 30+ are needed before any "
+            "conclusion means much.")
+        if n < MIN_N:
+            return out
+    net, exp = stats.get("net", 0.0), stats.get("expectancy", 0.0)
+    nothing_helped = tuning is not None and not tuning.get("tuned") and tuning.get("variants_tried")
+    if net < 0 and nothing_helped:
+        add("no_edge", "No edge: loses money and no setting change fixed it",
+            f"Net {net:+.2f} over {n} trades ({exp:+.2f} a trade); none of the {tuning['variants_tried']} changes tried made "
+            "more money without a deeper drawdown. The entry idea itself is the problem; redesign or retire it.", True)
+    elif net < 0:
+        add("losing", "Loses money overall", f"Net {net:+.2f} over {n} trades ({exp:+.2f} a trade).")
+    if stats.get("cost_share_pct", 0) >= 30:
+        add("costs", "Costs eat most of the moves", f"Spread, commission and swap equal {stats['cost_share_pct']}% of gross "
+            "profit and loss: targets are too small for the cost of trading.", True)
+    ex = stats.get("excursions") or {}
+    if (ex.get("stopped_after_reaching_1r_pct") or 0) >= 30:
+        add("give_back", "Winners turn into losers", f"{ex['stopped_after_reaching_1r_pct']}% of stopped trades were at least "
+            "+1R first. The breakeven or trailing exit may fix it (the tuner tries both).")
+    wins = df.loc[df["net"] > 0, "net"].sort_values(ascending=False) if not df.empty else pd.Series(dtype=float)
+    if net > 0 and len(wins) >= 5 and wins.iloc[:5].sum() > net:
+        add("concentrated", "Profit depends on a handful of trades", f"The best 5 trades made {wins.iloc[:5].sum():+.2f}, "
+            f"more than the whole net {net:+.2f}: without them the bot loses.")
+    for col, label in (("by_side", "side"), ("by_metal", "metal")):
+        groups = stats.get(col) or []
+        losses = sum(-g["net"] for g in groups if g["net"] < 0)
+        for g in groups:
+            if g["net"] < 0 and losses and -g["net"] / losses >= 0.7 and len(groups) > 1 and g["n"] >= MIN_N:
+                add(f"{label}_{g['key']}", f"Most losses come from {g['key'].lower()}",
+                    f"{g['key']}: {g['n']} trades, net {g['net']:+.2f}, {(-g['net'] / losses):.0%} of all losses.")
+    if not df.empty:
+        years = df.groupby(df["entry_time"].dt.year)["net"].sum()
+        if len(years) >= 2 and (years > 0).sum() == 1 and net > 0:
+            add("one_year", "Only works in one year", "Net by year: " + ", ".join(f"{y} {v:+.2f}" for y, v in years.items()) +
+                ". One good year carries the rest: a change of market could end it.", True)
+    return out

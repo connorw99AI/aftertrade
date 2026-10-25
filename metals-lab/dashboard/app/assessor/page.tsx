@@ -6,7 +6,7 @@ import { botAction, StatusBadge, Tabs } from "@/components/Bits";
 import { Creature, CREATURES } from "@/components/Creature";
 import { AppliedSuggestion, applySuggestion, changeText, TestNumbers, TestStatus, testNow } from "@/components/Suggestion";
 import { Button, domainOf, EmptyState, Pill, Pnl, ProgressBar, Sparkline, Table } from "@/components/ui";
-import { Any, api, money, when } from "@/lib/api";
+import { Any, api, confirmAction, money, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
 import { blockDetail, capitalise, reasonText } from "@/lib/wording";
 
@@ -110,19 +110,20 @@ function SuggestionCard({ s, st, onApply, onTest }: { s: Any; st: Any; onApply: 
     <div className={`suggestion k-${s.untested ? "untested" : s.kind}`}>
       <div className="row-between">
         <Link href={`/bot?id=${s.bot_id}&tab=review`} className="who"><Creature bot={s.bot_id} size={30} mood="still" /> {CREATURES[s.bot_id]?.name}</Link>
-        {s.tested ? <Pill tone="strong">{s.gain != null ? `confirmed ${money(s.gain, true)}` : "passed"}</Pill>
+        {s.tested ? <Pill tone="strong">{s.gain != null ? `final check ${money(s.gain, true)}` : "passed"}</Pill>
           : s.untested ? <Pill tone="muted">not tested</Pill> : null}
       </div>
       <b>{s.title}</b>
       {s.change && <p>Change: <code>{changeText(s.change)}</code></p>}
       {s.tested ? <TestNumbers t={s.tested} /> : <p className="muted small">{s.evidence}</p>}
-      {s.tested && <p className="tiny muted">Best of several variants tried, so expect less than this. Tested {when(s.reviewed_at)}.</p>}
-      {s.untested && <p className="tiny muted">An idea from the trade review. It is not offered until a backtest shows it adds profit without a deeper worst drawdown.</p>}
+      {s.tested && <p className="tiny muted">Steps: {s.tested.steps.map((x: Any) => `round ${x.round}: ${x.title}`).join("; ")}. Many variants were tried,
+        so expect less than this. Assessed {when(s.reviewed_at)}.</p>}
+      {s.untested && <p className="tiny muted">An idea from the trade review. Press Assess: it is tried with the other changes and only offered if it adds profit without a deeper worst drawdown.</p>}
       {s.rule_change && <p>Needs a rule change: <i>{s.rule_change}</i> (untested; ask for it to be coded).</p>}
       <div className="actions">
         {s.tested && <Button size="sm" onClick={() => onApply(s)} disabled={stale || st?.status === "RUNNING"}
-          title={stale ? "The bot's settings changed after this test; test again" : st?.status === "RUNNING" ? "Pause the bot first" : ""}>Apply</Button>}
-        {(s.untested || stale) && <Button size="sm" onClick={() => onTest(s.bot_id)}>{stale ? "Test again" : "Test now"}</Button>}
+          title={stale ? "The bot's settings changed after this assessment; assess again" : st?.status === "RUNNING" ? "Pause the bot first" : ""}>Apply</Button>}
+        {(s.untested || stale) && <Button size="sm" onClick={() => onTest(s.bot_id)}>{stale ? "Assess again" : "Assess"}</Button>}
         {(s.id === "no_edge" || s.id === "costs") && st?.status !== "RETIRED" && <Button size="sm" tone="ghost" onClick={() => botAction(s.bot_id, "retire")}>Retire</Button>}
       </div>
     </div>
@@ -148,18 +149,19 @@ function Suggestions({ data, reload }: { data: Any; reload: () => void }) {
   }
   return (
     <>
-      <p className="muted">A change is only offered when a backtest shows it adds net profit without a deeper worst drawdown, on the history
-        it was found on (first 70%) and again on later history it was not found on (last 30%). Changes are tested after every backtest on MT5 history.</p>
+      <p className="muted">Each bot is assessed as a whole on its full history. Settings are tuned in up to three rounds (searching on the
+        first 60%, keeping the best on the next 20%) and the tuned bot is only offered if it also makes more net profit with no deeper worst
+        drawdown on the last 20%, which tuning never sees. Rule ideas that need code go to the Engineer&apos;s Workshop.</p>
       {msg && <div className="notice">{msg}</div>}
       {busy.length > 0 && <p className="small"><Pill tone="info">Testing</Pill> {busy.map(([b, t]) => `${CREATURES[b]?.name}: ${t.progress}`).join(" · ")}</p>}
-      {!sugg.length ? <EmptyState>No suggestions yet. Run backtests on MT5 history; each bot&apos;s changes are tested afterwards.</EmptyState> : (
+      {!sugg.length ? <EmptyState>No suggestions. Press Test all bots (or run all backtests on MT5 history) to assess every bot.</EmptyState> : (
         <div className="suggestions">
           {sugg.map((s) => s.applied
             ? <AppliedSuggestion key={`${s.bot_id}-${s.id}`} s={s} who={CREATURES[s.bot_id]?.name} />
             : <SuggestionCard key={`${s.bot_id}-${s.id}-${s.review_id}`} s={s} st={status(s.bot_id)} onApply={apply} onTest={test} />)}
         </div>)}
       {tests.length > 0 && <>
-        <h2>Every change tried</h2>
+        <h2>Each bot&apos;s assessment</h2>
         <div className="tests-list">{tests.map(([b, t]) => (
           <div key={b} className="panel" style={{ padding: "var(--s-2) var(--s-3)" }}>
             <Link href={`/bot?id=${b}&tab=review`} className="who"><Creature bot={b} size={22} mood="still" /> {CREATURES[b]?.name}</Link>
@@ -212,7 +214,50 @@ function Blocked({ data }: { data: Any }) {
   );
 }
 
-const TABS: [string, string][] = [["grades", "Grades"], ["leaderboard", "Leaderboard"], ["suggestions", "Suggestions"], ["blocked", "Blocked trades"]];
+const TABS: [string, string][] = [["grades", "Grades"], ["leaderboard", "Leaderboard"], ["suggestions", "Suggestions"], ["workshop", "Workshop"], ["blocked", "Blocked trades"]];
+
+function Workshop() {
+  const [show, setShow] = useState("OPEN");
+  const { data, reload } = usePoll<Any[]>(`/api/workshop?status=${show}`, 15000);
+  const [msg, setMsg] = useState<string | null>(null);
+  async function copy(r: Any) {
+    try { await navigator.clipboard.writeText(r.spec_md); setMsg("Copied. Paste it to Claude Code to have it built and tested."); }
+    catch { setMsg("Could not copy automatically; select the text below and copy it."); }
+  }
+  async function mark(r: Any, status: string) {
+    const name = await confirmAction({ title: status === "DONE" ? "Mark this request done?" : "Dismiss this request?", confirmLabel: status === "DONE" ? "Mark done" : "Dismiss" });
+    if (!name) return;
+    await api.post(`/api/workshop/${r.id}/status`, { status, operator: name }); reload();
+  }
+  return (
+    <>
+      <div className="row-between">
+        <p className="muted"><b>The Engineer</b> writes up changes no setting can make: a new rule, a filter, a redesign. Each request says what to
+          build, behind a setting that starts off, and how to test it. Copy it for Claude Code; once built, press Assess on the bot and the
+          Assessor decides whether the new setting earns its place.</p>
+        <Tabs tabs={[["OPEN", "Open"], ["DONE", "Done"], ["DISMISSED", "Dismissed"]]} value={show} onChange={setShow} />
+      </div>
+      {msg && <div className="notice">{msg}</div>}
+      {!(data ?? []).length ? <EmptyState>No {show.toLowerCase()} requests.</EmptyState> : (
+        <div className="workshop">{(data ?? []).map((r: Any) => (
+          <div key={r.id} className="panel" style={{ padding: "var(--s-3)" }}>
+            <div className="row-between"><Link href={`/bot?id=${r.bot_id}&tab=review`} className="who"><Creature bot={r.bot_id} size={26} mood="still" /> {CREATURES[r.bot_id]?.name}</Link>
+              <span className="tiny muted">{when(r.created_at)}</span></div>
+            <b>{r.title}</b>
+            <p className="small">Rule to build: <i>{r.rule}</i></p>
+            <p className="small muted">{r.evidence}</p>
+            <details><summary className="small">Request for Claude Code</summary><pre>{r.spec_md}</pre></details>
+            <div className="actions">
+              <Button size="sm" onClick={() => copy(r)}>Copy for Claude Code</Button>
+              {r.status === "OPEN" ? <>
+                <Button size="sm" tone="ghost" onClick={() => mark(r, "DONE")}>Mark done</Button>
+                <Button size="sm" tone="ghost" onClick={() => mark(r, "DISMISSED")}>Dismiss</Button></>
+                : <Button size="sm" tone="ghost" onClick={() => mark(r, "OPEN")}>Reopen</Button>}
+            </div>
+          </div>))}</div>)}
+    </>
+  );
+}
 
 function Inner() {
   const sp = useSearchParams();
@@ -221,20 +266,42 @@ function Inner() {
   const { data, reload } = usePoll<Any>("/api/assessor", 10000);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  async function runAll() {
+  async function act(fn: () => Promise<string | null>) {
     setBusy(true); setMsg(null);
-    try { const r = await api.post<Any>("/api/assessor/run"); setMsg(`Reviewed ${r.reviews} times.`); reload(); }
+    try { const m = await fn(); if (m) setMsg(m); reload(); }
     catch (e) { setMsg(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); }
   }
+  const testAll = () => act(async () => {
+    const r = await api.post<Any>("/api/optimise/all", {});
+    return `Assessing ${r.queued.length} bots, one at a time.` + (r.skipped.length ? ` Skipped: ${r.skipped.map((x: Any) => `${x.bot_id} (${x.why})`).join(", ")}.` : "");
+  });
+  const clearSuggestions = () => act(async () => {
+    const name = await confirmAction({ title: "Clear all suggestions?", confirmLabel: "Clear suggestions", tone: "danger",
+      consequences: ["Open suggestions and finished assessments are removed, so the next tests start from a clean list.",
+        "Records of changes you already applied, backtests, trades and settings are kept.", "Logged with your name."] });
+    if (!name) return null;
+    const r = await api.post<Any>("/api/assessor/clear-suggestions", { operator: name });
+    return `Cleared: ${r.assessments_removed} assessments.`;
+  });
+  const clearHistory = () => act(async () => {
+    const name = await confirmAction({ title: "Clear the Assessor's whole history?", confirmLabel: "Clear history", tone: "danger", typed: "CLEAR",
+      consequences: ["Removes every review, assessment, applied-suggestion record, trade note and Workshop request.",
+        "Backtests, trades, bot settings and the settings audit log are kept.", "Logged with your name."] });
+    if (!name) return null;
+    const r = await api.post<Any>("/api/assessor/clear-history", { operator: name });
+    return `Cleared ${r.reviews} reviews, ${r.assessments} assessments, ${r.applied_records} applied records, ${r.trade_notes} trade notes and ${r.change_requests} requests.`;
+  });
   return (
     <>
       <div className="hero">
         <div className="hero-art"><Creature bot="ASSESSOR" size={150} scene full mood={busy ? "busy" : "idle"} /></div>
         <div className="hero-text">
           <h1>The Assessor</h1>
-          <p className="muted">Reviews every bot after each closed trade and each finished backtest: what worked, what lost, what got blocked,
-            and what to change. It only suggests; you test and apply. It also decides who is ready to be considered for real money.</p>
-          <div className="actions"><Button tone="primary" disabled={busy} onClick={runAll}>Review all now</Button>
+          <p className="muted">Assesses each bot as a whole on its backtest history, tunes it towards more profit without deeper drawdowns,
+            and names what is failing. In demo trading it reviews every closed trade and the bot after each one. It only suggests; you apply.</p>
+          <div className="actions"><Button tone="primary" disabled={busy} onClick={testAll}>Test all bots</Button>
+            <Button tone="ghost" disabled={busy} onClick={clearSuggestions}>Clear suggestions</Button>
+            <Button tone="ghost" disabled={busy} onClick={clearHistory}>Clear Assessor history</Button>
             <span className="muted small">Last review {when(data?.last_review_at)}</span></div>
         </div>
       </div>
@@ -244,6 +311,7 @@ function Inner() {
       {tab === "leaderboard" && <Leaderboard />}
       {tab === "suggestions" && <Suggestions data={data} reload={reload} />}
       {tab === "blocked" && <Blocked data={data} />}
+      {tab === "workshop" && <Workshop />}
     </>
   );
 }

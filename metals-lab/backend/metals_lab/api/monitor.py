@@ -250,6 +250,8 @@ def register(app: FastAPI, state, auth) -> None:
                 q += f" AND {col}{op}?"
                 args.append(v)
         rows = db.q(q + " ORDER BY exit_time DESC LIMIT 5000", tuple(args))
+        from .. import assessor
+        notes = assessor.trade_notes(db, [r["trade_id"] for r in rows])
         rk = _planned_risk_by_key(db)
         pos = {p["position_key"]: p for p in db.q("SELECT * FROM positions")}
         for r in rows:
@@ -268,6 +270,7 @@ def register(app: FastAPI, state, auth) -> None:
                              "exit_price": exit_px, "sl": p["sl"], "tp": p["tp"], "opened_at": p["opened_at"], "closed_at": p["closed_at"],
                              "price_move": round(move, 5) if move is not None else None, "planned_risk": p["planned_risk"]})
             r["legs"] = legs
+            r["assessment"] = notes.get(r["trade_id"])
             r["bot_name"] = bot_name(r["bot_id"]) if is_bot(r["bot_id"]) else r["bot_id"]
             if r.get("entry_time") and r.get("exit_time"):
                 r["minutes_held"] = int((datetime.fromisoformat(r["exit_time"]) - datetime.fromisoformat(r["entry_time"])).total_seconds() // 60)

@@ -506,3 +506,12 @@ svg.chart .marker-label { fill: var(--bronze-hi); font: 10.5px var(--f-mono); }
 .test-status .tried li.v-noise, .test-status .tried li.v-unconfirmed { border-left-color: var(--bronze-hi); }
 .suggestion.k-untested { border-left-style: dashed; }
 .tests-list { display: grid; gap: var(--s-2); }
+.test-status .tried li.v-kept { border-left-color: var(--st-run); }
+.test-status .tried li.v-passed_not_best { border-left-color: var(--bronze-hi); }
+.failures { list-style: none; padding: 0; margin: var(--s-2) 0; display: grid; gap: var(--s-1); }
+.failures li { border-left: 3px solid var(--st-kill); padding-left: var(--s-2); }
+.trade-note { font-size: var(--t-12); }
+.trade-note .v-good { color: var(--st-run); } .trade-note .v-poor_setup, .trade-note .v-execution { color: var(--st-kill); }
+.trade-note .v-unlucky { color: var(--st-pause); }
+.workshop { display: grid; gap: var(--s-3); }
+.workshop pre { white-space: pre-wrap; font-size: var(--t-12); background: var(--ink-deep); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--s-2); max-height: 260px; overflow: auto; }

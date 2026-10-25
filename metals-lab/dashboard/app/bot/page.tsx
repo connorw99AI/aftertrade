@@ -11,7 +11,7 @@ import { Button, EmptyState, PctDir, Pill, Pnl, Sparkline, Stat, Stats, Table } 
 import { Creature, CREATURES, SideIcon, StateSymbol, stateSymbol } from "@/components/Creature";
 import { useSummary } from "@/components/Shell";
 import { CHARACTERS } from "@/components/characters";
-import { AppliedSuggestion, applySuggestion, changeText, TestNumbers, TestStatus, testNow } from "@/components/Suggestion";
+import { AppliedSuggestion, applySuggestion, changeText, TestNumbers, TestStatus, testNow, TradeNote } from "@/components/Suggestion";
 import { TradingWindows } from "@/components/TradingWindows";
 import { Any, api, confirmAction, minutes, money, pct, ukMinutes, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
@@ -119,11 +119,11 @@ function DemoTrades({ id }: { id: string }) {
   const rows: Any[] = data?.trades ?? [];
   if (!rows.length) return <EmptyState>No closed demo trades yet.</EmptyState>;
   return (
-    <div className="table-wrap"><table><thead><tr><th>Closed</th><th>Trade</th><th>Held</th><th className="n">Gross</th><th className="n">Costs</th><th className="n">Net</th><th className="n">R</th><th>Rules</th><th>Why in / why out</th></tr></thead>
+    <div className="table-wrap"><table><thead><tr><th>Closed</th><th>Trade</th><th>Held</th><th className="n">Gross</th><th className="n">Costs</th><th className="n">Net</th><th className="n">R</th><th>Rules</th><th>Why in / why out</th><th>Assessor</th></tr></thead>
       <tbody>{rows.map((t) => <tr key={t.trade_id}><td>{when(t.exit_time)}{t.provisional ? "*" : ""}</td><td>{t.side === "LONG" ? "▲" : "▼"} {t.volume} {t.symbol}</td>
         <td>{minutes(t.minutes_held)}</td><td className="n">{money(t.gross, true)}</td><td className="n">{money(t.commission + t.swap + t.fee, true)}</td>
         <td className="n"><Pnl v={t.net} /></td><td className="n">{t.r_multiple ?? "–"}</td>
-        <td className="muted tiny">{t.config_version ? `v${t.config_version}` : "–"}</td><td className="muted small">{t.entry_rationale} / {t.exit_rationale}</td></tr>)}</tbody></table></div>
+        <td className="muted tiny">{t.config_version ? `v${t.config_version}` : "–"}</td><td className="muted small">{t.entry_rationale} / {t.exit_rationale}</td><td><TradeNote n={t.assessment} /></td></tr>)}</tbody></table></div>
   );
 }
 
@@ -175,23 +175,23 @@ function ReviewTab({ b, initialSource }: { b: Any; initialSource: string }) {
       {error && <div className="notice notice-danger">{error}</div>}
       {msg && <div className="notice">{msg}</div>}
       {!rv ? <p className="empty">Reviewing…</p> : <>
-        <div className="section-head"><h2>Tested changes</h2>
-          <Button size="sm" onClick={runTest} disabled={!!busy}>{busy ? "Testing…" : "Test now"}</Button></div>
-        <p className="muted small">Offered only when a backtest shows more net profit and no deeper worst drawdown, on the history it was found on
-          and again on later history.</p>
+        <div className="section-head"><h2>Overall assessment</h2>
+          <Button size="sm" onClick={runTest} disabled={!!busy}>{busy ? "Assessing…" : "Assess"}</Button></div>
+        <p className="muted small">The whole bot on its full history: what is failing, and settings tuned in up to three rounds. A tuned change is
+          offered only if it makes more net profit with no deeper worst drawdown, including on the last 20% of history tuning never saw.</p>
         <TestStatus t={test} />
         <div className="suggestions">
           {(rv.tested ?? []).map((s: Any) => s.applied ? <AppliedSuggestion key={s.id} s={s} /> : (
             <div key={s.id} className="suggestion k-parameter">
-              <div className="row-between"><b>{s.title}</b>{s.gain != null && <Pill tone="strong">confirmed {money(s.gain, true)}</Pill>}</div>
+              <div className="row-between"><b>{s.title}</b>{s.gain != null && <Pill tone="strong">final check {money(s.gain, true)}</Pill>}</div>
               <p>Change: <code>{changeText(s.change)}</code></p>
               <TestNumbers t={s.tested} />
               <div className="actions">
                 <Button size="sm" onClick={() => apply(s)} disabled={locked || s.tested.stale}
-                        title={s.tested.stale ? "Settings changed after this test; test again" : locked ? "Pause the bot and close its trades first" : ""}>Apply</Button>
+                        title={s.tested.stale ? "Settings changed after this assessment; assess again" : locked ? "Pause the bot and close its trades first" : ""}>Apply</Button>
               </div>
             </div>))}
-          {test?.status === "DONE" && !(rv.tested ?? []).length && <p className="muted small">No change passed the last test. The bot stays as it is.</p>}
+          {test?.status === "DONE" && !(rv.tested ?? []).length && <p className="muted small">No tuned change passed the final check. The bot stays as it is.</p>}
         </div>
         <h2>Ideas from the trade review</h2>
         <div className="suggestions">
@@ -199,7 +199,7 @@ function ReviewTab({ b, initialSource }: { b: Any; initialSource: string }) {
             <div key={s.id} className={`suggestion k-${s.untested ? "untested" : s.kind}`}>
               <div className="row-between"><b>{s.title}</b>{s.untested && <Pill tone="muted">not tested</Pill>}</div>
               <p className="muted">{s.evidence}</p>
-              {s.change && <p>Idea: <code>{changeText(s.change)}</code> (tested with the other changes when you press Test now)</p>}
+              {s.change && <p>Idea: <code>{changeText(s.change)}</code> (tried with the other changes when you press Assess)</p>}
               {s.rule_change && <p>Needs a rule change: <i>{s.rule_change}</i> (ask for it to be coded and tested).</p>}
             </div>
           ))}
