@@ -78,6 +78,12 @@ export function utcTime(iso: string | null | undefined): string {
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
 }
 
+/** Minutes after UK midnight (Europe/London, so BST/GMT), the clock the trading windows use. */
+export function ukMinutes(d: Date = new Date()): number {
+  const [h, m] = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/London" }).split(":").map(Number);
+  return h * 60 + m;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any;
 

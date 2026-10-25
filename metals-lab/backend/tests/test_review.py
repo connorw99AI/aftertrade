@@ -22,15 +22,40 @@ def _trades(n=40):
     return rows
 
 
-def test_review_finds_losing_session_and_maps_to_hour_param():
+def test_review_finds_losing_session_and_narrows_that_metals_window():
     df = R.from_backtest(_trades())
     out = R.review("S01", df, {"start_hour": 0, "end_hour": 20, "stop_atr": 1.2, "reward_risk": 2.0, "max_hold_bars": 30})
     st = out["stats"]
     assert st["n"] == 40 and st["win_rate"] == 50.0 and st["expectancy_r"] == 0.5
     sess = {g["key"]: g for g in st["by_session"]}
     assert sess["Asia 00-07"]["net"] < 0 < sess["London 07-12"]["net"]
-    s = next(x for x in out["suggestions"] if x["id"] == "by_session:Asia 00-07")
-    assert s["kind"] == "parameter" and s["change"] == {"hours_utc": "7-24"} and s["strength"] in ("weak", "moderate", "strong")
+    s = next(x for x in out["suggestions"] if x["id"] == "by_session:GOLD Asia 00-07")  # March 2026: UK time = UTC
+    assert s["kind"] == "parameter" and s["change"] == {"gold_windows": "07:00-24:00"} and s["strength"] in ("weak", "moderate", "strong")
+    # with Asia already cut from 06:00, only the 06:00-07:00 slice is left to remove
+    out = R.review("S01", df, {"gold_windows": "06:00-11:00, 13:00-17:00"})
+    s = next(x for x in out["suggestions"] if x["id"] == "by_session:GOLD Asia 00-07")
+    assert s["change"] == {"gold_windows": "07:00-11:00, 13:00-17:00"}
+
+
+def test_review_sets_each_metal_on_its_own_and_can_switch_one_off():
+    gold = _trades()
+    silver = [{**t, "trade_id": "X" + t["trade_id"], "role": "SILVER", "net_pnl": abs(t["net_pnl"]) + 5, "gross_pnl": 30.0}
+              for t in _trades()]  # silver wins in every session
+    out = R.review("S01", R.from_backtest(gold + silver), {})
+    ids = {x["id"]: x for x in out["suggestions"]}
+    assert ids["by_session:GOLD Asia 00-07"]["change"] == {"gold_windows": "07:00-24:00"}
+    assert not any(k.startswith("by_session:SILVER") for k in ids)                 # silver's windows stay as they are
+    losing_gold = [{**t, "net_pnl": -abs(t["net_pnl"])} for t in gold]
+    out = R.review("S01", R.from_backtest(losing_gold + silver), {})
+    m = next(x for x in out["suggestions"] if x["id"] == "by_metal:GOLD")
+    assert m["change"] == {"trade_gold": "off"} and "trade silver only" in m["title"]
+    out = R.review("S01", R.from_backtest(losing_gold + silver), {"trade_gold": "off"})
+    assert not any(x["id"] == "by_metal:GOLD" and x["change"] for x in out["suggestions"])  # already off
+
+
+def test_window_suggestions_need_enough_trades_per_metal():
+    out = R.review("S01", R.from_backtest(_trades(30)), {})  # 15 Asia trades: below the 20 a window change needs
+    assert not any(x["id"].startswith("by_session:") for x in out["suggestions"])
 
 
 def test_excursions_flag_give_back():

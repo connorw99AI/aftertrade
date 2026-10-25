@@ -5,7 +5,7 @@ import { reasonText } from "@/lib/wording";
 import { RoleThinking } from "./Thinking";
 
 /* same rule as the backend's thoughts.py: checks about the clock, not the market */
-const TIME_CHECK = /session|trading hours|liquid hours|^before |cut-off|range complete|friday|evaluation bar/i;
+const TIME_CHECK = /session|trading window|trading hours|liquid hours|^before |cut-off|range complete|friday|evaluation bar/i;
 const lower = (s: string) => (s ? s[0].toLowerCase() + s.slice(1) : s);
 const hhmm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
@@ -53,11 +53,12 @@ function nodes(b: Any, th: Any, role: string, nowMin: number): Node[] {
   const filters: Any[] = (r?.filters ?? []).filter((c: Any) => !String(c.label).toLowerCase().startsWith("metal allowed"));
   const time = filters.filter((c) => TIME_CHECK.test(c.label)), market = filters.filter((c) => !TIME_CHECK.test(c.label));
   const own: Any[] = (r?.[side] ?? []).filter((c: Any) => !String(c.label).toLowerCase().includes("trades allowed"));
-  const iv: number[][] = b.strategy?.trading_window?.intervals ?? [];
+  const tw = b.strategy?.trading_window;
+  const iv: number[][] = tw?.[role.toLowerCase()]?.intervals ?? tw?.intervals ?? [];
   const opensAt = iv.map(([a]) => a).filter((a) => a > nowMin).sort((x, y) => x - y)[0];
   const tFail = time.find((c) => !c.ok), mFail = market.find((c) => !c.ok), oMiss = own.filter((c) => !c.ok);
   const out: Node[] = [];
-  out.push(tFail ? { name: "Session", state: "no", text: opensAt != null ? `Closed: opens ${hhmm(opensAt)} UTC` : `Closed: ${lower(tFail.label)}` }
+  out.push(tFail ? { name: "Session", state: "no", text: opensAt != null ? `Closed: opens ${hhmm(opensAt)} UK` : `Closed: ${lower(tFail.label)}` }
     : { name: "Session", state: "ok", text: time.length ? "Open now" : "Any time" });
   out.push(mFail ? { name: "Filters", state: "no", text: `${lower(mFail.label)}${mFail.detail ? ` (${mFail.detail})` : ""}` }
     : { name: "Filters", state: "ok", text: `All ${market.length} pass` });

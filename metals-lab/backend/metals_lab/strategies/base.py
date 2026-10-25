@@ -115,31 +115,36 @@ class Strategy(ABC):
     limitations: str = ""
     PARAMS: dict[str, Param] = {}
     magic_offset: int = 0
-    # Assessor-derived defaults for the shared trade filters: {"sides", "metals", "hours_utc", "evidence"}.
+    # Assessor-derived defaults for the shared trade filters: {"sides", "trade_gold", "trade_silver",
+    # "gold_windows", "silver_windows", "evidence"}. Windows are UK time.
     ASSESSOR_FILTERS: dict = {}
-    pair_trades: bool = False      # two-leg groups: side/metal filters do not apply, only hours
+    pair_trades: bool = False      # two-leg groups: side/metal switches do not apply; both metals' windows must be open
     session_text: str = ""         # built-in entry window in words, e.g. "08:00-21:00 London"; "" = any time
     RETIRED_PARAMS: tuple = ()     # parameter names from older versions: ignored if still saved on a bot
 
     @classmethod
     def param_defs(cls) -> dict[str, Param]:
+        from .filters import ALL_DAY
         f = cls.ASSESSOR_FILTERS
         why = f.get("evidence", "No assessor change; trades every side, metal and hour.")
+        win = "UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day)."
         return {**cls.PARAMS,
                 "sides": Param(f.get("sides", "both"), f"Which sides may open: both, long or short. {why}"),
-                "metals": Param(f.get("metals", "both"), f"Which metals may open: both, gold or silver. {why}"),
-                "hours_utc": Param(f.get("hours_utc", "all"), f"UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). {why}")}
+                "trade_gold": Param(f.get("trade_gold", "on"), "on: this bot may open gold trades; off: it does not trade gold."),
+                "trade_silver": Param(f.get("trade_silver", "on"), "on: this bot may open silver trades; off: it does not trade silver."),
+                "gold_windows": Param(f.get("gold_windows", ALL_DAY), f"Gold: {win}"),
+                "silver_windows": Param(f.get("silver_windows", ALL_DAY), f"Silver: {win}")}
 
     def __init__(self, params: Optional[dict] = None):
+        from .filters import LEGACY_PARAMS, validate
         defs = self.param_defs()
         self.params = {k: p.default for k, p in defs.items()}
         if params:
-            params = {k: v for k, v in params.items() if k not in self.RETIRED_PARAMS}
+            params = {k: v for k, v in params.items() if k not in self.RETIRED_PARAMS and k not in LEGACY_PARAMS}
             unknown = set(params) - set(defs)
             if unknown:
                 raise ValueError(f"{self.strategy_id}: unknown parameters {sorted(unknown)}")
             self.params.update(params)
-        from .filters import validate
         validate(self.params)
 
     @property
@@ -177,28 +182,38 @@ class Strategy(ABC):
         return self.entries(ctx)
 
     def entries(self, ctx: StrategyContext) -> list[Signal]:
-        """The strategy's entry signals after the shared side / metal / trading-hours filters."""
-        from .filters import hour_allowed, metal_allowed, side_allowed
+        """The strategy's entry signals after the shared side / metal switch / per-metal trading-window filters."""
+        from .filters import in_windows, metal_open, side_allowed
         sigs = self.entry_signals(ctx)
-        if not sigs or not hour_allowed(ctx.now.hour, self.p["hours_utc"]):
+        if not sigs:
             return []
         if self.pair_trades:  # the side of a pair is the side of its silver leg; both legs go or neither
+            if not (in_windows(ctx.now, self.p["gold_windows"]) and in_windows(ctx.now, self.p["silver_windows"])):
+                return []
             silver = next((x for x in sigs if x.role == "SILVER"), None)
             return sigs if silver is not None and side_allowed(silver.intent, self.p["sides"]) else []
-        return [s for s in sigs if side_allowed(s.intent, self.p["sides"]) and metal_allowed(s.role, self.p["metals"])]
+        return [s for s in sigs if side_allowed(s.intent, self.p["sides"]) and metal_open(self.p, s.role, ctx.now)]
 
     def _filter_checks(self, ctx: StrategyContext, role: str) -> tuple[list, list, list]:
-        from .filters import hour_allowed
-        h = self.p["hours_utc"]
-        f = [chk(f"Inside allowed trading hours (UTC {h})", hour_allowed(ctx.now.hour, h), f"now {ctx.now:%H:%M} UTC")] if h not in ("all", "") else []
+        from .filters import ALL_DAY, METAL_PARAMS, UK, in_windows, metal_on, parse_windows
+        now_uk = f"now {ctx.now.astimezone(UK):%H:%M} UK"
         if self.pair_trades:
+            g, sv = self.p["gold_windows"], self.p["silver_windows"]
+            f = [] if parse_windows(g) == parse_windows(sv) == parse_windows(ALL_DAY) else [
+                chk(f"Inside the gold and silver trading windows (UK gold {g}; silver {sv})",
+                    in_windows(ctx.now, g) and in_windows(ctx.now, sv), now_uk)]
             sd = self.p["sides"]
             if sd == "both" or role != "SILVER":
                 return f, [], []
             return (f, [chk("Silver-cheap direction allowed", sd == "long", "")],
                     [chk("Gold-cheap direction allowed", sd == "short", "")])
-        if self.p["metals"] != "both":
-            f.append(chk(f"Metal allowed ({self.p['metals']} only)", self.p["metals"].upper() == role, ""))
+        metal = role.lower()
+        f = []
+        if not metal_on(self.p, role):
+            f.append(chk(f"Metal allowed ({metal} switched off)", False, "off in this bot's settings"))
+        w = self.p[METAL_PARAMS[role][1]]
+        if parse_windows(w) != parse_windows(ALL_DAY):
+            f.append(chk(f"Inside the {metal} trading window (UK {w})", in_windows(ctx.now, w), now_uk))
         lo = [chk("Long trades allowed", True, "")] if self.p["sides"] == "long" else ([chk("Long trades allowed", False, "short only")] if self.p["sides"] == "short" else [])
         sh = [chk("Short trades allowed", True, "")] if self.p["sides"] == "short" else ([chk("Short trades allowed", False, "long only")] if self.p["sides"] == "long" else [])
         return f, lo, sh
@@ -289,38 +304,56 @@ class Strategy(ABC):
         return None
 
     def trading_window(self, now: datetime) -> dict:
-        """When this bot can actually open trades today: its built-in session combined with the hours_utc filter."""
-        from .filters import parse_hours
-        day = now.astimezone(timezone.utc).date()
-        d0 = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+        """When this bot can actually open trades today (the UK day): its built-in session combined with each metal's
+        switch and trading windows. Intervals are minutes after UK midnight."""
+        from .filters import METAL_PARAMS, UK, hhmm, merge, metal_on, parse_windows
+        day = now.astimezone(UK).date()
+        local = datetime(day.year, day.month, day.day)                       # UK midnight, wall clock
+        utc_at = lambda m: (local + timedelta(minutes=m)).replace(tzinfo=UK).astimezone(timezone.utc)
+        d0, d1 = utc_at(0), utc_at(24 * 60)
         built = []
         for k in (-1, 0, 1):  # windows set in another time zone can start the evening before or end the morning after
             w = self.session_windows(day + timedelta(days=k))
             if w is None:
-                built = [(d0, d0 + timedelta(days=1))]
+                built = [(d0, d1)]
                 break
             built += w
-        filt = [(d0 + timedelta(hours=a), d0 + timedelta(hours=b)) for a, b in parse_hours(self.p["hours_utc"])]
-        eff = []
-        for a, b in built:
-            for c, d in filt:
-                lo, hi = max(a, c, d0), min(b, d, d0 + timedelta(days=1))
-                if lo < hi:
-                    eff.append((lo, hi))
-        eff.sort()
-        merged: list = []
-        for a, b in eff:  # windows that touch (within a minute) read as one
-            if merged and a <= merged[-1][1] + timedelta(minutes=1):
-                merged[-1] = (merged[-1][0], max(merged[-1][1], b))
-            else:
-                merged.append((a, b))
-        eff = [(a, min(b, d0 + timedelta(days=1))) for a, b in merged]
-        txt = lambda iv: ", ".join(f"{a:%H:%M}-{'24:00' if b == d0 + timedelta(days=1) else f'{b:%H:%M}'}" for a, b in iv)
-        return {"built_in": self.session_text or "any time", "filter_utc": self.p["hours_utc"],
-                "effective_utc": txt(eff) + " UTC" if eff else "none: the built-in session and the hour filter do not overlap",
-                "all_day": eff == [(d0, d0 + timedelta(days=1))], "day": str(day),
-                # minutes after UTC midnight, for drawing the day as a strip
-                "intervals": [[int((a - d0).total_seconds() // 60), int((b - d0).total_seconds() // 60)] for a, b in eff]}
+
+        def uk_minutes(t: datetime) -> int:
+            return 24 * 60 if t >= d1 else int((t.astimezone(UK).replace(tzinfo=None) - local).total_seconds() // 60)
+
+        def allowed(spec: str) -> list[tuple[int, int]]:
+            out = []
+            for a, b in parse_windows(spec):
+                ua, ub = utc_at(a), utc_at(b)
+                for c, e in built:
+                    lo, hi = max(ua, c, d0), min(ub, e, d1)
+                    if lo < hi:
+                        out.append((uk_minutes(lo), uk_minutes(hi)))
+            joined: list = []
+            for a, b in sorted(x for x in out if x[0] < x[1]):  # windows that touch (within a minute) read as one
+                if joined and a <= joined[-1][1] + 1:
+                    joined[-1] = (joined[-1][0], max(joined[-1][1], b))
+                else:
+                    joined.append((a, b))
+            return joined
+
+        txt = lambda iv: ", ".join(f"{hhmm(a)}-{hhmm(b)}" for a, b in iv) + " UK"
+        metals = {}
+        for role, (on, win) in METAL_PARAMS.items():
+            is_on = self.pair_trades or metal_on(self.p, role)
+            iv = allowed(self.p[win]) if is_on else []
+            metals[role.lower()] = {"on": is_on, "windows": self.p[win], "intervals": [list(x) for x in iv],
+                                    "effective": txt(iv) if iv else ("switched off" if not is_on else "none today")}
+        if self.pair_trades:  # both legs open together
+            g, sv = metals["gold"]["intervals"], metals["silver"]["intervals"]
+            eff = [(max(a, c), min(b, e)) for a, b in g for c, e in sv if max(a, c) < min(b, e)]
+        else:
+            eff = merge([tuple(x) for m in metals.values() for x in m["intervals"]])
+        return {"built_in": self.session_text or "any time", "gold": metals["gold"], "silver": metals["silver"],
+                "effective": txt(eff) if eff else "none: no metal is switched on inside its windows today",
+                "all_day": eff == [(0, 24 * 60)], "day": str(day), "clock": "UK",
+                "intervals": [list(x) for x in eff]}
 
     # ------------------------------------------------------------ metadata
     def risk_metadata(self) -> dict:
@@ -410,6 +443,7 @@ class Strategy(ABC):
             "params": {k: {"value": self.params[k], "default": p.default, "rationale": p.rationale, "grid": list(p.grid)}
                        for k, p in self.param_defs().items()},
             "assessor_filters": self.ASSESSOR_FILTERS,
+            "pair_trades": self.pair_trades,
             "trading_window": self.trading_window(_utc_now()),
             "citations": list(self.citations),
             "limitations": self.limitations,

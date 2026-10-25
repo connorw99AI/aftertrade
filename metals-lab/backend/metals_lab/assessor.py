@@ -90,6 +90,37 @@ def grade(rv: Optional[dict]) -> dict:
     return {"grade": "watch", "why": f"profit factor {pf}, {exp_r}R per trade over {n} trades"}
 
 
+def _change_key(change: dict) -> str:
+    return json.dumps(change, sort_keys=True, default=str)
+
+
+def mark_applied(db, bot: str, suggestions: list[dict]) -> list[dict]:
+    """Add ``applied`` ({config_version, applied_at, operator}) to each suggestion the operator already applied.
+    A suggestion counts as the same one when its bot, id and exact change match; a different change shows again."""
+    done = {(r["suggestion_id"], r["change_json"]): r for r in
+            db.q("SELECT * FROM applied_suggestions WHERE bot_id=? ORDER BY id", (bot,))}
+    out = []
+    for s in suggestions:
+        r = done.get((s.get("id"), _change_key(s["change"]))) if s.get("change") else None
+        out.append({**s, "applied": {"config_version": r["config_version"], "applied_at": r["applied_at"],
+                                     "operator": r["operator"]} if r else None})
+    return out
+
+
+def apply_suggestion(db, coord, bot: str, suggestion_id: str, change: dict, operator: str,
+                     review_id: Optional[int] = None, source: Optional[str] = None) -> dict:
+    """Merge a suggestion's change into the bot's settings (paused and flat, audited like any settings change) and
+    record it as applied."""
+    if not change:
+        raise ValueError("this suggestion has no settings change to apply")
+    params = {**current_params(db, bot), **change}
+    row = coord.update_params(bot, params, operator)
+    db.x("INSERT INTO applied_suggestions(bot_id,suggestion_id,change_json,review_id,source,config_version,operator,applied_at) "
+         "VALUES(?,?,?,?,?,?,?,?)", (bot, suggestion_id, _change_key(change), review_id, source, row["config_version"], operator, now_iso()))
+    db.event("SUGGESTION_APPLIED", bot, {"suggestion": suggestion_id, "change": change, "config_version": row["config_version"]})
+    return row
+
+
 def suggestions_ranked(db) -> list[dict]:
     rows = []
     for b in BOT_IDS:
@@ -100,4 +131,6 @@ def suggestions_ranked(db) -> list[dict]:
             for s in rv.get("suggestions", []):
                 if s.get("change") or s.get("rule_change"):
                     rows.append({**s, "bot_id": b, "source": rv["source"], "review_id": rv["id"], "reviewed_at": rv["created_at"]})
-    return sorted(rows, key=lambda s: (STRENGTH_ORDER.get(s.get("strength"), 3), s["bot_id"]))
+    rows = [x for b in BOT_IDS for x in mark_applied(db, b, [r for r in rows if r["bot_id"] == b])]
+    # still-open suggestions first, strongest first; applied ones after
+    return sorted(rows, key=lambda s: (bool(s.get("applied")), STRENGTH_ORDER.get(s.get("strength"), 3), s["bot_id"]))

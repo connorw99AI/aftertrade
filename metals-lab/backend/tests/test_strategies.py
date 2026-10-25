@@ -2,7 +2,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from metals_lab.domain import TIMEFRAME_MINUTES, Intent, PositionView, Style
+from metals_lab.domain import TIMEFRAME_MINUTES, Intent, PositionView, Signal, Style
+from datetime import datetime, timezone
+
 from metals_lab.strategies import STRATEGY_CLASSES, build, magic_for, strategy_for_magic
 from metals_lab.strategies.base import StrategyContext, contract_loss
 
@@ -55,21 +57,57 @@ def test_bot_halves_trade_only_their_side(specs):
     for sid in ("S03", "S08", "S09"):
         fr = frames_for_strategy(STRATEGY_CLASSES[sid])
         for half, want in (("L", Intent.OPEN_LONG), ("S", Intent.OPEN_SHORT)):
-            s = build(sid + half, {"metals": "both", "hours_utc": "all", **({"max_spread_atr": 5.0})})
+            s = build(sid + half, {"max_spread_atr": 5.0})
             found = scan_signals(s, fr, specs, {Intent.OPEN_LONG, Intent.OPEN_SHORT})
             assert set(found) <= {want}, f"{sid}{half} opened {set(found)}"
     assert bot_name("S03L") == "Failed Breakout Reversal (long)" and "silver cheap" in bot_name("S10L")
     assert build("S03S", {"sides": "long"}).p["sides"] == "short"  # the half's side cannot be overridden
 
 
-def test_hour_and_metal_filters():
-    from metals_lab.strategies.filters import hour_allowed, parse_hours
-    assert parse_hours("0-7,21-24") == [(0, 7), (21, 24)] and parse_hours("all") == [(0, 24)]
-    assert hour_allowed(3, "0-7,21-24") and not hour_allowed(12, "0-7,21-24")
+def test_trading_windows_parse_in_uk_time():
+    from metals_lab.strategies.filters import format_windows, in_windows, parse_windows, windows_minus
+    assert parse_windows("00:00-24:00") == [(0, 1440)] == parse_windows("all")
+    assert parse_windows("06:00-11:00, 13:00-17:00") == [(360, 660), (780, 1020)]
+    assert parse_windows("22:00-02:00") == [(0, 120), (1320, 1440)]                    # crosses midnight
+    assert parse_windows("06:00-09:00, 08:00-11:00") == [(360, 660)]                   # overlaps merge
+    assert format_windows(parse_windows("22:00-02:00, 09:20-13:00")) == "09:20-13:00, 22:00-02:00"
+    for bad in ("25:00-26:00", "6-11", "06:00-06:00", "06:00", "06:61-07:00", ","):
+        with pytest.raises(ValueError):
+            parse_windows(bad)
+    summer, winter = datetime(2026, 7, 6, 10, 30, tzinfo=timezone.utc), datetime(2026, 12, 7, 10, 30, tzinfo=timezone.utc)
+    assert in_windows(summer, "11:00-12:00") and not in_windows(winter, "11:00-12:00")  # 11:30 BST vs 10:30 GMT
+    assert windows_minus("00:00-24:00", 7 * 60, 12 * 60) == "12:00-07:00"
+    assert windows_minus("06:00-11:00, 13:00-17:00", 7 * 60, 12 * 60) == "06:00-07:00, 13:00-17:00"
+    assert windows_minus("13:00-17:00", 7 * 60, 12 * 60) is None                       # nothing changes
+    assert windows_minus("08:00-10:00", 7 * 60, 12 * 60) is None                       # nothing would be left
     with pytest.raises(ValueError):
-        build("S03", {"hours_utc": "25-3"})
+        build("S03L", {"gold_windows": "25:00-26:00"})
     with pytest.raises(ValueError):
-        build("S03", {"metals": "copper"})
+        build("S03L", {"trade_silver": "maybe"})
+
+
+def test_each_metal_opens_only_inside_its_own_windows():
+    from types import SimpleNamespace
+    s = build("S03L", {"gold_windows": "06:00-11:00", "silver_windows": "13:00-17:00"})
+    mk = lambda role, sym: Signal("S03L", datetime(2026, 12, 7, tzinfo=timezone.utc), role, sym, Intent.OPEN_LONG, "t", {},
+                                  stop_price=1.0, ref_price=2.0)
+    s.entry_signals = lambda ctx: [mk("GOLD", "XAUUSD"), mk("SILVER", "XAGUSD")]
+    at = lambda h: SimpleNamespace(now=datetime(2026, 12, 7, h, tzinfo=timezone.utc))  # winter: UK = UTC
+    assert [x.role for x in s.entries(at(8))] == ["GOLD"]
+    assert [x.role for x in s.entries(at(14))] == ["SILVER"]
+    assert s.entries(at(12)) == []
+    off = build("S03L", {"trade_gold": "off"})
+    off.entry_signals = s.entry_signals
+    assert [x.role for x in off.entries(at(8))] == ["SILVER"]
+    pair = build("S10L", {"gold_windows": "06:00-11:00", "silver_windows": "09:00-17:00"})  # both legs or neither
+    pair.entry_signals = lambda ctx: [mk("GOLD", "XAUUSD"), mk("SILVER", "XAGUSD")]
+    assert pair.entries(at(8)) == [] and len(pair.entries(at(10))) == 2
+
+
+def test_saved_metal_and_hour_filters_from_older_versions_are_dropped():
+    s = build("S03L", {"metals": "gold", "hours_utc": "12-21"})
+    assert s.p["trade_gold"] == s.p["trade_silver"] == "on" and s.p["gold_windows"] == "00:00-24:00"
+    assert "metals" not in s.p and "hours_utc" not in s.p
 
 
 def test_unknown_parameter_rejected():
@@ -79,7 +117,7 @@ def test_unknown_parameter_rejected():
 
 @pytest.mark.parametrize("sid", INTRADAY + SWING)
 def test_long_and_short_entries(sid, specs):
-    s = build(sid, {**SCAN_PARAMS.get(sid, {}), "sides": "both", "metals": "both", "hours_utc": "all"})  # rules without the assessor filters
+    s = build(sid, {**SCAN_PARAMS.get(sid, {}), "sides": "both"})  # rules without the assessor filters
     frames = frames_for_strategy(type(s))
     found = scan_signals(s, frames, specs, {Intent.OPEN_LONG, Intent.OPEN_SHORT})
     assert Intent.OPEN_LONG in found, f"{sid} produced no OPEN_LONG on synthetic data"
@@ -232,21 +270,26 @@ def test_min_lot_per_metal(specs):
     assert tg.volume == 0.04 and tv.volume == 0.01 and not tg.skipped and not tv.skipped
 
 
-def test_trading_window_combines_session_and_hour_filter_and_follows_clock_changes():
+def test_trading_window_combines_session_and_metal_windows_in_uk_time():
     from datetime import datetime, timezone
     winter, summer = datetime(2026, 12, 7, 12, tzinfo=timezone.utc), datetime(2026, 7, 6, 12, tzinfo=timezone.utc)
-    s03 = build("S03L", {"use_session": "on", "hours_utc": "12-21"})  # 08:00-21:00 London, hour filter 12-21 UTC
-    assert s03.trading_window(winter)["effective_utc"] == "12:00-21:00 UTC"
-    assert s03.trading_window(summer)["effective_utc"] == "12:00-20:00 UTC"
+    both = {"gold_windows": "12:00-22:00", "silver_windows": "12:00-22:00"}
+    s03 = build("S03L", {"use_session": "on", **both})  # 08:00-21:00 London
+    assert s03.trading_window(winter)["effective"] == s03.trading_window(summer)["effective"] == "12:00-21:00 UK"
     s04 = build("S04L", {"use_session": "on"})  # New York opening range: entries 09:00-11:30 New York
-    assert s04.trading_window(winter)["effective_utc"] == "14:00-16:30 UTC"
-    assert s04.trading_window(summer)["effective_utc"] == "13:00-15:30 UTC"
-    # default for now: every hour the market is open; S04 only pauses while its range is built
-    assert build("S03L", {}).trading_window(summer)["effective_utc"] == "00:00-24:00 UTC"
-    assert build("S04L", {}).trading_window(summer)["effective_utc"] == "00:00-12:30, 13:00-24:00 UTC"
-    assert build("S05S", {}).trading_window(winter)["effective_utc"] == "00:00-08:00, 13:00-24:00 UTC"
-    clash = build("S03L", {"use_session": "on", "hours_utc": "0-6"})
-    assert clash.trading_window(winter)["effective_utc"].startswith("none")
+    assert s04.trading_window(winter)["effective"] == "14:00-16:30 UK"
+    assert s04.trading_window(datetime(2026, 3, 16, 12, tzinfo=timezone.utc))["effective"] == "13:00-15:30 UK"  # US on summer time first
+    # default: every hour the market is open; S04/S05 only pause while their range is built
+    assert build("S03L", {}).trading_window(summer)["effective"] == "00:00-24:00 UK"
+    assert build("S04L", {}).trading_window(summer)["effective"] == "00:00-13:30, 14:00-24:00 UK"
+    assert build("S05S", {}).trading_window(winter)["effective"] == "00:00-08:00, 13:00-24:00 UK"
+    w = build("S03L", {"gold_windows": "06:00-11:00, 13:00-17:00", "silver_windows": "22:00-02:00"}).trading_window(winter)
+    assert w["gold"]["effective"] == "06:00-11:00, 13:00-17:00 UK" and w["silver"]["effective"] == "00:00-02:00, 22:00-24:00 UK"
+    assert w["intervals"] == [[0, 120], [360, 660], [780, 1020], [1320, 1440]]
+    off = build("S03L", {"trade_gold": "off", "silver_windows": "09:00-10:00"}).trading_window(winter)
+    assert off["gold"]["effective"] == "switched off" and off["effective"] == "09:00-10:00 UK"
+    clash = build("S03L", {"use_session": "on", "gold_windows": "00:00-06:00", "silver_windows": "00:00-06:00"})
+    assert clash.trading_window(winter)["effective"].startswith("none")
 
 
 def test_trend_bots_read_the_slower_chart():

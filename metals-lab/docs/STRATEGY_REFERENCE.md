@@ -34,8 +34,10 @@ Trades short M5 pullbacks to the 20-EMA in the direction of the M15 trend (M15 E
 | `start_hour` | 7 | – | UTC start of liquid hours (used when use_session is on). |
 | `end_hour` | 20 | – | UTC end of liquid hours. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
-| `metals` | both | – | Which metals may open: both, gold or silver. No assessor change; trades every side, metal and hour. |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). No assessor change; trades every side, metal and hour. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 
@@ -75,8 +77,10 @@ Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter
 | `flat_time` | 07:45 | – | London time: flatten before the 08:00 London open. |
 | `max_spread_atr` | 0.2 | 0.15, 0.2 | Cost guard. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
-| `metals` | both | – | Which metals may open: both, gold or silver. No assessor change; trades every side, metal and hour. |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). No assessor change; trades every side, metal and hour. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 
@@ -113,8 +117,10 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 | `session_start` | 08:00 | – | London time: London open. |
 | `session_end` | 21:00 | – | London time: end of the New York afternoon. |
 | `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 12-21 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
-| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 12-21 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 12-21 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts net -76 vs longs +96; silver -185 vs gold +204; 07-12 UTC -39 vs later +58. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 
@@ -153,8 +159,10 @@ Builds the first half hour of the New York session (08:30-09:00 New York time, w
 | `max_hold_bars` | 84 | – | Safety cap (7h of M5 bars). |
 | `max_spread_atr` | 0.2 | – | Cost guard. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
-| `metals` | both | – | Which metals may open: both, gold or silver. No assessor change; trades every side, metal and hour. |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). No assessor change; trades every side, metal and hour. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 
@@ -193,8 +201,10 @@ Marks the London-morning range (08:00-13:00 London). After a decisive break duri
 | `max_hold_bars` | 96 | – | Safety cap (8h of M5 bars). |
 | `max_spread_atr` | 0.2 | – | Cost guard. |
 | `sides` | short | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -81 vs shorts +190. |
-| `metals` | both | – | Which metals may open: both, gold or silver. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -81 vs shorts +190. |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -81 vs shorts +190. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 
@@ -230,8 +240,10 @@ Detects M15 volatility compression (Bollinger Bands inside Keltner Channels for 
 | `release_window` | 4 | 0, 2, 4, 8 | Bars after the release in which a breakout still counts (1 hour). |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are smaller than H1). |
 | `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 0-7,16-24 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
-| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 0-7,16-24 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 0-7,16-24 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 
@@ -266,8 +278,10 @@ Buys sharp M15 pullbacks only when the hourly regime is up (H1 close > H1 SMA200
 | `max_hold_bars` | 32 | 16, 32, 48 | 8 hours of M15 bars. |
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
 | `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 12-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
-| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 12-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 12-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 
@@ -299,8 +313,10 @@ Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
 | `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
 | `sides` | both | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 7-12,16-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
-| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 7-12,16-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 7-12,16-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia -61 and 12-16 UTC -27; only 07-12 was positive (+4). |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 
@@ -335,8 +351,10 @@ Each metal is held long or short according to the sign of its own volatility-sca
 | `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
 | `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
 | `sides` | both | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 0-7,21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
-| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 0-7,21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 0-7,21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): Asia +467 and 21-24 UTC +367; London and New York hours lost -320. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 
@@ -370,8 +388,10 @@ Intraday relative-value strategy on the log gold/silver ratio (M15). When the ra
 | `leg_stop_atr` | 3.0 | 3.0, 4.0 | Per-leg protective server stop. |
 | `max_hold_bars` | 96 | 48, 96, 192 | One day of M15 bars. |
 | `sides` | both | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair. |
-| `metals` | both | – | Which metals may open: both, gold or silver. All hours trade for now (operator choice; the backtest preferred 21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair. |
-| `hours_utc` | all | – | UTC hours entries are allowed, e.g. 0-7,21-24 (all = any time). All hours trade for now (operator choice; the backtest preferred 21-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): every session lost except 21-24 UTC (+24 over 28 trades, weak). Side/metal suggestions do not apply to a pair. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
 
 **Sources.**
 

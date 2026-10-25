@@ -483,3 +483,17 @@ svg.chart .marker-label { fill: var(--bronze-hi); font: 10.5px var(--f-mono); }
   .coverage-row, .coverage-axis { grid-template-columns: 70px 1fr; }
   .coverage-row > :last-child, .coverage-axis > :last-child { display: none; }
 }
+.suggestion.applied { border-left-color: var(--st-run); padding: var(--s-2) var(--s-3); grid-column: 1 / -1; }
+.suggestion.applied summary { cursor: pointer; font-size: var(--t-13); list-style: none; }
+.suggestion.applied summary::-webkit-details-marker { display: none; }
+.suggestion.applied .tick { color: var(--st-run); font-weight: 700; }
+.windows-editor { display: grid; gap: var(--s-3); }
+.windows-editor .metal-row { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--s-3); display: grid; gap: var(--s-1); }
+.windows-editor .metal-row.off .day-strip i { opacity: .25; }
+.windows-editor .day-strip { position: relative; height: 14px; background: var(--ink-deep); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.windows-editor .day-strip i { position: absolute; top: 0; bottom: 0; background: var(--bronze-hi); }
+.windows-editor .strip-axis { display: flex; justify-content: space-between; }
+.windows-editor .chips { display: flex; flex-wrap: wrap; gap: var(--s-1); align-items: center; }
+.windows-editor .chip { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 10px; font-size: var(--t-13); font-variant-numeric: tabular-nums; }
+.windows-editor .chip button { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 2px; font-size: 1em; }
+.windows-editor .switch { display: inline-flex; gap: 6px; align-items: center; font-size: var(--t-13); }

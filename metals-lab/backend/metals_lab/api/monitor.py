@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from ..execution.coordinator import BOT_IDS
 from ..store import now_iso
 from ..strategies import bot_class, bot_name, is_bot
+from ..strategies.filters import metals_text
 from ..timeutil import utc_now
 from ..risk.daily import TEXT as DAILY_TEXT, daily_stop
 from .thoughts import allowed_roles, readiness, thought
@@ -88,8 +89,9 @@ def register(app: FastAPI, state, auth) -> None:
                          "WHERE bot_id=? AND status='OPEN'", (b,))
             for o in opens:  # the checklist is per completed bar; an open trade is known immediately
                 verdicts[o["role"]] = {"verdict": f"IN_TRADE_{o['side']}", "summary": f"in a {o['side'].lower()} trade"}
-            metals = (c.strategy(b).p.get("metals") or "both") if c else "both"
-            window = c.strategy(b).trading_window(now) if c else None
+            strat = c.strategy(b) if c else None
+            metals = "both" if strat is None or strat.pair_trades else metals_text(strat.p)
+            window = strat.trading_window(now) if strat else None
             roles = th.get("roles") or {}
             ready = {r: readiness(roles[r], b[3]) for r in allowed_roles(roles, metals)}
             bots.append({

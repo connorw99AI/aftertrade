@@ -14,7 +14,7 @@ Every strategy runs as two independent bots: `S04L` only takes long entries and 
 
 The Assessor's ranked suggestions from the October 2025 → October 2026 backtest were applied as defaults. They are **in-sample**: they were chosen on the same year they are judged on, so they will look better on that year than they really are. Validate them on an earlier year (download e.g. 2024-10 → 2025-10 on the Research page and run all 20 bots on that range) before trusting them.
 
-| Strategy | Filter the backtest suggested (now off: every bot trades all hours) | Why (backtest evidence) |
+| Strategy | Hours the backtest preferred, UTC (not applied: every bot starts all day) | Why (backtest evidence) |
 |---|---|---|
 | S03 | 12-21 UTC | silver and Asian/London hours lost |
 | S04 | none (now trades the New York open) | the London-open version lost in London hours |
@@ -25,8 +25,17 @@ The Assessor's ranked suggestions from the October 2025 → October 2026 backtes
 | S09 | 0-7 and 21-24 UTC | best hours; others near zero |
 | S10 | 21-24 UTC | only late hours were positive |
 
-**Every bot trades every hour the market is open for now** (`trading.all_hours: true`). The hour filters above and the
-built-in session windows are off: S01 (07-20 UTC), S02 (Asian hours, flat before the London open) and S03 (08:00-21:00
+**Metals and trading windows are set per bot** (bot page > Rules & settings > Metals and trading windows). Each bot has a
+gold switch and a silver switch (`trade_gold`, `trade_silver`: on/off) and its own permitted trading windows per metal
+(`gold_windows`, `silver_windows`), in **UK time** (Europe/London, so they follow BST/GMT), e.g. `06:00-11:00, 13:00-17:00`
+or `00:00-06:00, 09:20-13:00, 16:00-18:00, 20:00-22:00`. `00:00-24:00` is all day; a window can cross midnight
+(`22:00-02:00`). Hours the market is shut are blocked anyway. A new entry on a metal needs that metal switched on and the
+UK time inside one of its windows; S10 (a gold/silver pair) needs both metals' windows open and ignores the switches.
+Backtests use the same windows. "Copy to all bots" on the bot page copies one bot's metals and windows to every paused,
+flat bot.
+
+**Every bot starts with both metals on and 00:00-24:00**, so for now they trade every hour the market is open. The
+built-in session windows are off as well: S01 (07-20 UTC), S02 (Asian hours, flat before the London open) and S03 (08:00-21:00
 London) trade at any hour. S04 and S05 still build their range in session (08:30-09:00 New York; 08:00-13:00 London) and
 then may enter at any hour until the next day's range starts, with no forced afternoon close: they exit by stop, target or
 maximum holding time. Each strategy keeps its session logic behind `use_session: on`. Still in force: the Friday close
@@ -34,15 +43,21 @@ from 20:00 UTC (S06 also stops entering at 18:00 on Fridays) and the broker's ow
 auditor. Expect more losing trades in the hours the backtest flagged, and wider spreads in quiet hours (the spread
 guards stay).
 
-**Every bot trades both metals for now** (`trading.all_metals: true`), including S03 and S06, where the backtest found silver lost. The switch also overrides any metal filter saved on a bot; set it to `false` to let each bot's own `metals` setting apply again.
+The Assessor's metal and time suggestions write into these settings when you press Apply (the bot must be paused and
+flat): "gold loses while silver wins" switches gold off; a session that loses on one metal while that metal's other
+sessions win removes those hours from that metal's windows only. Sessions are UK time (Asia 00-07, London 07-12,
+London/NY 12-16, New York 16-21, Late 21-24) and measured per metal; a window change is only suggested when that metal
+has at least 20 trades in the session. Applied suggestions are recorded and fold to one line ("Applied in settings vN")
+until a newer review suggests something different. The older `metals`, `hours_utc` and `trading.all_metals/all_hours`
+settings are gone; values still saved are ignored.
 
-No half is retired by default. The Assessor flagged S01L, S01S, S02L, S02S (no edge on either side), S03S, S06S, S07S (shorts lost), S04L and S05L (longs lost); set `capital.apply_assessor_retirements: true` to start a fresh lab with those retired. Retire them yourself once demo results agree. Each filter is a normal parameter (`sides`, `metals`, `hours_utc`) shown on the bot page, so you can change or remove it.
+No half is retired by default. The Assessor flagged S01L, S01S, S02L, S02S (no edge on either side), S03S, S06S, S07S (shorts lost), S04L and S05L (longs lost); set `capital.apply_assessor_retirements: true` to start a fresh lab with those retired. Retire them yourself once demo results agree. Each filter is a normal setting (`sides`, the metal switches and windows) shown on the bot page, so you can change or remove it.
 
 No bot showed a statistically real edge (best t-stat about 1.1). Treat everything above as hypotheses to test, not improvements you have.
 
 ## Watch chart and entry chart
 
-Trend bots read direction from a slower chart and enter on a faster one (the common rule of thumb is a slower chart about 4-6 times slower): S01 trades M5 pullbacks only in the M15 trend; S07, S08 and S09 only trade with the hourly (H1) trend. Session bots (S02-S05) and the squeeze and ratio bots (S06, S10) are built around one chart. Session windows are set in London or New York time, so they follow clock changes; each bot's page shows the hours it can actually open trades today (its own session combined with its hour filter).
+Trend bots read direction from a slower chart and enter on a faster one (the common rule of thumb is a slower chart about 4-6 times slower): S01 trades M5 pullbacks only in the M15 trend; S07, S08 and S09 only trade with the hourly (H1) trend. Session bots (S02-S05) and the squeeze and ratio bots (S06, S10) are built around one chart. Session windows are set in London or New York time, so they follow clock changes; each bot's page shows the hours (UK time) it can actually open trades today on each metal (its own session combined with that metal's windows).
 
 ## Distribution and why
 

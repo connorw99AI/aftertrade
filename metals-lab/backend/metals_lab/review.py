@@ -18,12 +18,16 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from .strategies.filters import METAL_PARAMS, metal_on, windows_minus
+
 MIN_N = 10
+MIN_WINDOW_N = 20  # trades a metal needs in a session before the review suggests changing that metal's windows
 
 STOP_PARAMS = {"S01": "stop_atr", "S02": "stop_atr", "S05": "stop_atr", "S06": "stop_atr", "S07": "stop_atr",
                "S08": "stop_n", "S09": "stop_atr", "S10": "leg_stop_atr"}
 TARGET_PARAMS = {"S01": "reward_risk", "S03": "reward_risk", "S05": "reward_risk", "S06": "reward_risk", "S04": "tp_range_mult"}
 
+# UK time (Europe/London), the clock the trading windows use
 SESSIONS = (("Asia 00-07", 0, 7), ("London 07-12", 7, 12), ("London/NY 12-16", 12, 16), ("New York 16-21", 16, 21), ("Late 21-24", 21, 24))
 
 
@@ -79,8 +83,9 @@ def _finish(df: pd.DataFrame) -> pd.DataFrame:
     df["entry_time"] = pd.to_datetime(df["entry_time"], utc=True, format="mixed")
     df["exit_time"] = pd.to_datetime(df["exit_time"], utc=True, format="mixed")
     df["r"] = np.where(df["planned_risk"].fillna(0) > 0, df["net"] / df["planned_risk"].replace(0, np.nan), np.nan)
-    df["hour"] = df["entry_time"].dt.hour
+    df["hour"] = df["entry_time"].dt.tz_convert("Europe/London").dt.hour  # UK hour, like the trading windows
     df["session"] = df["hour"].map(lambda h: next(n for n, a, b in SESSIONS if a <= h < b))
+    df["metal_session"] = df["role"].astype(str) + " " + df["session"]
     df["weekday"] = df["entry_time"].dt.day_name()
     df["minutes_held"] = (df["exit_time"] - df["entry_time"]).dt.total_seconds() / 60
     return df.sort_values("entry_time").reset_index(drop=True)
@@ -148,7 +153,8 @@ def summarise(df: pd.DataFrame) -> dict:
         "avg_minutes_win": round(float(wins["minutes_held"].mean()), 1) if len(wins) else None,
         "avg_minutes_loss": round(float(losses["minutes_held"].mean()), 1) if len(losses) else None,
         "by_exit": _group(df, "exit_reason"), "by_side": _group(df, "side"), "by_metal": _group(df, "role"),
-        "by_session": _group(df, "session"), "by_weekday": _group(df, "weekday"),
+        "by_session": _group(df, "session"),
+        "by_metal_session": _group(df, "metal_session"), "by_weekday": _group(df, "weekday"),
     }
     if "mfe_r" in df and df["mfe_r"].notna().any():
         stopped = df[df["exit_reason"] == "STOP_LOSS"]
@@ -176,10 +182,9 @@ def suggest(bot: str, df: pd.DataFrame, stats: dict, params: dict) -> list[dict]
 
     total = stats["expectancy"]
     pair = sid == "S10"
-    # one side, metal or session losing while the rest wins
-    for col, field, rule_fmt in (("by_side", "side", "trade {other} only"), ("by_metal", "role", "stop trading {key}"),
-                                 ("by_session", "session", "skip the {key} session")):
-        if pair and col != "by_session":
+    # one side or metal losing while the rest wins
+    for col, field, rule_fmt in (("by_side", "side", "trade {other} only"), ("by_metal", "role", "stop trading {key}")):
+        if pair:
             continue  # a pair always holds one long and one short leg, one in each metal
         groups = [g for g in stats[col] if g["n"] >= MIN_N]
         bad = [g for g in groups if g["net"] < 0]
@@ -189,21 +194,42 @@ def suggest(bot: str, df: pd.DataFrame, stats: dict, params: dict) -> list[dict]
                 continue
             other = ", ".join(x["key"] for x in good)
             t = _tstat(df.loc[df[field].astype(str) == g["key"], "net"])
-            strength = "weak" if t > -1 else ("moderate" if t > -2 else "strong")
-            change = None
-            if col == "by_side":
-                change = None  # each bot is one side already: the fix for a losing side is retiring that half
-            elif col == "by_metal" and len(good) == 1:
-                change = {"metals": good[0]["key"].lower()}
-            elif col == "by_session":
-                a, b = next((s0, e0) for name, s0, e0 in SESSIONS if name == g["key"])
-                hours = _hours_minus(params.get("hours_utc", "all"), a, b)
-                if hours:
-                    change = {"hours_utc": hours}
-            add(f"{col}:{g['key']}", f"{g['key']} loses while {other} wins",
+            strength = _strength(t)
+            change = None  # by_side: each bot is one side already; the fix for a losing side is retiring that half
+            if col == "by_metal" and len(good) == 1 and g["key"] in METAL_PARAMS and metal_on(params, g["key"]):
+                change = {METAL_PARAMS[g["key"]][0]: "off"}  # trade only the metal that wins
+            add(f"{col}:{g['key']}", f"{g['key']} loses while {other} wins" + (f": trade {other.lower()} only" if change else ""),
                 f"{g['key']}: {g['n']} trades, net {g['net']:+.2f}, win rate {g['win_rate']}%. Rest: net "
                 f"{sum(x['net'] for x in good):+.2f}. Strength {strength} (t = {t:.1f}); found on these same trades.",
                 change=change, rule=None if change else rule_fmt.format(key=g["key"], other=other), strength=strength)
+    # a session losing on one metal while that metal's other sessions win: narrow that metal's trading windows
+    # (a pair trades both metals together, so its sessions are pooled and both metals' windows change)
+    scopes = [("BOTH", "session", stats["by_session"])] if pair else \
+        [(m, "metal_session", [dict(g, key=g["key"][len(m) + 1:]) for g in stats["by_metal_session"] if g["key"].startswith(m + " ")])
+         for m in METAL_PARAMS if metal_on(params, m)]
+    for metal, field, rows in scopes:
+        groups = [g for g in rows if g["n"] >= MIN_WINDOW_N]
+        good = [g for g in groups if g["net"] > 0]
+        for g in (x for x in groups if x["net"] < 0):
+            if not good:
+                continue
+            a, b = next((s0, e0) for name, s0, e0 in SESSIONS if name == g["key"])
+            change = {}
+            for m in (METAL_PARAMS if metal == "BOTH" else (metal,)):
+                w = windows_minus(params.get(METAL_PARAMS[m][1]), a * 60, b * 60)
+                if w:
+                    change[METAL_PARAMS[m][1]] = w
+            label = "" if metal == "BOTH" else f"{metal.capitalize()} "
+            key = g["key"] if metal == "BOTH" else f"{metal} {g['key']}"
+            t = _tstat(df.loc[df[field].astype(str) == key, "net"])
+            strength = _strength(t)
+            other = ", ".join(x["key"] for x in good)
+            add(f"by_session:{key}", f"{label}{g['key']} UK loses while {other} UK wins" + (": skip it" if change else ""),
+                f"{label}{g['key']} UK: {g['n']} trades, net {g['net']:+.2f}, win rate {g['win_rate']}%. "
+                f"{label}{other} UK: net {sum(x['net'] for x in good):+.2f}. Strength {strength} (t = {t:.1f}); "
+                f"found on these same trades.",
+                change=change or None, rule=None if change else f"skip the {g['key']} UK session" + (f" on {metal.lower()}" if label else ""),
+                strength=strength)
     ex = stats.get("excursions") or {}
     sp = STOP_PARAMS.get(sid)
     # stops too tight: winners often came close to the stop, or many stopped trades first went 1R our way
@@ -256,19 +282,8 @@ def _tstat(x: pd.Series) -> float:
     return float(x.mean() / (x.std(ddof=1) / math.sqrt(len(x))))
 
 
-def _hours_minus(spec: Optional[str], a: int, b: int) -> Optional[str]:
-    """Remove UTC hours [a, b) from an hours spec; returns the new spec, or None if nothing changes or nothing is left."""
-    from .strategies.filters import parse_hours
-    allowed = {h for lo, hi in parse_hours(spec) for h in range(lo, hi)}
-    left = sorted(allowed - set(range(a, b)))
-    if not left or len(left) == len(allowed):
-        return None
-    ranges, start = [], left[0]
-    for prev, h in zip(left, left[1:] + [None]):
-        if h != prev + 1:
-            ranges.append(f"{start}-{prev + 1}")
-            start = h
-    return ",".join(ranges)
+def _strength(t: float) -> str:
+    return "weak" if t > -1 else ("moderate" if t > -2 else "strong")
 
 
 def review(bot: str, df: pd.DataFrame, params: dict, bars: Optional[dict] = None) -> dict:

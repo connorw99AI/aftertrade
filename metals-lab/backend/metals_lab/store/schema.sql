@@ -188,3 +188,11 @@ CREATE TABLE IF NOT EXISTS reviews (
   created_at TEXT NOT NULL, bot_id TEXT NOT NULL, source TEXT NOT NULL, trigger TEXT, review_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_reviews_bot ON reviews(bot_id, source, id);
+
+-- assessor suggestions the operator applied: the same suggestion (bot, id, change) is shown folded as applied
+CREATE TABLE IF NOT EXISTS applied_suggestions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bot_id TEXT NOT NULL, suggestion_id TEXT NOT NULL, change_json TEXT NOT NULL,
+  review_id INTEGER, source TEXT, config_version INTEGER, operator TEXT, applied_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_applied_bot ON applied_suggestions(bot_id, suggestion_id);

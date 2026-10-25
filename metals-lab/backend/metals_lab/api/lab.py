@@ -49,6 +49,14 @@ class RunAllBody(BaseModel):
     commission_per_lot_side: float = 0.0
 
 
+class ApplySuggestionBody(BaseModel):
+    suggestion_id: str = Field(min_length=1)
+    change: dict[str, Any]
+    operator: str = Field(min_length=1)
+    review_id: Optional[int] = None
+    source: Optional[str] = None
+
+
 class TestChangeBody(BaseModel):
     change: dict[str, Any]
     dataset: str = "mt5"
@@ -347,13 +355,29 @@ def register(app: FastAPI, state, auth) -> None:
         if bot not in BOT_IDS:
             raise HTTPException(404)
         if source == "demo":
-            return assessor.review_demo(db, bot, state.coord)
-        if source.startswith("backtest:"):
+            rv = assessor.review_demo(db, bot, state.coord)
+        elif source.startswith("backtest:"):
             try:
-                return assessor.review_backtest(db, bot, int(source.split(":", 1)[1]), state.datasets)
+                rv = assessor.review_backtest(db, bot, int(source.split(":", 1)[1]), state.datasets)
             except KeyError as e:
                 raise HTTPException(404, str(e))
-        raise HTTPException(400, "source must be 'demo' or 'backtest:<id>'")
+        else:
+            raise HTTPException(400, "source must be 'demo' or 'backtest:<id>'")
+        return {**rv, "suggestions": assessor.mark_applied(db, bot, rv.get("suggestions", []))}
+
+    @app.post("/api/review/{bot}/apply", dependencies=[Depends(auth)])
+    def apply_suggestion(bot: str, body: ApplySuggestionBody):
+        """Apply one assessor suggestion to the bot's settings and record it, so it shows as applied and folds away."""
+        from .. import assessor
+        if bot not in BOT_IDS:
+            raise HTTPException(404)
+        if state.coord is None:
+            raise HTTPException(409, "the lab is not running")
+        try:
+            return assessor.apply_suggestion(db, state.coord, bot, body.suggestion_id, body.change, body.operator,
+                                             body.review_id, body.source)
+        except (RuntimeError, ValueError) as e:
+            raise HTTPException(409, str(e))
 
     @app.get("/api/assessor")
     def assessor_view():

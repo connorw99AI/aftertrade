@@ -11,8 +11,10 @@ import { Button, EmptyState, PctDir, Pill, Pnl, Sparkline, Stat, Stats, Table } 
 import { Creature, CREATURES, SideIcon, StateSymbol, stateSymbol } from "@/components/Creature";
 import { useSummary } from "@/components/Shell";
 import { CHARACTERS } from "@/components/characters";
+import { AppliedSuggestion, applySuggestion, changeText } from "@/components/Suggestion";
 import { Compare2 } from "@/components/TestResult";
-import { Any, api, confirmAction, minutes, money, pct, when } from "@/lib/api";
+import { TradingWindows } from "@/components/TradingWindows";
+import { Any, api, confirmAction, minutes, money, pct, ukMinutes, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
 
 function Metric({ k, v }: { k: string; v: React.ReactNode }) {
@@ -43,7 +45,7 @@ function LiveTab({ b, nowMin, todayPnl }: { b: Any; nowMin: number; todayPnl: nu
   const { data: f7 } = usePoll<Any[]>(`/api/funnel?bot=${b.bot_id}&days=7`, 30000);
   const f = f7?.[0];
   const markers = (b.rule_changes ?? []).map((c: Any) => ({ at: c.at, label: `v${c.version}` }));
-  const roles = Object.keys(b.thinking?.roles ?? {}).filter((r) => { const m = b.strategy.params?.metals?.value; return !m || m === "both" || r.toLowerCase() === m; });
+  const roles = Object.keys(b.thinking?.roles ?? {}).filter((r) => b.strategy.pair_trades || b.strategy.params?.[`trade_${r.toLowerCase()}`]?.value !== "off");
   const sentence = decisionSentence(b);
   return (
     <>
@@ -143,7 +145,7 @@ function ReviewTab({ b, initialSource }: { b: Any; initialSource: string }) {
   const id = b.bot_id;
   const [source, setSource] = useState(initialSource || "demo");
   const { data: runs } = usePoll<Any[]>("/api/backtests", 15000);
-  const { data: rv, error } = usePoll<Any>(`/api/review/${id}?source=${encodeURIComponent(source)}`, 0);
+  const { data: rv, error, reload } = usePoll<Any>(`/api/review/${id}?source=${encodeURIComponent(source)}`, 0);
   const [tests, setTests] = useState<Record<string, Any>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const mine = (runs ?? []).filter((r) => r.strategy_id === id && r.status === "DONE");
@@ -156,13 +158,9 @@ function ReviewTab({ b, initialSource }: { b: Any; initialSource: string }) {
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
   async function apply(s: Any) {
-    const name = await confirmAction({ title: `Apply this change to ${CREATURES[id]?.name}?`, confirmLabel: "Apply",
-      consequences: [Object.entries(s.change).map(([k, v]) => `${k} → ${v}`).join(", "), `Saved as rules v${(b.config_version ?? 1) + 1}; the change is logged.`] });
-    if (!name) return;
     try {
-      const params = Object.fromEntries(Object.entries(b.strategy.params).map(([k, p]: [string, Any]) => [k, p.value]));
-      await api.put(`/api/bots/${id}/params`, { params: { ...params, ...s.change }, operator: name });
-      setMsg(`Applied as rules v${(b.config_version ?? 1) + 1}.`);
+      const m = await applySuggestion(id, s, b.config_version ?? 1);
+      if (m) { setMsg(m); reload(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
   const st = rv?.stats;
@@ -182,11 +180,11 @@ function ReviewTab({ b, initialSource }: { b: Any; initialSource: string }) {
       {!rv ? <p className="empty">Reviewing…</p> : <>
         <h2>Suggestions</h2>
         <div className="suggestions">
-          {rv.suggestions.map((s: Any) => (
+          {rv.suggestions.map((s: Any) => s.applied ? <AppliedSuggestion key={s.id} s={s} /> : (
             <div key={s.id} className={`suggestion k-${s.kind}`}>
               <div className="row-between"><b>{s.title}</b>{s.confidence && <Pill>confidence: {s.confidence}</Pill>}</div>
               <p className="muted">{s.evidence}</p>
-              {s.change && <p>Proposed change: <code>{Object.entries(s.change).map(([k, v]) => `${k} → ${v}`).join(", ")}</code></p>}
+              {s.change && <p>Proposed change: <code>{changeText(s.change)}</code></p>}
               {s.rule_change && <p>Needs a rule change: <i>{s.rule_change}</i> (ask for it to be coded and tested).</p>}
               {s.change && (
                 <div className="actions">
@@ -233,8 +231,11 @@ function ReviewTab({ b, initialSource }: { b: Any; initialSource: string }) {
 }
 
 /* ------------------------------------------------------------ settings */
+const WINDOW_KEYS = ["trade_gold", "trade_silver", "gold_windows", "silver_windows"];
+
 function ParamsForm({ bot, onDone }: { bot: Any; onDone: () => void }) {
-  const params = bot.strategy.params as Record<string, Any>;
+  const all = bot.strategy.params as Record<string, Any>;
+  const params = Object.fromEntries(Object.entries(all).filter(([k]) => !WINDOW_KEYS.includes(k)));  // edited under Trading windows
   const [vals, setVals] = useState<Record<string, string>>({});
   useEffect(() => setVals(Object.fromEntries(Object.entries(params).map(([k, p]) => [k, String(p.value)]))), [bot.config_version]); // eslint-disable-line react-hooks/exhaustive-deps
   const [msg, setMsg] = useState<string | null>(null);
@@ -244,7 +245,7 @@ function ParamsForm({ bot, onDone }: { bot: Any; onDone: () => void }) {
     const name = await confirmAction({ title: `Save new parameters for ${CREATURES[bot.bot_id]?.name}?`, confirmLabel: "Save",
       consequences: [`They become rules v${(bot.config_version ?? 1) + 1}; trades from now on are marked with it.`, "The change is logged."] });
     if (!name) return;
-    const out: Record<string, Any> = {};
+    const out: Record<string, Any> = Object.fromEntries(WINDOW_KEYS.map((k) => [k, all[k]?.value]));
     for (const [k, p] of Object.entries(params)) {
       const raw = vals[k];
       out[k] = typeof p.default === "number" ? Number(raw) : raw === "null" ? null : raw;
@@ -279,6 +280,8 @@ function RulesTab({ b, reload }: { b: Any; reload: () => void }) {
         <dt>Invalidation</dt><dd>{st.invalidation_rules}</dd><dt>Filters</dt><dd>{st.filters}</dd><dt>Known limitations</dt><dd>{st.limitations}</dd>
         <dt>Sources</dt><dd><ul>{st.citations.map((c: string) => <li key={c}>{c}</li>)}</ul></dd>
       </dl>
+      <h2>Metals and trading windows</h2>
+      <TradingWindows bot={b} onDone={reload} />
       <h2>Parameters</h2>
       <ParamsForm bot={b} onDone={reload} />
     </>
@@ -315,7 +318,7 @@ function BotDetail({ id }: { id: string }) {
   const who = CHARACTERS[id];
   const row = sum?.bots?.find((x: Any) => x.bot_id === id);
   const t = sum?.server_time ? new Date(sum.server_time) : new Date();
-  const nowMin = t.getUTCHours() * 60 + t.getUTCMinutes();
+  const nowMin = ukMinutes(t);
   return (
     <>
       <p className="crumbs"><Link href="/">← All bots</Link></p>
@@ -326,8 +329,9 @@ function BotDetail({ id }: { id: string }) {
           <p><b>{id} {st.name}</b> · {side} · {st.timeframes.join(" + ")} · {b.symbols.join(" and ") || st.roles.join(" and ")}{" "}
             <Pill tone="info" title={b.rule_changes?.length ? `Last changed ${when(b.rule_changes.at(-1).at)}` : "Unchanged since the bot was created"}>Rules v{b.config_version}</Pill>{" "}
             <Pill tone="info" title="Every bot trades the demo account">Demo</Pill></p>
-          {st.trading_window && <p className="window-line"><b>Can open trades today:</b> {st.trading_window.effective_utc}
-            <span className="muted"> (its own session: {st.trading_window.built_in}; hour filter: {st.trading_window.filter_utc === "all" ? "none" : `${st.trading_window.filter_utc} UTC`})</span></p>}
+          {st.trading_window && <p className="window-line"><b>Can open trades today:</b> gold {st.trading_window.gold.effective};
+            silver {st.trading_window.silver.effective}
+            <span className="muted"> (its own session: {st.trading_window.built_in})</span></p>}
           {who && <p className="character"><b>Looks:</b> {who.looks}<br /><b>Personality:</b> {who.personality}</p>}
           <p className="muted">{st.description}</p>
           <div className="actions"><StatusBadge status={b.status} extra={b.pause_reason} />

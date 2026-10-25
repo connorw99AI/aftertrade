@@ -21,9 +21,9 @@ instruments:
 capital:
   bot_fraction: 0.05             # 20 bots (10 strategies x long and short halves), 5% each of the starting balance
 
-trading:
-  all_metals: true               # every bot trades gold and silver, whatever metal filter it has saved
-  all_hours: true                # no hour filters or session windows (S04/S05 still build their range in session)
+# Which metals each bot trades and when is a per-bot setting (bot page > Settings), in UK time:
+#   trade_gold: on, trade_silver: on, gold_windows: "00:00-24:00", silver_windows: "06:00-11:00, 13:00-17:00"
+# Every bot starts with both metals on and 00:00-24:00 (whenever the market is open).
 
 risk:
   risk_per_trade: 0.03             # sizing target: trade more than min_lot only when 3% of the bot allows it

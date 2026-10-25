@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { botAction, StatusBadge, Tabs } from "@/components/Bits";
 import { Creature, CREATURES } from "@/components/Creature";
+import { AppliedSuggestion, applySuggestion, changeText } from "@/components/Suggestion";
 import { Compare2 } from "@/components/TestResult";
 import { Button, domainOf, EmptyState, Pill, Pnl, ProgressBar, Sparkline, Table } from "@/components/ui";
 import { Any, api, confirmAction, when } from "@/lib/api";
@@ -104,7 +105,7 @@ function Leaderboard() {
   );
 }
 
-function Suggestions({ data }: { data: Any }) {
+function Suggestions({ data, reload }: { data: Any; reload: () => void }) {
   const { data: bots } = usePoll<Any[]>("/api/bots", 15000);
   const [tests, setTests] = useState<Record<string, Any>>({});
   const [msg, setMsg] = useState<string | null>(null);
@@ -118,14 +119,10 @@ function Suggestions({ data }: { data: Any }) {
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
   async function apply(s: Any) {
-    const b = await api.get<Any>(`/api/bots/${s.bot_id}`);
-    const name = await confirmAction({ title: `Apply this change to ${CREATURES[s.bot_id]?.name}?`, confirmLabel: "Apply",
-      consequences: [Object.entries(s.change).map(([k, v]) => `${k} → ${v}`).join(", "), `Saved as rules v${(b.config_version ?? 1) + 1}; the change is logged.`, "The bot must be paused and flat."] });
-    if (!name) return;
     try {
-      const params = Object.fromEntries(Object.entries(b.strategy.params).map(([k, p]: [string, Any]) => [k, p.value]));
-      await api.put(`/api/bots/${s.bot_id}/params`, { params: { ...params, ...s.change }, operator: name });
-      setMsg(`Applied to ${CREATURES[s.bot_id]?.name}.`);
+      const b = await api.get<Any>(`/api/bots/${s.bot_id}`);
+      const m = await applySuggestion(s.bot_id, s, b.config_version ?? 1);
+      if (m) { setMsg(m); reload(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
   if (!sugg.length) return <EmptyState>No suggestions yet. They appear once a bot has 10 or more closed trades in demo or a backtest.</EmptyState>;
@@ -136,6 +133,7 @@ function Suggestions({ data }: { data: Any }) {
         {sugg.map((s) => {
           const key = `${s.bot_id}-${s.id}-${s.review_id}`;
           const st = status(s.bot_id);
+          if (s.applied) return <AppliedSuggestion key={key} s={s} who={CREATURES[s.bot_id]?.name} />;
           return (
             <div key={key} className={`suggestion k-${s.kind}`}>
               <div className="row-between">
@@ -145,7 +143,7 @@ function Suggestions({ data }: { data: Any }) {
               <b>{s.title}</b>
               <p className="muted small">{s.evidence}</p>
               <p className="tiny muted">From {s.source}, {when(s.reviewed_at)}</p>
-              {s.change && <p>Change: <code>{Object.entries(s.change).map(([k, v]) => `${k} → ${v}`).join(", ")}</code></p>}
+              {s.change && <p>Change: <code>{changeText(s.change)}</code></p>}
               {s.rule_change && <p>Needs a rule change: <i>{s.rule_change}</i></p>}
               <div className="actions">
                 {s.change && <Button size="sm" onClick={() => test(s, key)}>Test on history</Button>}
@@ -233,7 +231,7 @@ function Inner() {
       <Tabs tabs={TABS} value={tab} onChange={(t) => router.replace(`/assessor?tab=${t}`)} />
       {tab === "grades" && <Grades data={data} reload={reload} />}
       {tab === "leaderboard" && <Leaderboard />}
-      {tab === "suggestions" && <Suggestions data={data} />}
+      {tab === "suggestions" && <Suggestions data={data} reload={reload} />}
       {tab === "blocked" && <Blocked data={data} />}
     </>
   );

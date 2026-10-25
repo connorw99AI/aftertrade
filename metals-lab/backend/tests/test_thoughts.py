@@ -10,7 +10,7 @@ from metals_lab.store import Store
 from conftest import approve, make_open_proposal
 
 NOW = datetime(2026, 10, 21, 15, 0, tzinfo=timezone.utc)
-WINDOW = {"intervals": [[720, 1200]]}  # 12:00-20:00 UTC
+WINDOW = {"intervals": [[720, 1200]], "gold": {"intervals": [[720, 1200]]}}  # 12:00-20:00 UK (NOW is 16:00 BST)
 
 
 def view(filters, long, short, verdict="NO_ENTRY"):
@@ -39,7 +39,7 @@ def test_thought_names_the_missing_condition():
 def test_thought_reports_a_failing_filter_and_the_clock():
     th = {"timeframe": "M5", "roles": {"GOLD": view([("Not a strong trend (ADX < 30)", False, "ADX 35.8")], [("Bullish candle", True)], [])}}
     assert "Failing check: not a strong trend (ADX < 30), ADX 35.8" in say(th=th)
-    assert say(th=th, now=NOW.replace(hour=8)) == "Off duty. My window opens at 12:00 UTC."
+    assert say(th=th, now=NOW.replace(hour=8)) == "Off duty. My window opens at 12:00 UK time."
     assert say(th=th, now=NOW.replace(hour=21)) == "Off duty. No more trading windows today."
 
 
@@ -138,8 +138,10 @@ def test_settings_update_edits_config_once_and_keeps_the_rest(tmp_path):
     from metals_lab.settings_update import apply
     p = tmp_path / "config.yaml"
     p.write_text("mt5:\n  server_timezone: Europe/Athens   # keep me\n\nrisk:\n  risk_per_trade: 0.30\n  min_lot: {GOLD: 0.04, SILVER: 0.02}\n"
-                 "  daily_loss_pause: 0.50\n  daily_profit_stop: false\n  max_drawdown_pause: 0.50\n")
-    assert apply(p) == ["2026-10-25-risk", "2026-10-25-silver", "2026-10-25-silver-006"]
+                 "  daily_loss_pause: 0.50\n  daily_profit_stop: false\n  max_drawdown_pause: 0.50\n"
+                 "trading:\n  all_metals: true\n  all_hours: true\n\nnews:\n  enabled: false\n")
+    assert apply(p) == ["2026-10-25-risk", "2026-10-25-silver", "2026-10-25-silver-006", "2026-10-25-windows"]
+    assert "trading" not in yaml.safe_load(p.read_text()) and yaml.safe_load(p.read_text())["news"] == {"enabled": False}
     r = yaml.safe_load(p.read_text())["risk"]
     assert r["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and r["big_lot"] == {"GOLD": 0.1, "SILVER": 0.06}
     assert r["daily_loss_pause"] == 0.30 and r["daily_profit_stop"] == 0 and r["risk_per_trade"] == 0.03
@@ -149,14 +151,26 @@ def test_settings_update_edits_config_once_and_keeps_the_rest(tmp_path):
     assert apply(tmp_path / "missing.yaml") == []
 
 
-def test_every_bot_trades_both_metals_while_the_switch_is_on(armed):
+def test_every_bot_starts_on_both_metals_all_day_and_keeps_its_own_settings(armed):
     import json
     from metals_lab.strategies import BOT_IDS, build
-    assert all(build(b).p["metals"] == "both" for b in BOT_IDS)           # no gold-only defaults left
-    armed.db.x("UPDATE bots SET params_json=? WHERE bot_id='S03L'", (json.dumps({"metals": "gold"}),))
-    assert armed.strategy("S03L").p["metals"] == "both"                   # a saved metal filter is overridden
-    armed.cfg["trading"]["all_metals"] = False
-    assert armed.strategy("S03L").p["metals"] == "gold"                   # switch off: the bot's own setting applies
+    for b in BOT_IDS:
+        p = build(b).p
+        assert p["trade_gold"] == p["trade_silver"] == "on" and p["gold_windows"] == p["silver_windows"] == "00:00-24:00"
+        assert p.get("use_session", "off") == "off"
+    saved = {"trade_gold": "off", "silver_windows": "06:00-11:00, 13:00-17:00"}
+    armed.db.x("UPDATE bots SET params_json=? WHERE bot_id='S03L'", (json.dumps(saved),))
+    s = armed.strategy("S03L")                                             # no switch overrides a bot's own settings now
+    assert s.p["trade_gold"] == "off" and s.p["silver_windows"] == "06:00-11:00, 13:00-17:00"
+
+
+def test_thought_names_the_metal_that_is_off_duty():
+    th = {"timeframe": "M5", "roles": {"GOLD": view([("Inside the gold trading window (UK 18:00-20:00)", False, "now 16:00 UK")],
+                                                    [("Bullish candle", True)], [])}}
+    w = {"intervals": [[720, 1200]], "gold": {"intervals": [[1080, 1200]]}}
+    assert say(th=th, window=w) == ("Off duty on gold until 18:00 UK time. "
+                                    "Failing check: inside the gold trading window (UK 18:00-20:00).")
+    assert say(th=th, metals="none") == "Gold and silver are both switched off in my settings."
 
 
 def test_guard_entry_blocks():
@@ -188,16 +202,3 @@ def test_live_losing_streak_pauses_the_bot_until_start(armed):
     armed.set_bot_status("S01L", "RUNNING", operator="pytest")
     armed.db.set_control("streak_reset:S01L", "2099-12-31T00:00:00+00:00")  # Start clears the streak (the trades above are future-dated)
     assert armed.guard_state("S01L")["streak"] == 0
-
-
-def test_every_bot_trades_all_hours_while_the_switch_is_on(armed):
-    import json
-    from metals_lab.strategies import BOT_IDS, build
-    assert all(build(b).p["hours_utc"] == "all" for b in BOT_IDS)
-    assert all(build(b).p.get("use_session", "off") == "off" for b in BOT_IDS)
-    armed.db.x("UPDATE bots SET params_json=? WHERE bot_id='S03L'", (json.dumps({"hours_utc": "12-21", "use_session": "on"}),))
-    s = armed.strategy("S03L")
-    assert s.p["hours_utc"] == "all" and s.p["use_session"] == "off"       # saved session limits overridden
-    armed.cfg["trading"]["all_hours"] = False
-    s = armed.strategy("S03L")
-    assert s.p["hours_utc"] == "12-21" and s.p["use_session"] == "on"      # switch off: the bot's own settings apply

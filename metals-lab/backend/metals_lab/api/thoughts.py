@@ -1,6 +1,6 @@
 """One plain sentence per bot for the Lab cards, written from the checklist the bot already computes.
 
-Never decorative: every phrase comes from a real check, status or open trade. Times are UTC, like the trading windows.
+Never decorative: every phrase comes from a real check, status or open trade. Trading windows are UK time; trade times are UTC.
 """
 from __future__ import annotations
 
@@ -8,9 +8,11 @@ import re
 from datetime import datetime
 from typing import Optional
 
+from ..strategies.filters import uk_minute
+
 METAL = {"GOLD": "gold", "SILVER": "silver"}
 # checks about the clock rather than the market; when one fails the bot is simply off duty
-TIME_CHECK = re.compile(r"session|trading hours|liquid hours|^before |cut-off|range complete|friday|evaluation bar", re.I)
+TIME_CHECK = re.compile(r"session|trading window|trading hours|liquid hours|^before |cut-off|range complete|friday|evaluation bar", re.I)
 
 
 def is_time_check(label: str) -> bool:
@@ -39,14 +41,14 @@ def _hhmm(minute: int) -> str:
 
 
 def next_open(intervals: list, now: datetime) -> Optional[str]:
-    """Start of the next trading window today, or None when there is none left today."""
-    m = now.hour * 60 + now.minute
+    """Start (UK time) of the next trading window today, or None when there is none left today."""
+    m = uk_minute(now)
     later = [a for a, b in intervals if a > m]
     return _hhmm(min(later)) if later else None
 
 
 def in_window(intervals: list, now: datetime) -> bool:
-    m = now.hour * 60 + now.minute
+    m = uk_minute(now)
     return any(a <= m < b for a, b in intervals)
 
 
@@ -82,6 +84,8 @@ def thought(*, side: str, status: str, kill: bool, stopped_for_day: Optional[str
         return f"{lead}{'Done for the week' if stopped_for_day == 'weekly loss stop' else 'Done for today'}: {why}."
     if cooldown_until and now < cooldown_until:
         return f"{lead}Cooling down after a loss until {cooldown_until:%H:%M} UTC."
+    if metals == "none":
+        return f"{lead}Gold and silver are both switched off in my settings."
     roles = (th or {}).get("roles") or {}
     views = {r: roles[r] for r in allowed_roles(roles, metals) if roles[r] and "waiting" not in roles[r]}
     if not views:
@@ -89,7 +93,7 @@ def thought(*, side: str, status: str, kill: bool, stopped_for_day: Optional[str
     intervals = (window or {}).get("intervals")
     if intervals is not None and not in_window(intervals, now):
         nxt = next_open(intervals, now)
-        return f"{lead}Off duty. " + (f"My window opens at {nxt} UTC." if nxt else "No more trading windows today.")
+        return f"{lead}Off duty. " + (f"My window opens at {nxt} UK time." if nxt else "No more trading windows today.")
     # the metal closest to an entry speaks for the bot
     best = max(views, key=lambda r: ((readiness(views[r], side) or {}).get("met", 0) / max(1, (readiness(views[r], side) or {}).get("total", 1))))
     v, metal = views[best], METAL[best]
@@ -97,7 +101,9 @@ def thought(*, side: str, status: str, kill: bool, stopped_for_day: Optional[str
         return f"{lead}Entry signal on {metal}. It goes through sizing, the auditor and risk next."
     time_fail = next((c for c in v["filters"] if not c.get("ok") and is_time_check(c.get("label", ""))), None)
     if time_fail:
-        return f"{lead}Waiting on the clock for {metal}. Failing check: {_lower_first(time_fail['label'])}."
+        nxt = next_open(((window or {}).get(best.lower()) or {}).get("intervals") or [], now)
+        until = f" until {nxt} UK time" if nxt and "trading window" in time_fail["label"] else ""
+        return f"{lead}Off duty on {metal}{until}. Failing check: {_lower_first(time_fail['label'])}."
     fail = next((c for c in v["filters"] if not c.get("ok") and not c.get("label", "").lower().startswith("metal allowed")), None)
     if fail:
         detail = f", {fail['detail']}" if fail.get("detail") else ""

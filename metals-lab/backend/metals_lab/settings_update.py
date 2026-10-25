@@ -10,11 +10,13 @@ from __future__ import annotations
 import re
 import shutil
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
-# Settings the operator asked for in conversation, newest last. Values are YAML text written as-is.
-UPDATES: list[tuple[str, str, dict[str, str]]] = [
+# Settings the operator asked for in conversation, newest last. Values are YAML text written as-is;
+# None instead of a dict removes the whole section.
+UPDATES: list[tuple[str, str, Optional[dict[str, str]]]] = [
     ("2026-10-25-risk", "risk", {
         "risk_per_trade": "0.03",
         "min_lot": "{GOLD: 0.05, SILVER: 0.03}",
@@ -28,9 +30,27 @@ UPDATES: list[tuple[str, str, dict[str, str]]] = [
     }),
     ("2026-10-25-silver", "risk", {"big_lot": "{GOLD: 0.1, SILVER: 0.05}"}),
     ("2026-10-25-silver-006", "risk", {"big_lot": "{GOLD: 0.1, SILVER: 0.06}"}),
+    # the all-metals / all-hours switches are replaced by each bot's own gold/silver switches and trading windows
+    ("2026-10-25-windows", "trading", None),
 ]
 
 MARK = "# metal-lab settings applied: "
+
+
+def _section(lines: list[str], section: str) -> tuple[Optional[int], int]:
+    start = next((i for i, l in enumerate(lines) if re.match(rf"^{section}:\s*(#.*)?$", l)), None)
+    if start is None:
+        return None, len(lines)
+    end = next((i for i in range(start + 1, len(lines)) if lines[i] and not lines[i].startswith((" ", "\t", "#"))), len(lines))
+    return start, end
+
+
+def _drop_section(text: str, section: str) -> str:
+    lines = text.splitlines()
+    start, end = _section(lines, section)
+    if start is not None:
+        del lines[start:end]
+    return "\n".join(lines) + "\n"
 
 
 def _set_keys(text: str, section: str, values: dict[str, str]) -> str:
@@ -61,10 +81,14 @@ def apply(path: Path) -> list[str]:
             continue
         backup = path.with_name(f"{path.name}.bak-{uid}")
         shutil.copyfile(path, backup)
-        new = _set_keys(text, section, values) + f"{MARK}{uid}\n"
-        loaded = (yaml.safe_load(new) or {}).get(section, {})
-        expected = {k: yaml.safe_load(v) for k, v in values.items()}
-        if any(loaded.get(k) != v for k, v in expected.items()):
+        if values is None:
+            new = _drop_section(text, section) + f"{MARK}{uid}\n"
+            bad = section in (yaml.safe_load(new) or {})
+        else:
+            new = _set_keys(text, section, values) + f"{MARK}{uid}\n"
+            loaded = (yaml.safe_load(new) or {}).get(section, {})
+            bad = any(loaded.get(k) != yaml.safe_load(v) for k, v in values.items())
+        if bad:
             shutil.copyfile(backup, path)
             raise RuntimeError(f"settings update {uid} did not load back correctly; config.yaml left unchanged")
         path.write_text(new)
