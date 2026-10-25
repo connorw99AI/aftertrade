@@ -67,6 +67,6 @@ export const CHARACTERS: Record<string, Character> = {
     looks: "An aqua-blue riveted robot with a crescent head, three lime eye-lamps, a glowing lime chest core and pincer hands.",
     personality: "Patient. Watches how New York opens; if the first half hour rose, it buys for the last half hour and leaves at the close." },
   S11S: { name: "Copper Vigil", side: "short",
-    looks: "A copper riveted robot with a crescent head, three teal eye-lamps, a glowing chest core and pincer hands.",
+    looks: "A copper riveted robot with a crescent head, three gold eye-lamps, a glowing gold chest core and pincer hands.",
     personality: "Patient. If New York's first half hour fell, it sells for the last half hour and leaves at the close." },
 };
