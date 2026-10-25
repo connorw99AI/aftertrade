@@ -64,9 +64,9 @@ export const CHARACTERS: Record<string, Character> = {
     looks: "An orange-red fan-crested alien with a hollow ring in its chest and gold trim.",
     personality: "Contrarian. When gold is cheap next to silver it buys gold and sells silver, betting they drift back together." },
   S11L: { name: "Violet Vigil", side: "long",
-    looks: "A violet crystal sentinel with a diamond head, glass bones and a purple glow beneath it.",
+    looks: "A violet riveted robot with a crescent head, three teal eye-lamps, a glowing chest core and pincer hands.",
     personality: "Patient. Watches how New York opens; if the first half hour rose, it buys for the last half hour and leaves at the close." },
-  S11S: { name: "Ember Vigil", side: "short",
-    looks: "An amber-red crystal sentinel with a diamond head, glass bones and a golden glow beneath it.",
+  S11S: { name: "Copper Vigil", side: "short",
+    looks: "A copper riveted robot with a crescent head, three teal eye-lamps, a glowing chest core and pincer hands.",
     personality: "Patient. If New York's first half hour fell, it sells for the last half hour and leaves at the close." },
 };
