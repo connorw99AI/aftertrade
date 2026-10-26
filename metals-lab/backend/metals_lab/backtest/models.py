@@ -61,15 +61,16 @@ class RiskParams:
     drawdown_resume: str = "never"            # "never" mirrors live (operator must resume)
 
     @classmethod
-    def from_live(cls, cfg: dict) -> "RiskParams":
-        """The live risk settings, so a backtest sizes and caps trades the way the running lab does."""
+    def from_live(cls, cfg: dict, bot_id: Optional[str] = None) -> "RiskParams":
+        """The live risk settings, so a backtest sizes and caps trades the way the running lab does for ``bot_id``."""
+        from ..risk import trade_cap_for
         r = cfg.get("risk", {})
         return cls(risk_per_trade=float(r.get("risk_per_trade", 0.005)), min_lot=r.get("min_lot", 0.0) or 0.0, weekend_flat_from=r.get("weekend_flat_from"),
                    max_entries_per_day=int(r.get("max_entries_per_bot_per_day", 0) or 0),
                    daily_loss_pause=float(r.get("daily_loss_pause", 0.02)),
                    daily_profit_stop=float(r.get("daily_profit_stop", 0.0) or 0.0),
                    daily_lock_from=float(r.get("daily_lock_from", 0.0) or 0.0), daily_giveback=float(r.get("daily_giveback", 0.0) or 0.0),
-                   max_trade_risk=float(r.get("max_trade_risk", 0.0) or 0.0), big_lot=r.get("big_lot", 0.0) or 0.0,
+                   max_trade_risk=trade_cap_for(cfg, bot_id), big_lot=r.get("big_lot", 0.0) or 0.0,
                    big_lot_max_risk=float(r.get("big_lot_max_risk", 0.0) or 0.0),
                    weekly_loss_pause=float(r.get("weekly_loss_pause", 0.0) or 0.0),
                    max_consecutive_losses=int(r.get("max_consecutive_losses", 0) or 0),

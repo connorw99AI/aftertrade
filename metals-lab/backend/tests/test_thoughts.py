@@ -119,6 +119,21 @@ def test_min_lot_never_risks_more_than_the_cap(armed):
     assert not tp.skipped and tp.volume == 0.04
 
 
+def test_wide_stop_bots_have_their_own_trade_cap(armed, cfg):
+    from metals_lab.backtest.models import RiskParams
+    from metals_lab.risk import trade_cap_for
+    assert [trade_cap_for(cfg, b) for b in ("S01L", "S06S", "S07L", "S08S", "S09L", "S10S", "S11L")] == [0.05, 0.05, 0.10, 0.10, 0.10, 0.10, 0.05]
+    assert RiskParams.from_live(cfg, "S09S").max_trade_risk == 0.10 and RiskParams.from_live(cfg, "S01L").max_trade_risk == 0.05
+    sig = make_open_proposal(armed, bot="S07L", volume=0.01).signal
+    loss = lambda spec, side, entry, stop, vol: abs(entry - stop) * spec.contract_size * vol
+    size = lambda bot, dist: armed.strategy(bot).calculate_target_positions(
+        [sig.__class__(**{**sig.__dict__, "stop_price": sig.ref_price - dist})], 227.27, armed.specs, 0.02, loss, lambda s: 0.0,
+        min_lot=0.01, max_risk_pct=trade_cap_for(cfg, bot))[0]
+    assert size("S01L", 16.0).skipped                                   # 0.01 lot x $16 = 7% of the bot: above 5%
+    assert not size("S07L", 16.0).skipped and size("S07L", 16.0).volume == 0.01   # within the wide-stop 10%
+    assert size("S07L", 27.0).skipped                                   # 12%: above even the wide-stop cap
+
+
 def test_tight_stops_trade_the_big_lot_and_wide_stops_the_small_one(armed):
     strat = armed.strategy("S01L")
     sig = make_open_proposal(armed, bot="S01L", volume=0.1).signal
@@ -140,10 +155,11 @@ def test_settings_update_edits_config_once_and_keeps_the_rest(tmp_path):
                  "  daily_loss_pause: 0.50\n  daily_profit_stop: false\n  max_drawdown_pause: 0.50\n"
                  "trading:\n  all_metals: true\n  all_hours: true\n\nnews:\n  enabled: false\n")
     assert apply(p) == ["2026-10-25-risk", "2026-10-25-silver", "2026-10-25-silver-006", "2026-10-25-windows", "2026-10-25-22-bots",
-                       "2026-10-26-small-trades"]
+                       "2026-10-26-small-trades", "2026-10-26-wide-stop-cap"]
     assert "trading" not in yaml.safe_load(p.read_text()) and yaml.safe_load(p.read_text())["news"] == {"enabled": False}
     r = yaml.safe_load(p.read_text())["risk"]
     assert r["min_lot"] == {"GOLD": 0.01, "SILVER": 0.01} and r["big_lot"] == 0 and r["max_trade_risk"] == 0.05
+    assert r["max_trade_risk_by_strategy"] == {"S07": 0.10, "S08": 0.10, "S09": 0.10, "S10": 0.10}
     assert r["daily_loss_pause"] == 0.30 and r["daily_profit_stop"] == 0 and r["risk_per_trade"] == 0.02
     assert r["max_drawdown_pause"] == 0.50 and "# keep me" in p.read_text()
     assert (tmp_path / "config.yaml.bak-2026-10-25-risk").exists()

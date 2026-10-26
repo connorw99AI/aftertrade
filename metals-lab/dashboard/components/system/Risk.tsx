@@ -23,6 +23,8 @@ function limitSentences(l: Any): [string, string][] {
   say("pre_trade_limits", caps ? "Margin and exposure caps are checked before every entry." : "Margin-share and exposure caps are off; losses are handled by the daily stops and the drawdown pause.");
   say("max_entries_per_bot_per_day", `Each bot opens at most ${l.max_entries_per_bot_per_day} trades per UTC day (a two-leg pair counts once).`);
   say("max_trade_risk", l.max_trade_risk ? `A trade is skipped if even the minimum size would risk more than ${pc(l.max_trade_risk)} of the bot's balance.` : "There is no cap on what the minimum size may risk.");
+  const ownCaps = Object.entries(l.max_trade_risk_by_strategy ?? {}) as [string, number][];
+  say("max_trade_risk_by_strategy", ownCaps.length ? `Wide-stop bots have their own cap (both halves): ${ownCaps.map(([k, v]) => `${k} ${pc(v)}`).join(", ")}.` : null);
   say("daily_loss_pause", `A bot opens nothing more that UTC day once it is down ${pc(l.daily_loss_pause)} on the day.`);
   say("daily_giveback", l.daily_giveback ? `Profit lock: once a bot is up ${pc(l.daily_lock_from ?? 0)} or more on the day, it stops for the day if it gives back ${pc(l.daily_giveback)} of its best gain that day.` : "There is no profit lock.");
   say("daily_profit_stop", l.daily_profit_stop ? `A bot opens nothing more that day once it is up ${pc(l.daily_profit_stop)}; open trades stay managed.` : "There is no daily profit stop.");

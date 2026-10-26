@@ -211,7 +211,7 @@ def cmd_backtest(cfg, a):
     frames, specs, meta, key = _research_inputs(cfg, a)
     fx = 1.0 if a.synthetic else fx_from_spec(next(iter(specs.values())))
     res = Backtester(build(a.strategy, json.loads(a.params)), frames, specs,
-                     BacktestConfig(initial_capital=a.capital, risk=RiskParams.from_live(cfg), costs=CostModel(fx_to_account=fx)),
+                     BacktestConfig(initial_capital=a.capital, risk=RiskParams.from_live(cfg, a.strategy), costs=CostModel(fx_to_account=fx)),
                      data_meta=meta).run()
     st = _store(cfg, False)
     st.x("INSERT INTO backtests(created_at,strategy_id,dataset_key,params_json,config_json,metrics_json,diagnostics_json,reliability_json) "
@@ -235,7 +235,7 @@ def cmd_research(cfg, a):
         if cur.rowcount == 0:
             raise HoldoutLocked(f"final holdout for {sid} on this dataset was already used; results would be contaminated")
 
-    r = Research(a.strategy, frames, specs, BacktestConfig(initial_capital=a.capital, risk=RiskParams.from_live(cfg)), meta, holdout_check)
+    r = Research(a.strategy, frames, specs, BacktestConfig(initial_capital=a.capital, risk=RiskParams.from_live(cfg, a.strategy)), meta, holdout_check)
     rep = r.full_study(max_trials=a.trials, wf_train_days=a.wf_train, wf_test_days=a.wf_test, touch_holdout=a.holdout)
     for t in rep["all_trials"]:
         st.x("INSERT INTO experiments(created_at,strategy_id,dataset_key,kind,params_json,period,metrics_json,status) VALUES(?,?,?,?,?,?,?,?)",

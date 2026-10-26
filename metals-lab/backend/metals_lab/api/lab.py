@@ -152,7 +152,7 @@ def compute_backtest(body: dict, cfg: dict, cache_dir: str, capital: float, curr
     cls = bot_class(b.strategy_id)
     frames, specs, meta, fx = _load_frames(DatasetStore(Path(cache_dir)), cls, b)
     end = (pd_ts(b.end) + __import__("datetime").timedelta(days=1)).strftime("%Y-%m-%d") if b.end else None
-    bcfg = BacktestConfig(initial_capital=b.initial_capital or capital, risk=RiskParams.from_live(cfg), start=b.start, end=end,
+    bcfg = BacktestConfig(initial_capital=b.initial_capital or capital, risk=RiskParams.from_live(cfg, b.strategy_id), start=b.start, end=end,
                           costs=CostModel(commission_per_lot_side=b.commission_per_lot_side, fx_to_account=fx,
                                           spread_multiplier=b.spread_multiplier, slippage_multiplier=b.slippage_multiplier))
     res = Backtester(build(b.strategy_id, b.params), frames, specs, bcfg, data_meta=meta).run()

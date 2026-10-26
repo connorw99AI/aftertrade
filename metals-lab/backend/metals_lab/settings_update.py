@@ -37,6 +37,8 @@ UPDATES: list[tuple[str, str, Optional[dict[str, str]]]] = [
     # small trades for small bots: 2% risk, broker-minimum lots, never more than 5% of a bot at the stop
     ("2026-10-26-small-trades", "risk", {"risk_per_trade": "0.02", "min_lot": "{GOLD: 0.01, SILVER: 0.01}", "big_lot": "0",
                                           "max_trade_risk": "0.05"}),
+    # wide-stop bots (S07-S10, both halves) may lose up to 10% at the stop, so 0.01 lot fits their stops
+    ("2026-10-26-wide-stop-cap", "risk", {"max_trade_risk_by_strategy": "{S07: 0.10, S08: 0.10, S09: 0.10, S10: 0.10}"}),
 ]
 
 MARK = "# metal-lab settings applied: "

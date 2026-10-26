@@ -165,7 +165,7 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 - Every exposure change is labelled `OPEN_LONG`, `CLOSE_LONG`, `OPEN_SHORT` or `COVER_SHORT`. A buy is never ambiguous.
 - Decisions use completed bars only. Orders fill at the next bar's open in backtests, and on the next live tick after the bar closes in live trading.
 - Each opening carries a protective stop that is sent to the server with the order.
-- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. Each trade risks 2% of the bot at its stop (`risk_per_trade: 0.02`), never below the broker minimum of 0.01 lot (`min_lot`), and a trade whose size would lose more than 5% of the bot at its stop is skipped (`max_trade_risk: 0.05`). The forced larger size for tight stops (`big_lot`) is off.
+- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. Each trade risks 2% of the bot at its stop (`risk_per_trade: 0.02`), never below the broker minimum of 0.01 lot (`min_lot`), and a trade whose size would lose more than 5% of the bot at its stop is skipped (`max_trade_risk: 0.05`; 10% for the wide-stop bots S07-S10, `max_trade_risk_by_strategy`). The forced larger size for tight stops (`big_lot`) is off.
 - S10 opens two legs as one trade group. Both legs must pass the auditor and risk checks; if one leg fails after the other has filled, the filled leg is closed. The money popup fires only when the whole group has closed.
 - Strategy rules are never rewritten automatically. Parameter changes are an operator action, allowed only while the bot is paused and flat, and each change is versioned and logged.
 
@@ -180,7 +180,10 @@ The operator runs a £5,000 demo. With 22 independent bots at 1/22 each, every b
     costs of roughly 0.08R a trade on five-minute charts, that ruins a bot with no edge within weeks, and backtests that restart
     after a 50% fall ground on to -98%. The strategies themselves were checked and are coded as written.
   - What it means: on £227, 2% is about £4.50 at the stop, so most trades are 0.01 lot (gold about £0.75 per $1 move) and make
-    or lose a few pounds. Strategies with wide stops (over about $15 on gold) are skipped. Bigger trades need bigger bots.
+    or lose a few pounds. Bigger trades need bigger bots.
+  - **Wide-stop bots get 10%** (`max_trade_risk_by_strategy`: S07, S08, S09, S10, both halves). Their stops (2-3 ATR on
+    15-minute charts) are often too wide for 0.01 lot within 5%, so they skipped most trades. At 10% a gold stop of up to about
+    $30 fits; four losses in a row then cost a bot about 35%. Every other bot stays at 5%.
 - Leverage (1:500) sets the margin, not the loss. Margin for 0.1 lot gold is lots × 100 oz × price ÷ 500, roughly £50-80, and each bot must cover it from its own free balance, so two open gold trades can use half or more of a £227 bot. The loss at the stop is the same at any leverage.
 - **Daily stops** (new entries only; open trades keep running, so a day can end worse):
   - **Loss stop 30%** (`daily_loss_pause: 0.30`): down 30% on the day.

@@ -38,6 +38,13 @@ def risk_pct_for(cfg: dict, bot_id: str) -> float:
     return max(0.0, min(pct, float(cfg["risk"].get("max_risk_per_trade_cap", 0.03))))
 
 
+def trade_cap_for(cfg: dict, bot_id: Optional[str]) -> float:
+    """Most a single trade may lose at its stop, as a share of the bot: its strategy's own cap if set, else the default."""
+    r = cfg.get("risk", {})
+    own = (r.get("max_trade_risk_by_strategy") or {}).get((bot_id or "")[:3])
+    return float(own if own is not None else r.get("max_trade_risk") or 0)
+
+
 @dataclass
 class RiskContext:
     account: AccountCheck
