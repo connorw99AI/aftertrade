@@ -8,7 +8,7 @@ Full rules, parameters and per-strategy citations: [STRATEGY_REFERENCE.md](STRAT
 
 Every strategy runs as two independent bots: `S04L` only takes long entries and `S04S` only takes short ones. Each half has its own magic number (`7710000 + strategy*10 + 1` long, `+ 2` short), its own 1/22 allocation (£227.27 on the £5,000 demo), its own ledger and its own record, so a side that loses can be retired without retiring the strategy. S10 is a two-leg pair, so its halves are split by direction of the trade rather than by a single side: `S10L` buys silver and sells gold when silver is cheap on the ratio, `S10S` does the opposite.
 
-**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. It stops opening trades and keeps its own balance; the two halves never share money, and each starts with 1/22 of the starting balance (5% in labs set up before S11). Un-retiring brings it back stopped with that balance. Labs from before this change moved a retired half's balance to the other half; un-retiring moves it back (an audited ledger entry). The Lab page has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Lab page.
+**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. It stops opening trades and keeps its own balance; the two halves never share money, and each starts with 1/22 of the starting balance. Un-retiring brings it back stopped with that balance. Labs from before this change moved a retired half's balance to the other half; un-retiring moves it back (an audited ledger entry). The Lab page has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Lab page.
 
 ## Assessor changes applied from the backtest review
 
@@ -107,8 +107,10 @@ down, and closes at 13:30. Stop 2 ATR(14) on M5; one trade per metal per day. Un
 your own MT5 history before trusting it.
 
 With S11 there are 22 bots, each with 1/22 (about 4.5%) of the starting balance (`capital.bot_fraction: 0.045454`; the
-desktop launcher updates your config once). A lab that was set up with 20 bots keeps their 5% shares and S11 has no
-money until you run `metals-lab new-lab`; until then it can be backtested and tested by the Assessor.
+desktop launcher updates your config once). A lab that was already running with 20 bots at 5% is re-split once on the
+next launch, keeping every trade: each bot's starting share becomes 1/22 of the recorded starting balance (the 20 bots give
+up £22.73 each on a £5,000 demo, S11L and S11S get £227.27 each), and each balance is that share plus its own results so
+far. Every adjustment is in the audit log ("Starting share re-split for 22 bots").
 
 No half is retired by default. The Assessor flagged S01L, S01S, S02L, S02S (no edge on either side), S03S, S06S, S07S (shorts lost), S04L and S05L (longs lost); set `capital.apply_assessor_retirements: true` to start a fresh lab with those retired. Retire them yourself once demo results agree. Each filter is a normal setting (`sides`, the metal switches and windows) shown on the bot page, so you can change or remove it.
 

@@ -87,6 +87,37 @@ class Ledger:
         acked = self.db.one("SELECT COALESCE(SUM(amount),0) s FROM unallocated_events WHERE acknowledged=1")["s"]
         return round(snap["starting_balance"] + acked - alloc, 2)
 
+    def resplit(self, fingerprint: str, fraction: float, bot_ids: list[str], operator: str, reason: str) -> list[dict]:
+        """Change every bot's starting share to ``fraction`` of the recorded starting balance, keeping all trades and any
+        later allocation moves: each bot gets (new share - the share it was first given). Bots added after the lab was
+        set up get the full new share. Runs once per (account, fraction); audited."""
+        snap = self.snapshot(fingerprint)
+        if not snap:
+            return []
+        if fraction * len(bot_ids) > 1.0 + 1e-9:
+            raise ValueError("allocations would exceed 100% of the starting balance")
+        new = round(float(snap["starting_balance"]) * fraction, 2)
+        tag = f"resplit:{fingerprint[:16]}:{fraction}"
+        if self.db.one("SELECT 1 FROM ledger WHERE ref LIKE ?", (tag + ":%",)):
+            return []
+        out = []
+        with self.db.tx():
+            for b in bot_ids:
+                first = self.db.one("SELECT amount FROM ledger WHERE bot_id=? AND kind='ALLOCATION' AND ref LIKE 'init:%' "
+                                    "ORDER BY id LIMIT 1", (b,))
+                old = float(first["amount"]) if first else 0.0
+                delta = round(new - old, 2)
+                if delta:
+                    self.db.conn.execute("INSERT INTO ledger(bot_id,ts,kind,amount,ref,note) VALUES(?,?,?,?,?,?)",
+                                         (b, now_iso(), "ALLOCATION", delta, f"{tag}:{b}", reason))
+                    self.db.conn.execute(
+                        "INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
+                        (b, "ALLOCATION_RESPLIT", json.dumps({"starting_share": old}),
+                         json.dumps({"starting_share": new, "reason": reason}), operator, now_iso()))
+                out.append({"bot_id": b, "from": old, "to": new, "delta": delta})
+            self.db.conn.execute("UPDATE capital_snapshot SET bot_fraction=? WHERE fingerprint=?", (fraction, fingerprint))
+        return out
+
     def change_allocation(self, fingerprint: str, bot_id: str, delta: float, reason: str, operator: str) -> dict:
         """Explicit operator action only. Increases must be funded from the unallocated pool."""
         if not reason or not operator:

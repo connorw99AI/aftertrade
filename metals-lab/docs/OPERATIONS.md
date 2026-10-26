@@ -110,7 +110,7 @@ Both do the same, and the dashboard refuses while the kill switch is on (clear i
 **Disarm** on the System page stops all new automatic trading at any time.
 
 1. Arming re-verifies DEMO, hedging, Algo Trading, instruments and clock.
-2. It shows the starting balance snapshot and the per-bot allocation (1/22 each, £227.27 on a £5,000 demo; labs set up before S11 keep 5% each).
+2. It shows the starting balance snapshot and the per-bot allocation (1/22 each, £227.27 on a £5,000 demo; a lab set up with 20 bots is re-split to 1/22 once by the launcher, keeping its trades).
 3. It asks you to type `ARM DEMO <6-char fingerprint>` (shown in the dialog), and logs your name.
 
 On the first activation for an account, the balance is snapshotted once and the allocations are created. Re-arming later never resets them.

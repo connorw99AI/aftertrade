@@ -1,4 +1,5 @@
 """The Lab card's thought line and readiness come only from real checks, statuses and trades."""
+import pytest
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -221,21 +222,28 @@ def test_next_up_lists_bots_one_condition_from_an_entry():
     assert next_up(**{**base, "th": blocked}) is None                                  # a filter fails
 
 
-def test_launcher_starts_a_fresh_lab_once_and_waits_for_open_trades(tmp_path):
-    from metals_lab.cli import LAB_MARK, LAB_RESETS, pending_lab_reset
+def test_launcher_resplits_a_running_lab_for_22_bots_keeping_every_trade(tmp_path):
+    from metals_lab.cli import RESPLIT_MARK, pending_resplit
+    from metals_lab.ledger import Ledger
     from metals_lab.store import Store
+    from metals_lab.strategies import BOT_IDS
     cfg_p, db_p = tmp_path / "config.yaml", tmp_path / "metals_lab.db"
-    cfg_p.write_text("risk:\n  risk_per_trade: 0.03\n")
+    cfg_p.write_text("capital:\n  bot_fraction: 0.045454\n")
+    old20 = [b for b in BOT_IDS if not b.startswith("S11")]
     st = Store(db_p)
-    st.x("INSERT INTO positions(position_key,bot_id,status) VALUES('k','S01L','OPEN')")
+    led = Ledger(st)
+    led.initialize("f" * 64, 5000.0, "GBP", 0.05, old20)                 # this morning's lab: 20 bots at 250
+    led.post_deal("S03L", {"ticket": 1, "profit": 12.0, "commission": 0.0, "swap": 0.0, "fee": 0.0, "symbol": "XAUUSD"})
+    led.post_deal("S08S", {"ticket": 2, "profit": -30.0, "commission": -1.0, "swap": 0.0, "fee": 0.0, "symbol": "XAGUSD"})
+    st.x("INSERT INTO positions(position_key,bot_id,status) VALUES('open1','S01L','OPEN')")   # an open trade does not block it
     st.conn.close()
-    assert "postponed" in pending_lab_reset(cfg_p, db_p)                           # open trade: nothing happens
-    assert db_p.exists() and LAB_MARK not in cfg_p.read_text()
+    assert "starting share is now 227.27" in pending_resplit(cfg_p, db_p)
     st = Store(db_p)
-    st.x("UPDATE positions SET status='CLOSED'")
+    led = Ledger(st)
+    assert led.book("S03L").equity == pytest.approx(239.27) and led.book("S08S").equity == pytest.approx(196.27)
+    assert led.book("S11L").equity == pytest.approx(227.27) and led.book("S11S").equity == pytest.approx(227.27)
+    assert sum(led.allocation(b) for b in BOT_IDS) == pytest.approx(5000.0, abs=0.2)
+    assert st.one("SELECT COUNT(*) n FROM ledger WHERE kind='DEAL'")["n"] >= 2 or st.one("SELECT COUNT(*) n FROM ledger")["n"] > 22
+    assert st.one("SELECT COUNT(*) n FROM config_audit WHERE action='ALLOCATION_RESPLIT'")["n"] == 22
     st.conn.close()
-    assert "fresh 22-bot lab" in pending_lab_reset(cfg_p, db_p)
-    assert not db_p.exists() and any((tmp_path / "archive").iterdir())             # archived, not deleted
-    assert all(LAB_MARK + r in cfg_p.read_text() for r in LAB_RESETS)
-    Store(db_p).conn.close()
-    assert pending_lab_reset(cfg_p, db_p) == "" and db_p.exists()                  # only once
+    assert RESPLIT_MARK in cfg_p.read_text() and pending_resplit(cfg_p, db_p) == ""   # once only
