@@ -10,7 +10,6 @@ from metals_lab.mt5.guard import check_account
 
 from metals_lab.auditor.news import CsvCalendarProvider, FailingProvider
 from metals_lab.domain import Decision, Intent
-from metals_lab.execution.approvals import Approval
 from metals_lab.execution.coordinator import BOT_IDS, Coordinator
 from metals_lab.mt5 import constants as C
 from metals_lab.mt5.gateway import ReadOnlyGateway, TradingGateway
@@ -60,7 +59,6 @@ def test_executor_requires_both_approvals(armed):
 def test_risk_engine_rejects_without_audit(armed):
     c = armed
     p = make_open_proposal(c)
-    from metals_lab.mt5.guard import check_account
     acct = check_account(c.ro)
     book = c.bot_book("S01L")
 
@@ -419,7 +417,6 @@ def test_news_off_by_default(armed):
 
 def _setup_audit(c, p):
     from metals_lab.execution.coordinator import LiveMarketView
-    from metals_lab.mt5.guard import check_account
     view = LiveMarketView(c, {}, utc_now())
     return c.auditor.assess(view, p.role, True, p.proposal_hash, check_account(c.ro).fingerprint, proposal=p)
 

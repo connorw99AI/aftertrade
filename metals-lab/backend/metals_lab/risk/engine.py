@@ -16,7 +16,7 @@ from __future__ import annotations
 from ..timeutil import utc_now as _tnow
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from ..domain import Decision, Intent

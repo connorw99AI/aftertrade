@@ -44,7 +44,7 @@ class SimReplay:
         self._apply()
 
     def _apply(self):
-        for sym, df in self.m5.items():
+        for df in self.m5.values():
             row = df.iloc[self.i]
             self.sim.set_time((row["time"] + timedelta(minutes=1)).to_pydatetime())
         for sym, df in self.m5.items():

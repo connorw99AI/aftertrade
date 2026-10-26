@@ -130,7 +130,7 @@ def metals_text(params: dict) -> str:
 def validate(params: dict) -> None:
     if params.get("sides") not in ("both", "long", "short"):
         raise ValueError("sides must be both, long or short")
-    for role, (on, win) in METAL_PARAMS.items():
+    for on, win in METAL_PARAMS.values():
         if params.get(on) not in ("on", "off"):
             raise ValueError(f"{on} must be on or off")
         try:

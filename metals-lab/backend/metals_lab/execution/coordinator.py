@@ -16,8 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -27,7 +26,7 @@ from ..auditor.auditor import MarketAuditor, spread_baseline_from_bars
 from ..auditor.news import build_provider
 from ..data.bars import completed_only
 from ..data.history import fetch_recent
-from ..domain import TIMEFRAME_MINUTES, Decision, Intent, PositionView, Signal
+from ..domain import Decision, Intent, PositionView, Signal
 from ..instruments import ROLES, InstrumentSpec, discover
 from ..ledger import Ledger
 from ..mt5.gateway import TradingGateway, utc_now
@@ -108,7 +107,6 @@ class Coordinator:
         self._last_tick_epoch: dict = {}
         self._cache_time = None
         self._lock = threading.RLock()
-        self._stop = threading.Event()
         self.connected = False
         self.last_cycle: Optional[str] = None
         self.last_error: Optional[str] = None
@@ -172,7 +170,7 @@ class Coordinator:
     def _setup_clock(self):
         if self.clock.tz is not None:
             return
-        for role, spec in self.specs.items():
+        for spec in self.specs.values():
             t = self.ro.symbol_info_tick(spec.symbol)
             if t:
                 off = ServerClock.measure_offset_hours(int(t["time"]), utc_now())
@@ -827,16 +825,3 @@ class Coordinator:
         return {"position": row["position_key"], "outcome": f"EXEC_{r.state}: {r.message}"}
 
     # ------------------------------------------------------------------- loop
-    def run_forever(self):
-        interval = self.cfg["execution"]["loop_interval_seconds"]
-        while not self._stop.is_set():
-            try:
-                self.cycle()
-                self.last_error = None
-            except Exception as e:
-                log.exception("cycle failed")
-                self.last_error = str(e)
-            self._stop.wait(interval)
-
-    def stop(self):
-        self._stop.set()

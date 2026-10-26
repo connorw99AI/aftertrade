@@ -17,7 +17,7 @@ from ..timeutil import utc_now as _tnow
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Optional
 
 from ..domain import Intent

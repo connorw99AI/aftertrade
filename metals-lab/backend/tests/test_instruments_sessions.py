@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, timezone
 
 import pandas as pd
 import pytest

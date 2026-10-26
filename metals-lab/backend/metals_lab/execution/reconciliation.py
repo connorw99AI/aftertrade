@@ -18,7 +18,7 @@ from ..timeutil import utc_now as _tnow
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Callable, Optional
 
 from ..ledger import Ledger

@@ -38,7 +38,7 @@ def generate(start: str = "2024-01-01", days: int = 260, seed: int = 7, tf_minut
     rg = drift + base_vol * season * z1 + j
     rs = 1.3 * drift + 1.5 * base_vol * season * z2 + 1.6 * j
     out = {}
-    for name, r, p0, point, spr_base in (("GOLD", rg, gold0, 0.01, 22), ("SILVER", rs, silver0, 0.001, 25)):
+    for name, r, p0, spr_base in (("GOLD", rg, gold0, 22), ("SILVER", rs, silver0, 25)):
         # weekend/daily-break gaps: the gap lands between the previous close and this bar's open
         gap = np.zeros(n)
         ns = idx.as_unit("ns").asi8

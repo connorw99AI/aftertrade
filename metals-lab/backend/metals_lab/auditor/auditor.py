@@ -12,7 +12,7 @@ execute) - everything else is attached as evidence so exits stay possible.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional, Protocol
 
 import numpy as np
@@ -336,18 +336,3 @@ def spread_baseline_from_bars(df: pd.DataFrame) -> dict[int, float]:
     if d.empty:
         return {}
     return {int(h): float(v) for h, v in d.groupby(d["time"].dt.hour)["spread"].median().items()}
-
-
-def make_backtest_audit_fn(auditor: MarketAuditor, frames_prepared: dict, specs: dict, primary_tf: str):
-    """Build an AuditFn for the backtester using point-in-time news and bars up to T."""
-    close_idx = {k: (df["time"] + pd.Timedelta(minutes={"M1": 1, "M5": 5, "M15": 15, "H1": 60, "H4": 240, "D1": 1440}[k[1]]))
-                 for k, df in frames_prepared.items()}
-    baselines = {r: spread_baseline_from_bars(df) for (r, tf), df in frames_prepared.items() if tf == primary_tf}
-
-    def fn(sig, T):
-        trunc = {k: df[close_idx[k] <= T] for k, df in frames_prepared.items()}
-        view = FrameMarketView(trunc, specs, T.to_pydatetime() if hasattr(T, "to_pydatetime") else T, spread_baselines=baselines)
-        r = auditor.assess(view, sig.role, sig.intent.is_opening, point_in_time_news=True, primary_tf=primary_tf)
-        return r.decision.value, r.triggered
-
-    return fn

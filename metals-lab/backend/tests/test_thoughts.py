@@ -107,11 +107,9 @@ def test_daily_stops_lock_in_profit():
 
 
 def test_min_lot_never_risks_more_than_the_cap(armed):
-    from metals_lab.domain import Intent
     strat = armed.strategy("S01L")
     p = make_open_proposal(armed, bot="S01L", volume=0.04)
     sig = p.signal
-    spec = armed.specs["GOLD"]
     loss = lambda spec, side, entry, stop, vol: abs(entry - stop) * spec.contract_size * vol
     far = sig.__class__(**{**sig.__dict__, "stop_price": sig.ref_price - 40.0})   # 0.04 lot x $40 = $160 at the stop
     tp = strat.calculate_target_positions([far], 500.0, armed.specs, 0.03, loss, lambda s: 0.0, min_lot=0.04, max_risk_pct=0.10)[0]

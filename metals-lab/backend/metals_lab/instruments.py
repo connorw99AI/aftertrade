@@ -117,10 +117,6 @@ class InstrumentSpec:
             return C.ORDER_FILLING_IOC
         return C.ORDER_FILLING_RETURN
 
-    def value_per_price_unit(self, volume: float) -> float:
-        """Profit-currency P&L of a 1.0 price move (used by the backtester)."""
-        return self.contract_size * volume
-
     def public(self) -> dict:
         d = asdict(self)
         d["trade_mode_name"] = TRADE_MODE_NAME.get(self.trade_mode, str(self.trade_mode))

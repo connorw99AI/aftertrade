@@ -6,7 +6,7 @@ import pandas as pd
 
 from .. import indicators as ind
 from ..domain import Intent, Style
-from .base import Param, Strategy, StrategyContext, chk, fmt, level, local_window, spread_price
+from .base import Param, Strategy, chk, fmt, level, local_window, spread_price
 
 
 def _local_minutes(df: pd.DataFrame, tz: str) -> tuple[pd.Series, pd.Series]:

@@ -264,7 +264,7 @@ def test_guard_lot_caps(specs):
 
 
 def test_breakeven_and_trailing_stops_move_only_towards_profit():
-    from datetime import datetime, timedelta, timezone
+    from datetime import timedelta
     from metals_lab.domain import PositionView
     from metals_lab.strategies.base import StrategyContext
     from metals_lab.mt5.sim import default_symbols

@@ -20,7 +20,7 @@ import json
 import os
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 from ..domain import Intent, Signal
@@ -122,9 +122,3 @@ class ApprovalAuthority:
             raise ApprovalError(f"{self.kind} approval revoked")
         if row["used_at"]:
             raise ApprovalError(f"{self.kind} approval already used")
-
-    def consume(self, a: Approval) -> None:
-        cur = self.db.x("UPDATE approvals SET used_at=? WHERE approval_id=? AND used_at IS NULL AND revoked=0",
-                        (_tnow().isoformat(), a.approval_id))
-        if cur.rowcount != 1:
-            raise ApprovalError("approval could not be consumed (already used or revoked)")

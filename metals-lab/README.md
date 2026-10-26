@@ -2,7 +2,7 @@
 
 A demo-only MetaTrader 5 laboratory for gold and silver. 22 independently configurable bots (11 strategies, each run as a long half and a short half), each a pixel creature with its own virtual portfolio, share one MT5 **demo** account. Every trade goes strategy → independent market auditor → central risk engine → demo executor. Live accounts are technically blocked.
 
-This makes no claim of profitability. No real-market backtests have been run yet, so there is no evidence either way.
+This makes no claim of profitability. The first backtests on real MT5 history (October 2026, with the old, larger trade sizes) lost money on every bot; they need re-running with the current small-trade sizing before any bot is judged.
 
 ```
 metals-lab/
@@ -57,8 +57,7 @@ cd backend && pip install -e . && cd .. && metals-lab --sim serve
 | Item | Status |
 |---|---|
 | Backend, eleven strategies (22 long/short bots), Assessor and Engineer, backtester, research, auditor, risk, ledgers, reconciliation, API, dashboard | Implemented; automated tests pass against a simulated terminal |
-| Real MT5 demo connection | **Not verified.** Built in a Linux container where the Windows-only MetaTrader5 package cannot run |
-| Demo execution against a real terminal | **Not operational until verified on your PC** |
-| Demo orders submitted | **None** |
-| Windows launcher | Written, **not run on Windows** |
-| Real-data backtests | None yet (synthetic only, labelled) |
+| Real MT5 demo connection | In use on the operator's Windows PC (reported by the operator; not checked from here). The code is still built and tested in a Linux container where the Windows-only MetaTrader5 package cannot run |
+| Demo execution against a real terminal | Demo trades taken on the operator's PC (reported by the operator). Live accounts stay blocked in code |
+| Windows launcher | Run on the operator's PC (reported by the operator) |
+| Real-data backtests | Run on 1M+ M5 bars of MT5 history: every bot lost money under the old sizing. Not yet re-run with the small-trade sizing |

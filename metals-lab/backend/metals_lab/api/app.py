@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -19,10 +18,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from ..data import bars as B
 from ..data.store import DatasetStore
 from ..execution.coordinator import BOT_IDS, Coordinator
-from ..jsonutil import dumps as jdumps
 from ..mt5.guard import check_account
 from ..store import Store, now_iso
 from ..strategies import BOT_IDS as _ALL_BOTS, bot_class, bot_name, build, magic_for  # noqa: F401
@@ -385,10 +382,6 @@ def create_app(state: State) -> FastAPI:
     def kill(body: StatusBody):
         return coord().kill(body.reason or "dashboard kill", body.operator)
 
-    @app.post("/api/risk/disarm", dependencies=[Depends(auth)])
-    def disarm(body: StatusBody):
-        coord().disarm(body.reason or "dashboard disarm", body.operator)
-        return {"armed": False}
 
     @app.post("/api/risk/pause-all", dependencies=[Depends(auth)])
     def pause_all(body: StatusBody):

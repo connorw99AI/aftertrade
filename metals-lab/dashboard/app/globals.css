@@ -326,7 +326,6 @@ kbd { font: 600 var(--t-12) var(--f-mono); border: 1px solid var(--line-2); bord
 .funnel { display: flex; gap: var(--s-1); flex-wrap: wrap; font-size: var(--t-13); }
 .funnel span { background: var(--ink-deep); border: 1px solid var(--line); border-radius: var(--r-1); padding: 2px var(--s-2); }
 .funnel b { font-family: var(--f-mono); }
-.thinking-list { display: grid; gap: var(--s-2); }
 .thinking { background: var(--ink-deep); border: 1px solid var(--line); border-left: 4px solid var(--line-2); border-radius: var(--r-2); }
 .thinking.v-entry { border-left-color: var(--bronze-hi); } .thinking.v-trade { border-left-color: var(--st-trade); } .thinking.v-wait { border-left-color: var(--muted); }
 .thinking-head { width: 100%; display: flex; align-items: center; gap: var(--s-2); background: none; border: 0; text-align: left; padding: var(--s-2) var(--s-3); cursor: pointer; }
@@ -336,7 +335,6 @@ kbd { font: 600 var(--t-12) var(--f-mono); border: 1px solid var(--line-2); bord
 .verdict { white-space: nowrap; font-size: var(--t-12); font-weight: 600; padding: 1px var(--s-2); border-radius: var(--r-pill); background: var(--ink-deep); border: 1px solid var(--line); color: var(--muted); }
 .verdict.v-entry { background: var(--bronze-hi); color: #1a1006; border-color: var(--bronze-hi); }
 .verdict.v-trade { color: var(--st-trade); }
-.checks-sides { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s-3); }
 .checks { margin-top: var(--s-2); }
 .checks-title { font-size: var(--t-13); font-weight: 600; }
 .checks ul { list-style: none; margin: var(--s-1) 0 0; padding: 0; display: grid; gap: 2px; font-size: var(--t-13); }
@@ -499,15 +497,14 @@ svg.chart .marker-label { fill: var(--bronze-hi); font: 10.5px var(--f-mono); }
 .windows-editor .switch { display: inline-flex; gap: 6px; align-items: center; font-size: var(--t-13); }
 .test-numbers { font-size: var(--t-13); margin: var(--s-1) 0; }
 .test-numbers td, .test-numbers th { padding: 4px 8px; }
-.test-status summary { cursor: pointer; }
-.test-status .tried { list-style: none; padding: 0; margin: var(--s-1) 0 0; display: grid; gap: 4px; font-size: var(--t-13); }
-.test-status .tried li { border-left: 3px solid var(--line-2); padding-left: var(--s-2); }
-.test-status .tried li.v-passed { border-left-color: var(--st-run); }
-.test-status .tried li.v-noise, .test-status .tried li.v-unconfirmed { border-left-color: var(--bronze-hi); }
+.assessment summary { cursor: pointer; }
+.assessment .tried { list-style: none; padding: 0; margin: var(--s-1) 0 0; display: grid; gap: 4px; font-size: var(--t-13); }
+.assessment .tried li { border-left: 3px solid var(--line-2); padding-left: var(--s-2); }
+.assessment .tried li.v-passed { border-left-color: var(--st-run); }
+.assessment .tried li.v-noise, .assessment .tried li.v-unconfirmed { border-left-color: var(--bronze-hi); }
 .suggestion.k-untested { border-left-style: dashed; }
-.tests-list { display: grid; gap: var(--s-2); }
-.test-status .tried li.v-kept { border-left-color: var(--st-run); }
-.test-status .tried li.v-passed_not_best { border-left-color: var(--bronze-hi); }
+.assessment .tried li.v-kept { border-left-color: var(--st-run); }
+.assessment .tried li.v-passed_not_best { border-left-color: var(--bronze-hi); }
 .failures { list-style: none; padding: 0; margin: var(--s-2) 0; display: grid; gap: var(--s-1); }
 .failures li { border-left: 3px solid var(--st-kill); padding-left: var(--s-2); }
 .trade-note { font-size: var(--t-12); }

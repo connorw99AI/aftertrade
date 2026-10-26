@@ -70,20 +70,6 @@ const VERDICT: Record<string, string> = {
   kept: "Kept", passed_not_best: "Passed, but another change did better", unconfirmed: "Helped, but too few trades to confirm",
   noise: "Helped on search, not on choose (probably noise)", no_help: "Did not add profit without a deeper drawdown",
 };
-const FINAL: Record<string, string> = {
-  passed: "passed the final check", overfit: "failed the final check: probably overfit, not offered",
-  unconfirmed: "too few trades in the final check to confirm, not offered",
-};
-
-/** Key failures the Assessor found in the strategy. */
-export function Failures({ items }: { items: Any[] }) {
-  if (!items?.length) return null;
-  return (
-    <ul className="failures">{items.map((f: Any) => (
-      <li key={f.code}><b>{f.title}</b>{f.needs_code && <span className="tiny muted"> · needs a code change (sent to the Workshop)</span>}
-        <div className="small muted">{f.detail}</div></li>))}</ul>
-  );
-}
 
 /** Every change the tuner tried in each round, with what happened to it. */
 export function ChangesTried({ res }: { res: Any }) {
@@ -101,25 +87,6 @@ export function ChangesTried({ res }: { res: Any }) {
             </ul>
           </div>))}
     </details>
-  );
-}
-
-/** Where a bot's latest assessment stands: progress, key failures, and every change tried in each round. */
-export function TestStatus({ t }: { t: Any }) {
-  if (!t) return <p className="muted small">Not assessed yet. Press Assess, Test all bots, or run all backtests on MT5 history.</p>;
-  if (t.status === "QUEUED" || t.status === "RUNNING")
-    return <p className="small"><Pill tone="info">{t.status === "QUEUED" ? "Queued" : "Assessing"}</Pill> {t.progress}</p>;
-  if (t.status === "FAILED") return <p className="small notice-danger">Assessment failed: {t.error}</p>;
-  const res = t.result;
-  const tu = res.tuned;
-  return (
-    <div className="test-status">
-      <p className="small">Assessed {when(t.finished_at)} on {t.dataset === "synthetic" ? "synthetic data" : "MT5 history"} ({t.start} to {t.end}).{" "}
-        {tu ? <>Tuned in {tu.steps.length} step(s), {FINAL[tu.verdict]}.</> : <>No change beat the bot as it stands.</>}
-        {t.stale && <span className="muted"> Settings changed since; assess again.</span>}</p>
-      <Failures items={res.failures} />
-      <ChangesTried res={res} />
-    </div>
   );
 }
 

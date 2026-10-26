@@ -107,12 +107,12 @@ export default function Risk() {
               consequences: ["No bot opens a new trade until you resume.", "Open trades keep their stops, targets and exits."] }, { reason: "dashboard" })}>Pause all bots</Button>
             <Button tone="go" disabled={!r.global_pause} onClick={() => act("/api/risk/resume-all", { title: "Resume all bots?", tone: "go", confirmLabel: "Resume",
               consequences: ["Running bots may open trades again."] }, { reason: "dashboard" })}>Resume all bots</Button>
-            <Button onClick={() => act("/api/risk/disarm", { title: "Disarm?", confirmLabel: "Disarm",
-              consequences: ["No orders are sent until you arm again from the command line.", "Bots keep thinking, in shadow mode."] }, { reason: "dashboard disarm" })}>Disarm</Button>
+            <Button onClick={() => act("/api/disarm", { title: "Disarm?", confirmLabel: "Disarm",
+              consequences: ["No orders are sent until you arm again (System > MT5 connection, or metals-lab arm).", "Bots keep thinking, in shadow mode."] }, { reason: "dashboard disarm" })}>Disarm</Button>
             <Button tone="danger" disabled={r.kill} onClick={() => act("/api/risk/kill", { title: "Kill switch: stop everything?", tone: "danger", confirmLabel: "Kill all", typed: "KILL",
               consequences: ["Closes every bot trade at market now.", "Disarms and blocks every new trade.", "Only clears from the command line: metals-lab clear-kill."] }, { reason: "dashboard kill" })}>Kill switch</Button>
           </div>
-          <p className="muted small">Arming is only possible from the command line on the trading computer (<code>metals-lab arm</code>). Kill switch: {r.kill_switch_behaviour}.</p>
+          <p className="muted small">Arm from System &gt; MT5 connection on the trading computer (demo accounts only, typed phrase) or with <code>metals-lab arm</code>. Kill switch: {r.kill_switch_behaviour}.</p>
           {note && <div className="notice notice-danger">{note}</div>}
         </Panel>
         <Panel title="Account and capital">

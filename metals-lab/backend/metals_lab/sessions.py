@@ -172,18 +172,6 @@ def infer_gaps(bars: pd.DataFrame, timeframe_minutes: int, time_col: str = "serv
     return out.reset_index(drop=True)
 
 
-def default_metals_calendar(symbol: str) -> SessionCalendar:
-    """Placeholder used only for synthetic research data and tests.
-
-    Roughly the common retail metals CFD schedule in a UTC+2/+3 server clock:
-    Mon-Fri 01:00-24:00 with a daily one-hour break 00:00-01:00. Real trading
-    must use the MQL5 export or explicit config.
-    """
-    cal = calendar_from_config(symbol, {"windows": [{"days": [0, 1, 2, 3, 4], "start": "01:00", "end": "24:00"}]})
-    cal.source = "synthetic_default"
-    return cal
-
-
 def local_session_bounds(day_utc: date, tz: str, start: str, end: str) -> tuple[datetime, datetime]:
     """UTC bounds of a local-time window (e.g. London 08:00-09:00), DST-correct."""
     z = ZoneInfo(tz)

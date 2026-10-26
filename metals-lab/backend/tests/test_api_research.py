@@ -1,5 +1,4 @@
 import json
-from datetime import timedelta
 
 import numpy as np
 import pandas as pd
@@ -98,10 +97,10 @@ def test_token_required_when_configured(armed, cfg, monkeypatch):
     assert c.post("/api/risk/pause-all", json={}, headers={"X-API-Token": "s3cret"}).status_code == 200
 
 
-def test_backtest_endpoint_labels_replay(client):
+def test_backtest_endpoint_labels_replay(client, cfg):
     r = client.post("/api/backtests", json={"strategy_id": "S08L", "dataset": "synthetic", "synthetic_days": 400}).json()
     import time
-    for _ in range(200):
+    for _ in range(1200):   # a 400-day M5 backtest can take over a minute on a slow machine
         b = client.get(f"/api/backtests/{r['id']}").json()
         if b["status"] != "RUNNING":
             break
@@ -109,8 +108,8 @@ def test_backtest_endpoint_labels_replay(client):
     assert b["status"] == "DONE", b.get("diagnostics")
     assert b["label"].startswith("HISTORICAL REPLAY")
     assert any("SYNTHETIC" in x for x in b["reliability"])
-    # each bot starts with bot_fraction (5%) of the starting balance, not whatever an old database allocated
-    assert b["metrics"]["initial_capital"] == round(200000.0 * 0.05, 2)
+    # each bot starts with bot_fraction (1/22) of the starting balance, not whatever an old database allocated
+    assert b["metrics"]["initial_capital"] == round(200000.0 * cfg["capital"]["bot_fraction"], 2)
 
 
 def test_dataset_store_versioning_integrity_and_quality(tmp_path, intraday_frames):

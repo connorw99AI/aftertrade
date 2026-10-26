@@ -1,6 +1,6 @@
 # Operations: Windows setup, data, research, manual demo activation
 
-> **Status: not yet run on Windows.** Everything below was written for Windows and tested only on Linux against a simulated terminal. Expect to fix small issues on the first run. See [LIMITATIONS.md](LIMITATIONS.md).
+> **Status:** in use on your Windows PC with an MT5 demo account. Automated tests run only on Linux against a simulated terminal, so check anything new on your PC first. See [LIMITATIONS.md](LIMITATIONS.md).
 
 ## 1. Prerequisites (Windows 10/11, 64-bit)
 

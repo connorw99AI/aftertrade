@@ -70,7 +70,6 @@ def test_nothing_helps_gives_no_tuned_change():
 
 
 def test_key_failures_name_what_breaks_a_strategy():
-    import pandas as pd
     from metals_lab import review as R
     rows = [{"trade_id": f"T{i}", "role": "GOLD", "side": "LONG", "entry_time": f"2025-0{1 + i % 6}-0{1 + i % 9}T10:00:00+00:00",
              "exit_time": f"2025-0{1 + i % 6}-0{1 + i % 9}T11:00:00+00:00", "entry_price": 2000.0, "exit_price": 1995.0, "stop": 1995.0,

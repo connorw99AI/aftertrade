@@ -276,9 +276,7 @@ class AsianRangeReversion(Strategy):
             vals = {"close": r["close"], "bb_mid": r["bb_m"], "adx": r["adx"], "time_utc": f"{ctx.now:%H:%M}"}
             if self.p["use_session"] == "on" and not in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["flat_time"]):
                 out.append(self.close_signal(ctx, pos, "session time stop before London open", vals))
-            elif pos.side == "LONG" and r["close"] >= r["bb_m"]:
-                out.append(self.close_signal(ctx, pos, "reverted to the mean", vals))
-            elif pos.side == "SHORT" and r["close"] <= r["bb_m"]:
+            elif (r["close"] >= r["bb_m"]) if pos.side == "LONG" else (r["close"] <= r["bb_m"]):
                 out.append(self.close_signal(ctx, pos, "reverted to the mean", vals))
             elif r["adx"] > self.p["adx_max"] + 5:
                 out.append(self.close_signal(ctx, pos, "ADX rising: range regime invalidated", vals))

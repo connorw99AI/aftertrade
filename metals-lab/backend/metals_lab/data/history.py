@@ -1,11 +1,10 @@
 """Historical bar/tick retrieval from the connected MT5 terminal (read-only)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import pandas as pd
 
-from ..domain import TIMEFRAME_MINUTES
 from ..instruments import InstrumentSpec
 from ..mt5.gateway import ReadOnlyGateway
 from ..sessions import ServerClock

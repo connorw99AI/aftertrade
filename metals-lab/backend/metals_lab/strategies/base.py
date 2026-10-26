@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from ..domain import TIMEFRAME_MINUTES, Intent, PositionView, Signal, Style, TargetPosition
+from ..domain import Intent, PositionView, Signal, Style, TargetPosition
 from ..instruments import InstrumentSpec
 
 
@@ -50,9 +50,6 @@ class StrategyContext:
     specs: dict[str, InstrumentSpec]
     quotes: dict[str, dict] = field(default_factory=dict)
     weekend_flat_from: Optional[str] = None       # "HH:MM" UTC on Friday: close everything, no entries until Sunday 22:00 UTC
-
-    def frame(self, role: str, tf: str) -> pd.DataFrame:
-        return self.frames[(role, tf)]
 
     def last(self, role: str, tf: str, back: int = 1) -> pd.Series:
         return self.frames[(role, tf)].iloc[-back]
@@ -158,8 +155,6 @@ class Strategy(ABC):
         return self.params
 
     # ------------------------------------------------------------------ data
-    def required_data(self) -> list[tuple[str, str, int]]:
-        return [(r, tf, self.min_history_bars) for r in self.roles for tf in self.timeframes]
 
     @abstractmethod
     def prepare(self, frames: dict[tuple[str, str], pd.DataFrame]) -> dict[tuple[str, str], pd.DataFrame]:
@@ -387,7 +382,7 @@ class Strategy(ABC):
 
         txt = lambda iv: ", ".join(f"{hhmm(a)}-{hhmm(b)}" for a, b in iv) + " UK"
         metals = {}
-        for role, (on, win) in METAL_PARAMS.items():
+        for role, (_, win) in METAL_PARAMS.items():
             is_on = self.pair_trades or metal_on(self.p, role)
             iv = allowed(self.p[win]) if is_on else []
             metals[role.lower()] = {"on": is_on, "windows": self.p[win], "intervals": [list(x) for x in iv],
@@ -502,10 +497,6 @@ class Strategy(ABC):
 def _utc_now() -> datetime:
     from ..timeutil import utc_now
     return utc_now()
-
-
-def bar_close_time(df: pd.DataFrame, tf: str) -> pd.Series:
-    return df["time"] + pd.Timedelta(minutes=TIMEFRAME_MINUTES[tf])
 
 
 def spread_price(row: pd.Series, spec: InstrumentSpec) -> float:

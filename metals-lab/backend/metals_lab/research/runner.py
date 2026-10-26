@@ -13,7 +13,7 @@ import pandas as pd
 
 from ..backtest.engine import AuditFn, Backtester, BacktestResult
 from ..backtest.metrics import daily_returns
-from ..backtest.models import BacktestConfig, CostModel
+from ..backtest.models import BacktestConfig
 from ..instruments import InstrumentSpec
 from ..strategies import STRATEGY_CLASSES
 from .validation import (chronological_split, deflated_sharpe, regime_labels, stationary_bootstrap_ci,

@@ -19,7 +19,7 @@ from ..timeutil import utc_now as _tnow
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Optional
 
 import numpy as np
@@ -149,14 +149,8 @@ class ReadOnlyGateway:
         res = self._b.positions_get(symbol=symbol) if symbol else self._b.positions_get()
         return [_as_dict(p) for p in (res or [])]
 
-    def orders(self) -> list[dict]:
-        return [_as_dict(o) for o in (self._b.orders_get() or [])]
-
     def history_deals(self, start: datetime, end: datetime) -> list[dict]:
         return [_as_dict(d) for d in (self._b.history_deals_get(start, end) or [])]
-
-    def history_orders(self, start: datetime, end: datetime) -> list[dict]:
-        return [_as_dict(o) for o in (self._b.history_orders_get(start, end) or [])]
 
 
 class TradingGateway(ReadOnlyGateway):

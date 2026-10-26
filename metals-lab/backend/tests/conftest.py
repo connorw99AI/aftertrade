@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import copy
 import os
-from datetime import timedelta
 
 import pandas as pd
 import pytest

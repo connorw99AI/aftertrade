@@ -325,9 +325,7 @@ class TimeSeriesMomentum(Strategy):
             if not r["rebalance"] or pd.isna(r["strength"]):
                 continue
             vals = {"strength": r["strength"]}
-            if pos.side == "LONG" and r["strength"] <= self.p["exit_strength"]:
-                out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at hourly evaluation", vals))
-            elif pos.side == "SHORT" and r["strength"] >= -self.p["exit_strength"]:
+            if (r["strength"] <= self.p["exit_strength"]) if pos.side == "LONG" else (r["strength"] >= -self.p["exit_strength"]):
                 out.append(self.close_signal(ctx, pos, "trend strength faded/flipped at hourly evaluation", vals))
         return out
 

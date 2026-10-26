@@ -175,7 +175,6 @@ def cmd_fetch(cfg, a):
 
 
 def _research_inputs(cfg, a):
-    from .data import bars as B
     from .data import synthetic
     from .data.store import DatasetStore
     from .instruments import InstrumentSpec, spec_from_info
