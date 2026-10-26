@@ -6,6 +6,7 @@ import { BotCard } from "@/components/BotCard";
 import { Creature, CREATURES, StateSymbol } from "@/components/Creature";
 import { SessionRibbon } from "@/components/SessionRibbon";
 import { ActionNow } from "@/components/ActionNow";
+import { ArmControl } from "@/components/ArmControl";
 import { useSummary } from "@/components/Shell";
 import { Button } from "@/components/ui";
 import { Any, api, confirmAction } from "@/lib/api";
@@ -138,6 +139,8 @@ export default function Lab() {
         </div>
         <div className="lab-tools"><ZoomControl zoom={zoom} setZoom={setZoom} /><BulkControls sum={sum} /></div>
       </div>
+      {!sum.armed && !sum.kill && <div className="notice row-between"><span>Not armed: bots only watch and record what they would do.
+        {shadow ? " Amounts shown are what each bot would get once you arm." : ""}</span><ArmControl armed={false} /></div>}
       {sum.kill && <div className="notice notice-danger">Kill switch is on: every bot is blocked. Clear it with <code>metals-lab clear-kill</code>, then arm and start again.</div>}
       <ActionNow bots={sum.bots} />
       <SessionRibbon bots={sum.bots} serverTime={sum.server_time} storeKey="metal-lab-ribbon-lab" />

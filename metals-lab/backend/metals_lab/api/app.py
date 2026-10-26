@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -51,6 +51,19 @@ class ParamsBody(BaseModel):
     operator: str = Field(min_length=1)
 
 
+class ArmBody(BaseModel):
+    phrase: str
+    operator: str = Field(min_length=1)
+
+
+class DisarmBody(BaseModel):
+    reason: str = Field(min_length=3)
+    operator: str = Field(min_length=1)
+
+
+LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
 class AlertBody(BaseModel):
     message: str = Field(min_length=3)
     operator: str = "dashboard"
@@ -74,6 +87,52 @@ def create_app(state: State) -> FastAPI:
         return state.coord
 
     # ------------------------------------------------------------------ status
+    # ------------------------------------------------------------------ arming
+    def arm_preview_data() -> dict:
+        c = coord()
+        acct = check_account(c.ro)
+        snap = c.ledger.snapshot(acct.fingerprint) if acct.fingerprint else None
+        bal = float(snap["starting_balance"]) if snap else float(acct.balance or 0)
+        frac = float(snap["bot_fraction"]) if snap else float(state.cfg["capital"]["bot_fraction"])
+        problems = c.preflight()
+        if db.get_control("kill") == "1":
+            problems.append("KILL_SWITCH_ON (clear it from the command line: metals-lab clear-kill)")
+        return {"armed": c.is_armed(), "account": acct.public(), "problems": problems,
+                "phrase": f"ARM DEMO {(acct.fingerprint or '')[:6]}", "snapshot_exists": bool(snap),
+                "starting_balance": round(bal, 2), "per_bot": round(bal * frac, 2), "bots": len(BOT_IDS),
+                "running": db.one("SELECT COUNT(*) n FROM bots WHERE status='RUNNING'")["n"]}
+
+    @app.get("/api/arm/preview")
+    def arm_preview():
+        """What arming would do, and anything that would stop it. Changes nothing."""
+        return arm_preview_data()
+
+    @app.post("/api/arm", dependencies=[Depends(auth)])
+    def arm(body: ArmBody, request: Request):
+        """Arm automatic DEMO trading from the dashboard: only from this PC, only a verified demo account, only with the
+        typed phrase (the same as the command line), never while the kill switch is on. Logged with the operator's name."""
+        host = request.client.host if request.client else ""
+        if host not in LOCAL_HOSTS:
+            raise HTTPException(403, "arming is only allowed from the PC running Metal Lab")
+        c = coord()
+        pv = arm_preview_data()
+        if pv["problems"]:
+            raise HTTPException(409, "refusing to arm: " + "; ".join(pv["problems"]))
+        if body.phrase.strip() != pv["phrase"]:
+            raise HTTPException(409, "the confirmation phrase does not match; not armed")
+        try:
+            out = c.arm(body.operator, source="dashboard")
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+        return {**out, "armed": True}
+
+    @app.post("/api/disarm", dependencies=[Depends(auth)])
+    def disarm(body: DisarmBody):
+        """Stop all new automatic trading (open trades stay managed until you close them). Always allowed."""
+        c = coord()
+        c.disarm(body.reason, body.operator)
+        return {"armed": c.is_armed()}
+
     @app.get("/api/status")
     def status():
         c = state.coord

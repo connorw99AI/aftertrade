@@ -73,7 +73,7 @@ Double-click the **Metal Lab** icon on your desktop (setup creates it; to create
 2. reinstalls the Python package only when its dependency files changed;
 3. starts the lab and opens `http://127.0.0.1:8765` once it answers. If the lab is already running it only opens the dashboard.
 
-Close the Metal Lab window to stop the lab. The icon never arms trading: the lab comes back in the state you left it (shadow mode unless you armed it with `metals-lab arm`). `scripts\windows\start.bat` still works if you prefer it (no update step).
+Close the Metal Lab window to stop the lab. The icon never arms trading: the lab comes back in the state you left it (shadow mode unless you armed it). `scripts\windows\start.bat` still works if you prefer it (no update step).
 
 - Until you arm, the loop runs in **shadow mode**: signals, auditor and risk decisions are recorded, and no orders are sent.
 - Start, pause and stop bots from the dashboard or with `metals-lab bot S04L start`. Only RUNNING bots trade once armed.
@@ -99,13 +99,19 @@ The bell at the top right holds open alerts on every page; resolve them from its
 
 ## 4. Manual demo activation (the only way to enable trading)
 
+Press **Arm demo trading** on the Lab page (shown while not armed) or on the System page, in the browser on the PC
+running Metal Lab. Requests from any other device are refused. Or, in a terminal:
+
 ```
 .venv\Scripts\metals-lab arm --operator "Your Name"
 ```
 
-1. The command re-verifies DEMO, hedging, Algo Trading, instruments and clock.
+Both do the same, and the dashboard refuses while the kill switch is on (clear it with `metals-lab clear-kill`).
+**Disarm** on the System page stops all new automatic trading at any time.
+
+1. Arming re-verifies DEMO, hedging, Algo Trading, instruments and clock.
 2. It shows the starting balance snapshot and the per-bot allocation (1/22 each, £227.27 on a £5,000 demo; labs set up before S11 keep 5% each).
-3. It asks you to type `ARM DEMO <6-char fingerprint>`.
+3. It asks you to type `ARM DEMO <6-char fingerprint>` (shown in the dialog), and logs your name.
 
 On the first activation for an account, the balance is snapshotted once and the allocations are created. Re-arming later never resets them.
 
@@ -142,7 +148,7 @@ Old databases have ten bots with the old magic numbers. The new loop does not re
 2. Stop the lab (Ctrl+C), then `git pull`.
 3. In `config\config.yaml` set `capital: bot_fraction: 0.05`.
 4. `.venv\Scripts\metals-lab new-lab --confirm "NEW LAB"`. This moves the old database to `data\archive\` (nothing is deleted) and starts a fresh one with 22 bots.
-5. `scripts\windows\start.bat`, then `metals-lab arm --operator "Your Name"`. The balance is snapshotted again and allocations are created.
+5. Start Metal Lab, then **Arm demo trading** on the Lab page (or `metals-lab arm --operator "Your Name"`). The balance is snapshotted again and allocations are created.
 6. Start the halves you want from the Lab page.
 
 ## 7. Moving to a server later

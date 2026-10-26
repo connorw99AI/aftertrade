@@ -1,4 +1,5 @@
 "use client";
+import { ArmControl } from "@/components/ArmControl";
 import { useState } from "react";
 import { Any } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
@@ -25,9 +26,11 @@ export default function Settings() {
         </div>
         <div className="panel">
           <h3>Arming demo execution</h3>
-          <p>Arming happens only on the trading computer, in a terminal window:</p>
-          <pre>metals-lab arm --operator "your name"</pre>
-          <p className="muted">It re-checks that the account is a demo, shows the starting balance and per-bot allocation, and asks you to type a phrase bound to this account. Switching accounts later disarms automatically.</p>
+          <p>{s?.armed ? "Armed: bots marked running trade on the demo account." : "Not armed: bots only watch and record what they would do."}</p>
+          <ArmControl armed={!!s?.armed} />
+          <p className="muted">Arming works only on the PC running Metal Lab. It re-checks that the account is a demo, shows the starting balance and
+            per-bot share, and asks you to type a phrase bound to this account (the same as <code>metals-lab arm</code> in a terminal). It is refused
+            while the kill switch is on. Switching accounts later disarms automatically.</p>
           <h3>API token</h3>
           <label>Only needed if the backend sets METALS_LAB_API_TOKEN<input type="password" value={tok} onChange={(e) => setTok(e.target.value)}
             onBlur={() => { try { localStorage.setItem("metals-lab-token", tok); } catch { /* storage blocked */ } }} /></label>

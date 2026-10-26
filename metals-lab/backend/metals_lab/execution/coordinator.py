@@ -215,8 +215,8 @@ class Coordinator:
             problems.append("CLOCK_UNVERIFIED")
         return problems
 
-    def arm(self, operator: str) -> dict:
-        """Called only from the CLI 'arm' command after interactive confirmation."""
+    def arm(self, operator: str, source: str = "cli") -> dict:
+        """Called from the CLI 'arm' command or the dashboard, each after a typed confirmation."""
         acct = check_account(self.ro)
         problems = self.preflight()
         if problems:
@@ -224,7 +224,8 @@ class Coordinator:
         self.db.arm(acct.fingerprint, acct.server)
         snap = self.ledger.initialize(acct.fingerprint, float(acct.balance), acct.currency or "", self.cfg["capital"]["bot_fraction"], BOT_IDS)
         self.db.x("INSERT INTO config_audit(bot_id,action,old_json,new_json,operator,created_at) VALUES(?,?,?,?,?,?)",
-                  (None, "ARM", None, json.dumps({"fingerprint": acct.fingerprint[:12]}), operator, now_iso()))
+                  (None, "ARM" if source == "cli" else f"ARM ({source})", None, json.dumps({"fingerprint": acct.fingerprint[:12]}),
+                   operator, now_iso()))
         self.db.set_control("kill", "0")
         self.db.event("ARMED", None, {"fingerprint": acct.fingerprint[:12], "server": acct.server})
         return {"fingerprint": acct.fingerprint[:12], "server": acct.server, "starting_balance": snap["starting_balance"],

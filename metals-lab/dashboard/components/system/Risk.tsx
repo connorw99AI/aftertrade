@@ -52,7 +52,7 @@ function limitSentences(l: Any): [string, string][] {
 
 const ACTION: Record<string, string> = {
   INITIAL_ALLOCATION: "Initial allocation", ALLOCATION_MOVE: "Allocation moved", STATUS: "Status changed", PARAMS: "Rules changed",
-  ARM: "Armed", DISARM: "Disarmed", CLEAR_BACKTESTS: "Backtest results cleared", DELETE_HISTORY: "Price history deleted", KILL: "Kill switch", RETIRE: "Retired", UNRETIRE: "Un-retired",
+  ARM: "Armed", "ARM (dashboard)": "Armed from the dashboard", DISARM: "Disarmed", CLEAR_BACKTESTS: "Backtest results cleared", DELETE_HISTORY: "Price history deleted", KILL: "Kill switch", RETIRE: "Retired", UNRETIRE: "Un-retired",
 };
 const STATUS_WORD: Record<string, string> = { RUNNING: "Running", PAUSED: "Paused", PAUSED_RISK: "Paused (drawdown)", STOPPED: "Stopped", RETIRED: "Retired" };
 

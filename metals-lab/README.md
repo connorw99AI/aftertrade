@@ -21,7 +21,7 @@ The existing `index.html` (the Aftertrade journal) at the repository root is unt
 1. Open an MT5 **hedging demo** account in the terminal, stay logged in, and enable Algo Trading.
 2. `powershell -ExecutionPolicy Bypass -File scripts\windows\setup.ps1` installs dependencies and runs read-only checks.
 3. `scripts\windows\start.bat` starts the API and dashboard on http://127.0.0.1:8765 in shadow mode.
-4. When you are ready, arm manually: `.venv\Scripts\metals-lab arm --operator "Your Name"`.
+4. When you are ready, arm manually: **Arm demo trading** on the Lab or System page (on the PC running Metal Lab), or `.venv\Scripts\metals-lab arm --operator "Your Name"`. Both re-check the demo account and need a typed phrase.
 
 Details: [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
@@ -37,7 +37,7 @@ cd backend && pip install -e . && cd .. && metals-lab --sim serve
 |---|---|
 | `metals-lab check` | Read-only: demo verification, instruments and contract specs, clock, sessions, blockers |
 | `metals-lab serve` | API + dashboard + live loop (shadow until armed) |
-| `metals-lab arm --operator NAME` | The only way to enable demo execution (typed confirmation) |
+| `metals-lab arm --operator NAME` | Enable demo execution from a terminal (typed confirmation); the dashboard's Arm button does the same from the PC running Metal Lab |
 | `metals-lab disarm` / `kill --reason` / `clear-kill` | Stop trading; kill also closes all bot positions |
 | `metals-lab bot S04 start\|pause\|stop` | Bot control |
 | `metals-lab allocate --bot --delta --reason --operator` | Audited allocation change |

@@ -41,10 +41,45 @@ def test_api_contracts(client):
     assert len(client.get("/api/compare").json()) == 22
 
 
-def test_no_arm_endpoint_exists(client):
-    paths = {r.path for r in client.app.routes}
-    assert not any("arm" in p and "disarm" not in p for p in paths)
-    assert client.post("/api/arm", json={}).status_code in (404, 405)
+def test_arming_from_the_dashboard_is_local_typed_demo_only_and_logged(coord, cfg, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from metals_lab.api.app import State, create_app
+    monkeypatch.delenv("METALS_LAB_API_TOKEN", raising=False)
+    cfg["storage"]["cache_dir"] = str(tmp_path / "cache")
+    app = create_app(State(cfg, coord.db, coord, "SIMULATED"))
+    local = TestClient(app, client=("127.0.0.1", 50000))
+    remote = TestClient(app, client=("192.168.1.20", 50000))
+    pv = local.get("/api/arm/preview").json()
+    assert not pv["armed"] and pv["problems"] == [] and pv["phrase"].startswith("ARM DEMO ") and pv["bots"] == 22
+    assert pv["per_bot"] == round(pv["starting_balance"] * cfg["capital"]["bot_fraction"], 2)
+    good = {"phrase": pv["phrase"], "operator": "pytest"}
+    assert remote.post("/api/arm", json=good).status_code == 403                  # only from this PC
+    assert local.post("/api/arm", json={**good, "phrase": "ARM DEMO 000000"}).status_code == 409
+    assert not coord.is_armed()
+    coord.db.set_control("kill", "1")
+    assert local.post("/api/arm", json=good).status_code == 409                   # kill switch stays a CLI step
+    coord.db.set_control("kill", "0")
+    r = local.post("/api/arm", json=good).json()
+    assert r["armed"] and coord.is_armed() and r["per_bot_allocation"] > 0
+    assert coord.db.one("SELECT 1 FROM config_audit WHERE action='ARM (dashboard)' AND operator='pytest'")
+    assert local.post("/api/disarm", json={"reason": "test over", "operator": "pytest"}).json()["armed"] is False
+    assert not coord.is_armed()
+
+
+def test_arming_refuses_a_live_account(coord, cfg, tmp_path, monkeypatch, sim):
+    from fastapi.testclient import TestClient
+    from metals_lab.api.app import State, create_app
+    from metals_lab.mt5.sim import SimAccount
+    t, _ = sim
+    monkeypatch.delenv("METALS_LAB_API_TOKEN", raising=False)
+    cfg["storage"]["cache_dir"] = str(tmp_path / "cache")
+    t.add_account(SimAccount(login=2002, server="Sim-Live", balance=5000.0, trade_mode=2))
+    t.switch_account(2002)
+    local = TestClient(create_app(State(cfg, coord.db, coord, "SIMULATED")), client=("127.0.0.1", 50000))
+    pv = local.get("/api/arm/preview").json()
+    assert pv["problems"]
+    assert local.post("/api/arm", json={"phrase": pv["phrase"], "operator": "pytest"}).status_code == 409
+    assert not coord.is_armed()
 
 
 def test_bot_controls_and_param_change_rules(client):
