@@ -21,16 +21,16 @@ DEFAULTS: dict[str, Any] = {
     "capital": {"bot_fraction": 0.045454,  # 22 bots (11 strategies x long/short halves), 1/22 each
                 "apply_assessor_retirements": False},  # true: a fresh lab starts with the assessor's flagged halves retired
     "risk": {
-        "risk_per_trade": 0.03,             # default; a bot may override it with strategies.<id>.risk_per_trade
+        "risk_per_trade": 0.02,             # sizing target: each trade risks 2% of the bot at its stop (a bot may override it)
         "max_risk_per_trade_cap": 0.03,     # hard ceiling for any per-bot override
-        "min_lot": {"GOLD": 0.05, "SILVER": 0.03},  # size for wider stops (floor): a number or per metal; 0 = risk-sized only
-        "big_lot": {"GOLD": 0.1, "SILVER": 0.06},    # size for tighter stops...
-        "big_lot_max_risk": 0.30,           # ...used when its loss at the strategy's stop is at most 30% of the bot
+        "min_lot": {"GOLD": 0.01, "SILVER": 0.01},  # the broker minimum: a trade is never smaller than this
+        "big_lot": 0,                       # off: no forced larger size for tight stops (it made trades risk 15-40% of a bot)
+        "big_lot_max_risk": 0.30,           # only used when big_lot is on
         "per_trade_limit_enabled": False,   # True rejects entries whose planned stop loss exceeds risk_per_trade x bot equity
         "pre_trade_limits": False,          # True re-enables the per-trade risk, bot margin share, account margin share and
                                             # exposure caps below; False = losses are handled by the daily stops and drawdown pause
         "max_entries_per_bot_per_day": 5,   # new trades (a two-leg group counts once) per bot per UTC day; 0 = unlimited
-        "max_trade_risk": 0.0,              # >0 skips a trade when even the minimum lot would risk more than this share (0 = off)
+        "max_trade_risk": 0.05,             # skip a trade whose size would lose more than 5% of the bot at its stop
         "daily_loss_pause": 0.30,           # no new entries for the rest of the UTC day after losing this much
         "daily_lock_from": 0.05,            # profit lock: once up this much on the day...
         "daily_giveback": 0.5,              # ...stop for the day after giving back this share of the day's best gain (0 = off)

@@ -38,7 +38,7 @@ flat bot.
 built-in session windows are off as well: S01 (07-20 UTC), S02 (Asian hours, flat before the London open) and S03 (08:00-21:00
 London) trade at any hour. S04 and S05 still build their range in session (08:30-09:00 New York; 08:00-13:00 London) and
 then may enter at any hour until the next day's range starts, with no forced afternoon close: they exit by stop, target or
-maximum holding time. Each strategy keeps its session logic behind `use_session: on`. Still in force: the Friday close
+maximum holding time. Each strategy keeps its session logic behind `use_session: on`; S02 (Asian range) has it on by default, since quiet Asian hours are what it is built for. Still in force: the Friday close
 from 20:00 UTC (S06 also stops entering at 18:00 on Fridays) and the broker's own closed hours, checked by the market
 auditor. Expect more losing trades in the hours the backtest flagged, and wider spreads in quiet hours (the spread
 guards stay).
@@ -78,7 +78,8 @@ reviewed again.
 Workshop request. Neither touches backtests, trades, settings or the settings audit log; both need your name and are
 logged.
 
-**The Engineer (Workshop tab).** Rule ideas and key failures that no setting can fix are written up as change requests:
+**The Engineer (Workshop tab).** Nothing is sent automatically. On each result (Assessor > Results, or the bot's Review tab)
+a key failure or rule idea has a **Send to Engineer** button; only what you send becomes a change request:
 the problem, the evidence, the rule to build (as a new setting that starts off), and how to test it. **Copy for Claude
 Code** puts the request on the clipboard to hand to a developer session; once it is built, press Assess and the Assessor
 decides whether the new setting earns its place. Nothing is coded or changed automatically.
@@ -164,7 +165,7 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 - Every exposure change is labelled `OPEN_LONG`, `CLOSE_LONG`, `OPEN_SHORT` or `COVER_SHORT`. A buy is never ambiguous.
 - Decisions use completed bars only. Orders fill at the next bar's open in backtests, and on the next live tick after the bar closes in live trading.
 - Each opening carries a protective stop that is sent to the server with the order.
-- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. Operator policy is a minimum size per metal: tighter stops trade the larger size (`risk.big_lot`: gold 0.1, silver 0.06) when its loss at the stop is at most 30% of the bot (`big_lot_max_risk`), wider stops the smaller one (`risk.min_lot`: gold 0.05, silver 0.03). When 3% of the bot allows more, it trades more. With `min_lot: 0`, a trade whose broker minimum exceeds the budget is skipped instead.
+- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. Each trade risks 2% of the bot at its stop (`risk_per_trade: 0.02`), never below the broker minimum of 0.01 lot (`min_lot`), and a trade whose size would lose more than 5% of the bot at its stop is skipped (`max_trade_risk: 0.05`). The forced larger size for tight stops (`big_lot`) is off.
 - S10 opens two legs as one trade group. Both legs must pass the auditor and risk checks; if one leg fails after the other has filled, the filled leg is closed. The money popup fires only when the whole group has closed.
 - Strategy rules are never rewritten automatically. Parameter changes are an operator action, allowed only while the bot is paused and flat, and each change is versioned and logged.
 
@@ -172,13 +173,14 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 
 The operator runs a £5,000 demo. With 22 independent bots at 1/22 each, every bot starts with £227.27. Operator choices:
 
-- **Two trade sizes, chosen by the strategy's stop** (the stop is always the strategy's own; risk limits never move it):
-  - Tighter stops: **gold 0.1, silver 0.06** (`big_lot`), used when that size loses at most 30% of the bot at the stop (`big_lot_max_risk: 0.30`).
-  - Wider stops: **gold 0.05, silver 0.03** (`min_lot`).
-  - No per-trade cap (`max_trade_risk: 0`): no trade is skipped for its stop being wide, so one wide-stop loss can exceed 30% of a bot.
-  - A bot trades more than these only when 3% of its balance allows it, which at £227 is rare.
-
-- What that means (from the terminal's own figures, GBP account): gold 0.1 lot is about **£7.50 per $1 move** and 0.05 about £3.75; silver 0.06 lot is about **£225 per $1 move** and 0.03 about £115 (scaled from the terminal's 0.04/0.02 figures). On a £227 bot the larger size is used for gold stops up to about $9 and silver stops up to about 30 cents. Examples at the smaller size: a $15 gold stop loses about £56 (25%); a 40-cent silver stop about £46 (20%).
+- **Small trades for small bots** (changed October 2026, after backtests where every bot lost about 98%):
+  - Each trade risks **2%** of the bot at the strategy's own stop (`risk_per_trade: 0.02`), at least **0.01 lot** (the broker
+    minimum, `min_lot`), and is **skipped** if even that would lose more than **5%** of the bot (`max_trade_risk: 0.05`).
+  - The earlier sizes (gold 0.05/0.1, silver 0.03/0.06, no cap) made the typical trade risk 14-40% of a £227 bot. With trading
+    costs of roughly 0.08R a trade on five-minute charts, that ruins a bot with no edge within weeks, and backtests that restart
+    after a 50% fall ground on to -98%. The strategies themselves were checked and are coded as written.
+  - What it means: on £227, 2% is about £4.50 at the stop, so most trades are 0.01 lot (gold about £0.75 per $1 move) and make
+    or lose a few pounds. Strategies with wide stops (over about $15 on gold) are skipped. Bigger trades need bigger bots.
 - Leverage (1:500) sets the margin, not the loss. Margin for 0.1 lot gold is lots × 100 oz × price ÷ 500, roughly £50-80, and each bot must cover it from its own free balance, so two open gold trades can use half or more of a £227 bot. The loss at the stop is the same at any leverage.
 - **Daily stops** (new entries only; open trades keep running, so a day can end worse):
   - **Loss stop 30%** (`daily_loss_pause: 0.30`): down 30% on the day.

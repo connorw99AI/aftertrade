@@ -145,18 +145,21 @@ def test_clear_suggestions_then_clear_history(armed, client):
     assert armed.db.one("SELECT 1 FROM config_audit WHERE action='ASSESSOR_CLEAR_HISTORY' AND operator='pytest'")
 
 
-def test_engineer_writes_change_requests_once(armed, client):
-    from metals_lab import assessor
-    rv = {"suggestions": [{"id": "give_back_rule", "title": "Trades often reach 1R and then get stopped", "evidence": "40%",
-                           "rule_change": "move the stop to breakeven after +1R"}]}
-    res = {"failures": [{"code": "no_edge", "title": "No edge", "detail": "loses", "needs_code": True},
-                        {"code": "losing", "title": "Loses", "detail": "", "needs_code": False}]}
-    assert assessor.raise_change_requests(armed.db, "S01L", 1, rv, res) == 2
-    assert assessor.raise_change_requests(armed.db, "S01L", 2, rv, res) == 0                 # not raised twice
-    reqs = client.get("/api/workshop?status=OPEN").json()
-    assert len(reqs) == 2 and "OFF by default" in reqs[0]["spec_md"] and "S01L" in reqs[0]["spec_md"]
-    done = client.post(f"/api/workshop/{reqs[0]['id']}/status", json={"status": "DONE", "operator": "pytest"}).json()
-    assert done["status"] == "DONE" and len(client.get("/api/workshop?status=OPEN").json()) == 1
+def test_nothing_goes_to_the_engineer_until_sent(armed, client):
+    _done_assessment(armed, "S01L", {"trail_atr": 3.0})
+    res = json.loads(armed.db.one("SELECT result_json FROM optimisations WHERE bot_id='S01L'")["result_json"])
+    res["failures"] = [{"code": "no_edge", "title": "No edge", "detail": "loses", "needs_code": True}]
+    armed.db.x("UPDATE optimisations SET result_json=? WHERE bot_id='S01L'", (json.dumps(res),))
+    assert client.get("/api/workshop?status=OPEN").json() == []                           # not sent automatically
+    f = client.get("/api/optimise/S01L").json()["result"]["failures"][0]
+    assert f["sent"] is False and f["rule"].startswith("redesign")
+    body = {"bot_id": "S01L", "title": f["title"], "rule": f["rule"], "evidence": f["detail"], "operator": "pytest"}
+    r = client.post("/api/workshop/send", json=body).json()
+    assert r["status"] == "OPEN" and "OFF by default" in r["spec_md"] and r["operator"] == "pytest"
+    assert client.post("/api/workshop/send", json=body).json()["id"] == r["id"]          # not raised twice
+    assert client.get("/api/optimise/S01L").json()["result"]["failures"][0]["sent"] is True
+    done = client.post(f"/api/workshop/{r['id']}/status", json={"status": "DONE", "operator": "pytest"}).json()
+    assert done["status"] == "DONE" and client.get("/api/workshop?status=OPEN").json() == []
 
 
 def test_each_closed_trade_gets_a_note():

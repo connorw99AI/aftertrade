@@ -11,7 +11,7 @@ import { Button, EmptyState, PctDir, Pill, Pnl, Sparkline, Stat, Stats, Table } 
 import { Creature, CREATURES, SideIcon, StateSymbol, stateSymbol } from "@/components/Creature";
 import { useSummary } from "@/components/Shell";
 import { CHARACTERS } from "@/components/characters";
-import { AppliedSuggestion, applySuggestion, changeText, TestNumbers, TestStatus, testNow, TradeNote } from "@/components/Suggestion";
+import { AppliedSuggestion, applySuggestion, AssessmentCard, changeText, testNow, TradeNote } from "@/components/Suggestion";
 import { TradingWindows } from "@/components/TradingWindows";
 import { Any, api, confirmAction, minutes, money, pct, ukMinutes, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
@@ -177,22 +177,10 @@ function ReviewTab({ b, initialSource }: { b: Any; initialSource: string }) {
       {!rv ? <p className="empty">Reviewing…</p> : <>
         <div className="section-head"><h2>Overall assessment</h2>
           <Button size="sm" onClick={runTest} disabled={!!busy}>{busy ? "Assessing…" : "Assess"}</Button></div>
-        <p className="muted small">The whole bot on its full history: what is failing, and settings tuned in up to three rounds. A tuned change is
-          offered only if it makes more net profit with no deeper worst drawdown, including on the last 20% of history tuning never saw.</p>
-        <TestStatus t={test} />
-        <div className="suggestions">
-          {(rv.tested ?? []).map((s: Any) => s.applied ? <AppliedSuggestion key={s.id} s={s} /> : (
-            <div key={s.id} className="suggestion k-parameter">
-              <div className="row-between"><b>{s.title}</b>{s.gain != null && <Pill tone="strong">final check {money(s.gain, true)}</Pill>}</div>
-              <p>Change: <code>{changeText(s.change)}</code></p>
-              <TestNumbers t={s.tested} />
-              <div className="actions">
-                <Button size="sm" onClick={() => apply(s)} disabled={locked || s.tested.stale}
-                        title={s.tested.stale ? "Settings changed after this assessment; assess again" : locked ? "Pause the bot and close its trades first" : ""}>Apply</Button>
-              </div>
-            </div>))}
-          {test?.status === "DONE" && !(rv.tested ?? []).length && <p className="muted small">No tuned change passed the final check. The bot stays as it is.</p>}
-        </div>
+        <p className="muted small">The whole bot on its full history: how it did, what is going wrong, and settings tuned in up to three rounds. A tuned
+          change is offered only if it also makes more net profit with no deeper worst drawdown on the last 20% of history the tuning never saw.</p>
+        <AssessmentCard bot={id} t={test} tuned={(rv.tested ?? [])[0]} locked={locked} onApply={apply} onAssess={runTest}
+          onSent={(m) => { setMsg(m); reloadTest(); }} />
         <h2>Ideas from the trade review</h2>
         <div className="suggestions">
           {rv.suggestions.map((s: Any) => s.applied ? <AppliedSuggestion key={s.id} s={s} /> : (

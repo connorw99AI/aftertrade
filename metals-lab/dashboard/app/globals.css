@@ -526,3 +526,14 @@ svg.chart .marker-label { fill: var(--bronze-hi); font: 10.5px var(--f-mono); }
 .action-now li.signal { border-left-color: var(--st-run); }
 .action-now .what { font-size: var(--t-13); }
 .action-now .pl { text-align: right; font-variant-numeric: tabular-nums; }
+.grade .per-trade { font-size: var(--t-13); font-weight: 600; font-variant-numeric: tabular-nums; }
+.grade .per-trade.pos { color: var(--st-run); } .grade .per-trade.neg { color: var(--st-kill); }
+.plaque.plaque-open { font-weight: 700; border-color: var(--bronze-hi); }
+.botcard .in-trade { margin: 2px 0 0; font-size: var(--t-12); font-weight: 600; color: var(--bronze-hi); font-variant-numeric: tabular-nums; }
+.action-now { grid-template-columns: 1fr; }
+.assessment { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-2); padding: var(--s-3); display: grid; gap: var(--s-2); }
+.assessment-stats { display: flex; flex-wrap: wrap; gap: var(--s-3); font-size: var(--t-13); font-variant-numeric: tabular-nums; }
+.assessment-stats .pos b { color: var(--st-run); } .assessment-stats .neg b { color: var(--st-kill); }
+.verdict-box { border-left: 4px solid var(--line-2); padding: var(--s-2) var(--s-3); background: var(--ink-deep); border-radius: var(--r-2); }
+.verdict-box.v-passed { border-left-color: var(--st-run); } .verdict-box.v-overfit { border-left-color: var(--st-pause); }
+.assessments { display: grid; gap: var(--s-3); }

@@ -196,7 +196,7 @@ class AsianRangeReversion(Strategy):
     exit_rules = ("Exit at the 20-period mean (strategy close when close crosses SMA20; server TP at the mean at entry time); "
                   "stop stop_atr x ATR beyond entry; max hold 9 bars; flatten at flat_time London, before the 08:00 London open.")
     invalidation_rules = "ADX rising above adx_max+5 while in trade (range turning into trend) closes the position."
-    filters = ("Spread <= max_spread_atr x ATR. Any hour the market is open; with use_session on, entries only in the Asian "
+    filters = ("Spread <= max_spread_atr x ATR. Entries only in the Asian "
                "window (entry_start-entry_end London, following UK clock changes) and flat before the London open.")
     citations = (
         "Bollinger, J. (2001) Bollinger on Bollinger Bands, McGraw-Hill - band construction and mean-reversion use in ranges.",
@@ -212,7 +212,7 @@ class AsianRangeReversion(Strategy):
         "adx_max": Param(25, "Only trade when trend strength is low.", (20, 25, 30)),
         "stop_atr": Param(1.0, "Tight stop; ranges that break tend to run.", (0.8, 1.0, 1.3)),
         "max_hold_bars": Param(9, "45 minutes.", (6, 9, 12)),
-        "use_session": Param("off", "on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now).", ()),
+        "use_session": Param("on", "on (default) = entries only in the quiet Asian hours this bot is built for, flat before the London open; off = any hour the market is open.", ()),
         "tz": Param("Europe/London", "Session clock (follows UK summer time).", ()),
         "entry_start": Param("00:00", "London time: start of the quiet Asian hours.", ()),
         "entry_end": Param("07:00", "London time: no new entries after this.", ()),

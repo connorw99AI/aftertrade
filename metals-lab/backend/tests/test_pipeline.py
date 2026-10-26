@@ -407,7 +407,7 @@ def test_no_total_loss_pause_when_disabled(armed):
 
 
 def test_default_min_lot_is_per_metal(cfg):
-    assert cfg["risk"]["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and cfg["risk"]["big_lot"] == {"GOLD": 0.1, "SILVER": 0.06}
+    assert cfg["risk"]["min_lot"] == {"GOLD": 0.01, "SILVER": 0.01} and cfg["risk"]["big_lot"] == 0
 
 
 def test_news_off_by_default(armed):
@@ -434,7 +434,8 @@ def test_auditor_checks_trade_setup(armed):
     assert "R20_STOP_WRONG_SIDE" in _setup_audit(c, wrong).triggered
     bad_tp = dataclasses.replace(make_open_proposal(c, volume=0.1), tp=tk["ask"] - 5.0)
     assert "R23_TARGET_WRONG_SIDE" in _setup_audit(c, bad_tp).triggered
-    assert "R18_BELOW_MIN_LOT" in _setup_audit(c, make_open_proposal(c, volume=0.04)).triggered  # below the 0.1 gold minimum
+    c.cfg["risk"]["min_lot"] = {"GOLD": 0.05, "SILVER": 0.03}
+    assert "R18_BELOW_MIN_LOT" in _setup_audit(c, make_open_proposal(c, volume=0.04)).triggered  # below a 0.05 gold minimum
     assert "R17_VOLUME_INVALID" in _setup_audit(c, make_open_proposal(c, volume=0.103)).triggered
     far = dataclasses.replace(make_open_proposal(c, volume=0.1), sl=tk["ask"] - 10000 * c.specs["GOLD"].point * 100)
     assert "R22_STOP_ABNORMAL" in _setup_audit(c, far).triggered

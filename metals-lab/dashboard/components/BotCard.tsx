@@ -58,10 +58,13 @@ export function BotCard({ b, kill }: { b: Any; kill: boolean }) {
         <StateSymbol state={stateSymbol(b.status, kill)} size={28} />
         <SideIcon bot={id} size={40} />
         {live && <span className="plaque plaque-live">LIVE</span>}
-        <span className="plaque" title="Today's profit or loss"><Pnl v={b.today_pnl} /></span>
+        {inTrade ? <span className="plaque plaque-open" title="Open profit or loss of its trade(s) right now">Open <Pnl v={b.unrealized} /></span>
+          : <span className="plaque" title="Today's profit or loss"><Pnl v={b.today_pnl} /></span>}
         {coin && <span key={coin.id} className="coin"><Pnl v={coin.net} /></span>}
       </Link>
       <Link href={href} className="botcard-name" title={tip}><b>{name}</b><span className="tf">{tf}</span></Link>
+      {inTrade && <p className="in-trade">{b.open_positions.map((p: Any) =>
+        `${p.side === "LONG" ? "▲" : "▼"} ${p.volume_open} ${p.symbol} from ${Number(p.entry_price).toFixed(String(p.symbol).startsWith("XAG") ? 3 : 2)}`).join(" · ")}</p>}
       <p className="thought">{b.thought}</p>
       {b.stopped_for_day && <div className="daystop">Done for today: {b.stopped_for_day}</div>}
       {Object.keys(b.readiness ?? {}).length > 0 && b.status !== "RETIRED" && (
@@ -74,7 +77,7 @@ export function BotCard({ b, kill }: { b: Any; kill: boolean }) {
       )}
       <div className="card-stats">
         <div><span>Equity</span><b>{money(b.equity)}</b></div>
-        <div><span>{inTrade ? "Open P&L" : "Today"}</span><b><Pnl v={inTrade ? b.unrealized : b.today_pnl} /></b></div>
+        <div><span>Today</span><b><Pnl v={b.today_pnl} /></b></div>
         <div><span>Trades</span><b>{b.entries_today}{b.max_entries_per_day ? ` / ${b.max_entries_per_day}` : ""}</b></div>
       </div>
       <div className="card-actions">

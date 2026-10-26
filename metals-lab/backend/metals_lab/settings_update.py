@@ -34,6 +34,9 @@ UPDATES: list[tuple[str, str, Optional[dict[str, str]]]] = [
     ("2026-10-25-windows", "trading", None),
     # S11 (session momentum) makes 22 bots: each gets 1/22 of the starting balance on the next new-lab
     ("2026-10-25-22-bots", "capital", {"bot_fraction": "0.045454"}),
+    # small trades for small bots: 2% risk, broker-minimum lots, never more than 5% of a bot at the stop
+    ("2026-10-26-small-trades", "risk", {"risk_per_trade": "0.02", "min_lot": "{GOLD: 0.01, SILVER: 0.01}", "big_lot": "0",
+                                          "max_trade_risk": "0.05"}),
 ]
 
 MARK = "# metal-lab settings applied: "

@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { botAction, StatusBadge, Tabs } from "@/components/Bits";
 import { Creature, CREATURES } from "@/components/Creature";
-import { AppliedSuggestion, applySuggestion, changeText, TestNumbers, TestStatus, testNow } from "@/components/Suggestion";
+import { applySuggestion, AssessmentCard, sendToEngineer, testNow } from "@/components/Suggestion";
 import { Button, domainOf, EmptyState, Pill, Pnl, ProgressBar, Sparkline, Table } from "@/components/ui";
 import { Any, api, confirmAction, money, when } from "@/lib/api";
 import { usePoll } from "@/lib/usePoll";
@@ -13,10 +13,14 @@ import { blockDetail, capitalise, reasonText } from "@/lib/wording";
 const GRADE_CLASS: Record<string, string> = { keep: "grade-keep", retire: "grade-retire", watch: "grade-watch", "too early": "grade-early" };
 
 /** Until there is enough data the grade is a progress bar toward judgement; then the grade itself. */
-function Grade({ g, label }: { g: Any; label: string }) {
+function Grade({ g, label, st }: { g: Any; label: string; st?: Any }) {
   const m = String(g?.why ?? "").match(/(\d+) of (\d+) trades/);
   if (g?.grade === "too early" && m) return <div className="grade"><span className="muted tiny">{label}</span><ProgressBar value={Number(m[1])} target={Number(m[2])} label="trades" /></div>;
-  return <div className="grade"><span className="muted tiny">{label}</span><b className={GRADE_CLASS[g?.grade] ?? "muted"}>{g?.grade ?? "–"}</b><span className="tiny muted">{g?.why}</span></div>;
+  const r = st?.expectancy_r;
+  return <div className="grade"><span className="muted tiny">{label}</span><b className={GRADE_CLASS[g?.grade] ?? "muted"}>{g?.grade ?? "–"}</b>
+    {r != null && <span className={`per-trade ${r > 0 ? "pos" : "neg"}`} title="Average result per trade, as a multiple of what each trade risked at its stop. It does not depend on lot size: above 0 means an edge after costs, below 0 means none.">
+      {r > 0 ? "+" : ""}{r}R per trade</span>}
+    <span className="tiny muted">{g?.why}</span></div>;
 }
 
 function Grades({ data, reload }: { data: Any; reload: () => void }) {
@@ -30,14 +34,16 @@ function Grades({ data, reload }: { data: Any; reload: () => void }) {
     <div key={c.bot_id} className={`report-card ${c.status === "RETIRED" ? "card-retired" : ""}`}>
       <Link href={`/bot?id=${c.bot_id}&tab=review`} className="who"><Creature bot={c.bot_id} size={36} mood={c.status === "RETIRED" ? "asleep" : "still"} />
         <span><b>{CREATURES[c.bot_id]?.name}</b><br /><span className="muted tiny">{c.bot_id}</span></span><StatusBadge status={c.status} /></Link>
-      <Grade g={c.demo.grade} label="Demo" />
-      <Grade g={c.backtest.grade} label="Backtest" />
+      <Grade g={c.demo.grade} label="Demo" st={c.demo.stats} />
+      <Grade g={c.backtest.grade} label="Backtest" st={c.backtest.stats} />
       {c.status !== "RETIRED" && (c.demo.grade?.grade === "retire" || c.backtest.grade?.grade === "retire") &&
         <Button size="sm" tone="ghost" onClick={() => retire(c.bot_id)}>Retire</Button>}
     </div>
   );
   return (
     <>
+      <p className="muted small">Judge a strategy by its <b>R per trade</b>: the average result as a multiple of what each trade risked. Lot size does
+        not change it, so it shows whether the idea has an edge after costs. Above 0R is an edge; below 0R the bot loses at any size.</p>
       {msg && <div className="notice">{msg}</div>}
       <div className="report-cards">{cards.filter((c) => c.status !== "RETIRED").map(card)}</div>
       {cards.some((c) => c.status === "RETIRED") && (
@@ -104,39 +110,15 @@ function Leaderboard() {
   );
 }
 
-function SuggestionCard({ s, st, onApply, onTest }: { s: Any; st: Any; onApply: (s: Any) => void; onTest: (bot: string) => void }) {
-  const stale = s.tested?.stale;
-  return (
-    <div className={`suggestion k-${s.untested ? "untested" : s.kind}`}>
-      <div className="row-between">
-        <Link href={`/bot?id=${s.bot_id}&tab=review`} className="who"><Creature bot={s.bot_id} size={30} mood="still" /> {CREATURES[s.bot_id]?.name}</Link>
-        {s.tested ? <Pill tone="strong">{s.gain != null ? `final check ${money(s.gain, true)}` : "passed"}</Pill>
-          : s.untested ? <Pill tone="muted">not tested</Pill> : null}
-      </div>
-      <b>{s.title}</b>
-      {s.change && <p>Change: <code>{changeText(s.change)}</code></p>}
-      {s.tested ? <TestNumbers t={s.tested} /> : <p className="muted small">{s.evidence}</p>}
-      {s.tested && <p className="tiny muted">Steps: {s.tested.steps.map((x: Any) => `round ${x.round}: ${x.title}`).join("; ")}. Many variants were tried,
-        so expect less than this. Assessed {when(s.reviewed_at)}.</p>}
-      {s.untested && <p className="tiny muted">An idea from the trade review. Press Assess: it is tried with the other changes and only offered if it adds profit without a deeper worst drawdown.</p>}
-      {s.rule_change && <p>Needs a rule change: <i>{s.rule_change}</i> (untested; ask for it to be coded).</p>}
-      <div className="actions">
-        {s.tested && <Button size="sm" onClick={() => onApply(s)} disabled={stale || st?.status === "RUNNING"}
-          title={stale ? "The bot's settings changed after this assessment; assess again" : st?.status === "RUNNING" ? "Pause the bot first" : ""}>Apply</Button>}
-        {(s.untested || stale) && <Button size="sm" onClick={() => onTest(s.bot_id)}>{stale ? "Assess again" : "Assess"}</Button>}
-        {(s.id === "no_edge" || s.id === "costs") && st?.status !== "RETIRED" && <Button size="sm" tone="ghost" onClick={() => botAction(s.bot_id, "retire")}>Retire</Button>}
-      </div>
-    </div>
-  );
-}
-
 function Suggestions({ data, reload }: { data: Any; reload: () => void }) {
   const { data: bots } = usePoll<Any[]>("/api/bots", 15000);
   const [msg, setMsg] = useState<string | null>(null);
   const status = (b: string) => bots?.find((x) => x.bot_id === b);
   const sugg: Any[] = data?.suggestions ?? [];
   const tests = Object.entries((data?.tests ?? {}) as Record<string, Any>).filter(([, t]) => t);
-  const busy = tests.filter(([, t]) => t.status === "QUEUED" || t.status === "RUNNING");
+  const rank = (t: Any) => t.status === "RUNNING" ? 0 : t.status === "QUEUED" ? 1 : t.result?.tuned?.verdict === "passed" ? 2 : 3;
+  tests.sort((x, y) => rank(x[1]) - rank(y[1]));
+  const ideas = sugg.filter((s) => s.rule_change && !s.tested);
   async function apply(s: Any) {
     try {
       const b = await api.get<Any>(`/api/bots/${s.bot_id}`);
@@ -144,28 +126,34 @@ function Suggestions({ data, reload }: { data: Any; reload: () => void }) {
       if (m) { setMsg(m); reload(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
-  async function test(bot: string) {
+  async function assess(bot: string) {
     try { setMsg(await testNow(bot)); reload(); } catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  }
+  async function sendIdea(s: Any) {
+    try { const m = await sendToEngineer(s.bot_id, s.title, s.rule_change, s.evidence ?? ""); if (m) { setMsg(m); reload(); } }
+    catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
   }
   return (
     <>
-      <p className="muted">Each bot is assessed as a whole on its full history. Settings are tuned in up to three rounds (searching on the
-        first 60%, keeping the best on the next 20%) and the tuned bot is only offered if it also makes more net profit with no deeper worst
-        drawdown on the last 20%, which tuning never sees. Rule ideas that need code go to the Engineer&apos;s Workshop.</p>
+      <div className="notice small">
+        <b>How this works.</b> Press <b>Test all bots</b> (or Assess on a bot). Each bot is backtested on its whole history, tuned on the first 80%,
+        and checked once on the last 20%, which the tuning never sees. Its result appears below and on the bot&apos;s Review tab.
+        Nothing changes a bot until you press <b>Apply</b>, and nothing goes to the Engineer until you press <b>Send to Engineer</b>.
+      </div>
       {msg && <div className="notice">{msg}</div>}
-      {busy.length > 0 && <p className="small"><Pill tone="info">Testing</Pill> {busy.map(([b, t]) => `${CREATURES[b]?.name}: ${t.progress}`).join(" · ")}</p>}
-      {!sugg.length ? <EmptyState>No suggestions. Press Test all bots (or run all backtests on MT5 history) to assess every bot.</EmptyState> : (
-        <div className="suggestions">
-          {sugg.map((s) => s.applied
-            ? <AppliedSuggestion key={`${s.bot_id}-${s.id}`} s={s} who={CREATURES[s.bot_id]?.name} />
-            : <SuggestionCard key={`${s.bot_id}-${s.id}-${s.review_id}`} s={s} st={status(s.bot_id)} onApply={apply} onTest={test} />)}
-        </div>)}
-      {tests.length > 0 && <>
-        <h2>Each bot&apos;s assessment</h2>
-        <div className="tests-list">{tests.map(([b, t]) => (
-          <div key={b} className="panel" style={{ padding: "var(--s-2) var(--s-3)" }}>
-            <Link href={`/bot?id=${b}&tab=review`} className="who"><Creature bot={b} size={22} mood="still" /> {CREATURES[b]?.name}</Link>
-            <TestStatus t={t} />
+      {!tests.length ? <EmptyState>No assessments yet. Press Test all bots above.</EmptyState> : (
+        <div className="assessments">{tests.map(([b, t]) => (
+          <AssessmentCard key={b} bot={b} t={t} who tuned={sugg.find((s) => s.bot_id === b && s.tested)}
+            locked={status(b)?.status === "RUNNING" || (status(b)?.open_positions?.length ?? 0) > 0}
+            onApply={apply} onAssess={() => assess(b)} onSent={(m) => { setMsg(m); reload(); }} />))}</div>)}
+      {ideas.length > 0 && <>
+        <h2>Ideas from demo trades</h2>
+        <p className="muted small">Rule changes the trade review suggests. They need code, so they are not tested here. Send one to the Engineer if you want it built.</p>
+        <div className="suggestions">{ideas.map((s) => (
+          <div key={`${s.bot_id}-${s.id}`} className="suggestion k-rule">
+            <Link href={`/bot?id=${s.bot_id}&tab=review`} className="who"><Creature bot={s.bot_id} size={26} mood="still" /> {CREATURES[s.bot_id]?.name}</Link>
+            <b>{s.title}</b><p className="muted small">{s.evidence}</p><p className="small">Rule: <i>{s.rule_change}</i></p>
+            <Button size="sm" tone="ghost" onClick={() => sendIdea(s)}>Send to Engineer</Button>
           </div>))}</div>
       </>}
     </>
@@ -214,7 +202,7 @@ function Blocked({ data }: { data: Any }) {
   );
 }
 
-const TABS: [string, string][] = [["grades", "Grades"], ["leaderboard", "Leaderboard"], ["suggestions", "Suggestions"], ["workshop", "Workshop"], ["blocked", "Blocked trades"]];
+const TABS: [string, string][] = [["grades", "Grades"], ["leaderboard", "Leaderboard"], ["suggestions", "Results"], ["workshop", "Workshop"], ["blocked", "Blocked trades"]];
 
 function Workshop() {
   const [show, setShow] = useState("OPEN");
@@ -233,8 +221,8 @@ function Workshop() {
     <>
       <div className="row-between workshop-head">
         <Creature bot="ENGINEER" size={120} full mood="idle" />
-        <p className="muted"><b>The Engineer</b> writes up changes no setting can make: a new rule, a filter, a redesign. Each request says what to
-          build, behind a setting that starts off, and how to test it. Copy it for Claude Code; once built, press Assess on the bot and the
+        <p className="muted"><b>The Engineer</b> writes up changes no setting can make: a new rule, a filter, a redesign. Only what you send
+          (Send to Engineer on the Results tab) arrives here. Each request says what to build, behind a setting that starts off, and how to test it. Copy it for Claude Code; once built, press Assess on the bot and the
           Assessor decides whether the new setting earns its place.</p>
         <Tabs tabs={[["OPEN", "Open"], ["DONE", "Done"], ["DISMISSED", "Dismissed"]]} value={show} onChange={setShow} />
       </div>

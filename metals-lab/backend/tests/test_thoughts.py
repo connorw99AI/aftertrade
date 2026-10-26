@@ -141,11 +141,12 @@ def test_settings_update_edits_config_once_and_keeps_the_rest(tmp_path):
     p.write_text("mt5:\n  server_timezone: Europe/Athens   # keep me\n\nrisk:\n  risk_per_trade: 0.30\n  min_lot: {GOLD: 0.04, SILVER: 0.02}\n"
                  "  daily_loss_pause: 0.50\n  daily_profit_stop: false\n  max_drawdown_pause: 0.50\n"
                  "trading:\n  all_metals: true\n  all_hours: true\n\nnews:\n  enabled: false\n")
-    assert apply(p) == ["2026-10-25-risk", "2026-10-25-silver", "2026-10-25-silver-006", "2026-10-25-windows", "2026-10-25-22-bots"]
+    assert apply(p) == ["2026-10-25-risk", "2026-10-25-silver", "2026-10-25-silver-006", "2026-10-25-windows", "2026-10-25-22-bots",
+                       "2026-10-26-small-trades"]
     assert "trading" not in yaml.safe_load(p.read_text()) and yaml.safe_load(p.read_text())["news"] == {"enabled": False}
     r = yaml.safe_load(p.read_text())["risk"]
-    assert r["min_lot"] == {"GOLD": 0.05, "SILVER": 0.03} and r["big_lot"] == {"GOLD": 0.1, "SILVER": 0.06}
-    assert r["daily_loss_pause"] == 0.30 and r["daily_profit_stop"] == 0 and r["risk_per_trade"] == 0.03
+    assert r["min_lot"] == {"GOLD": 0.01, "SILVER": 0.01} and r["big_lot"] == 0 and r["max_trade_risk"] == 0.05
+    assert r["daily_loss_pause"] == 0.30 and r["daily_profit_stop"] == 0 and r["risk_per_trade"] == 0.02
     assert r["max_drawdown_pause"] == 0.50 and "# keep me" in p.read_text()
     assert (tmp_path / "config.yaml.bak-2026-10-25-risk").exists()
     assert apply(p) == []   # applied once only
@@ -158,7 +159,7 @@ def test_every_bot_starts_on_both_metals_all_day_and_keeps_its_own_settings(arme
     for b in BOT_IDS:
         p = build(b).p
         assert p["trade_gold"] == p["trade_silver"] == "on" and p["gold_windows"] == p["silver_windows"] == "00:00-24:00"
-        assert p.get("use_session", "off") == "off"
+        assert p.get("use_session", "off") == ("on" if b.startswith("S02") else "off")   # S02 keeps to Asian hours
     saved = {"trade_gold": "off", "silver_windows": "06:00-11:00, 13:00-17:00"}
     armed.db.x("UPDATE bots SET params_json=? WHERE bot_id='S03L'", (json.dumps(saved),))
     s = armed.strategy("S03L")                                             # no switch overrides a bot's own settings now

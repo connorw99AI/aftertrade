@@ -60,7 +60,7 @@ Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter
 
 **Invalidation.** ADX rising above adx_max+5 while in trade (range turning into trend) closes the position.
 
-**Spread, liquidity and volatility filters.** Spread <= max_spread_atr x ATR. Any hour the market is open; with use_session on, entries only in the Asian window (entry_start-entry_end London, following UK clock changes) and flat before the London open.
+**Spread, liquidity and volatility filters.** Spread <= max_spread_atr x ATR. Entries only in the Asian window (entry_start-entry_end London, following UK clock changes) and flat before the London open.
 
 **Limitations.** Asian-session spreads can be wide relative to the small target; mean reversion fails abruptly on news (e.g. Chinese data, geopolitical headlines). OHLC intrabar ordering unknown.
 
@@ -72,7 +72,7 @@ Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter
 | `adx_max` | 25 | 20, 25, 30 | Only trade when trend strength is low. |
 | `stop_atr` | 1.0 | 0.8, 1.0, 1.3 | Tight stop; ranges that break tend to run. |
 | `max_hold_bars` | 9 | 6, 9, 12 | 45 minutes. |
-| `use_session` | off | – | on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now). |
+| `use_session` | on | – | on (default) = entries only in the quiet Asian hours this bot is built for, flat before the London open; off = any hour the market is open. |
 | `tz` | Europe/London | – | Session clock (follows UK summer time). |
 | `entry_start` | 00:00 | – | London time: start of the quiet Asian hours. |
 | `entry_end` | 07:00 | – | London time: no new entries after this. |

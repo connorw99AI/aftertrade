@@ -141,6 +141,11 @@ def latest_test(db, bot: str) -> Optional[dict]:
     out = {k: r[k] for k in ("id", "bot_id", "created_at", "finished_at", "status", "progress", "trigger", "dataset", "start", "end",
                              "config_version", "error")}
     out["result"] = json.loads(r["result_json"]) if r["result_json"] else None
+    if out["result"]:
+        sent = {x["title"] for x in db.q("SELECT title FROM change_requests WHERE bot_id=?", (bot,))}
+        for f in out["result"].get("failures") or []:
+            f["rule"] = FAILURE_RULES.get(f["code"], "find and fix the cause in the strategy's rules")
+            f["sent"] = f["title"] in sent
     out["stale"] = bool(cur and r["config_version"] is not None and cur["config_version"] != r["config_version"])
     return out
 
@@ -236,23 +241,20 @@ def _request_spec(bot: str, title: str, rule: str, evidence: str, oid: Optional[
     ])
 
 
-def raise_change_requests(db, bot: str, oid: Optional[int], rv: dict, res: dict) -> int:
-    """Write up what no setting can fix (rule ideas, failures that need code) as change requests for the Engineer.
-    The same open request is not raised twice."""
-    items = [(s["title"], s["rule_change"], s.get("evidence", "")) for s in rv.get("suggestions", []) if s.get("rule_change")]
-    items += [(f["title"], {"no_edge": "redesign the entry idea, or retire this bot",
-                            "costs": "aim for larger moves: a slower chart, a wider target, or skip the widest-spread hours",
-                            "one_year": "add a regime filter so the bot only trades in the conditions of its good year"}
-               .get(f["code"], "find and fix the cause in the strategy's rules"), f["detail"]) for f in res.get("failures", [])
-              if f.get("needs_code")]
-    n = 0
-    for title, rule, ev in items:
-        if db.one("SELECT 1 FROM change_requests WHERE bot_id=? AND title=? AND status='OPEN'", (bot, title)):
-            continue
-        db.x("INSERT INTO change_requests(bot_id,created_at,status,title,rule,evidence,spec_md,assessment_id) VALUES(?,?,?,?,?,?,?,?)",
-             (bot, now_iso(), "OPEN", title, rule, ev, _request_spec(bot, title, rule, ev, oid), oid))
-        n += 1
-    return n
+FAILURE_RULES = {"no_edge": "redesign the entry idea, or retire this bot",
+                 "costs": "aim for larger moves: a slower chart, a wider target, or skip the widest-spread hours",
+                 "one_year": "add a regime filter so the bot only trades in the conditions of its good year"}
+
+
+def send_to_engineer(db, bot: str, title: str, rule: str, evidence: str, operator: str, oid: Optional[int] = None) -> int:
+    """The operator sends one failure or rule idea to the Engineer. An open request with the same title is reused."""
+    row = db.one("SELECT id FROM change_requests WHERE bot_id=? AND title=? AND status='OPEN'", (bot, title))
+    if row:
+        return row["id"]
+    cur = db.x("INSERT INTO change_requests(bot_id,created_at,status,title,rule,evidence,spec_md,assessment_id,operator) "
+               "VALUES(?,?,?,?,?,?,?,?,?)", (bot, now_iso(), "OPEN", title, rule, evidence,
+                                             _request_spec(bot, title, rule, evidence, oid), oid, operator))
+    return cur.lastrowid
 
 
 def change_requests(db, status: Optional[str] = None) -> list[dict]:

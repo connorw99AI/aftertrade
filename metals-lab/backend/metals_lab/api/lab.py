@@ -61,6 +61,14 @@ class OperatorBody(BaseModel):
     operator: str = Field(min_length=1)
 
 
+class SendToEngineerBody(BaseModel):
+    bot_id: str
+    title: str = Field(min_length=3)
+    rule: str = Field(min_length=3)
+    evidence: str = ""
+    operator: str = Field(min_length=1)
+
+
 class RequestStatusBody(BaseModel):
     status: str                        # DONE | DISMISSED | OPEN
     operator: str = Field(min_length=1)
@@ -386,6 +394,9 @@ def register(app: FastAPI, state, auth) -> None:
             df["entry_time"] = pd.to_datetime(df["entry_time"], utc=True, format="mixed")
         res["failures"] = key_failures(df, rv.get("stats") or {}, res)
         res["backtest_id"] = jid
+        st, bm = rv.get("stats") or {}, json.loads(out["metrics"])
+        res["summary"] = {"n": st.get("n", 0), "net": st.get("net"), "expectancy_r": st.get("expectancy_r"),
+                          "win_rate": st.get("win_rate"), "max_drawdown": bm.get("max_drawdown"), "total_return": bm.get("total_return")}
         rv["failures"] = res["failures"]
         assessor.store_review(db, bot, f"assessment:{oid}", row["trigger"] or "assessment", rv)
         t = res.get("tuned")
@@ -393,10 +404,6 @@ def register(app: FastAPI, state, auth) -> None:
              ((f"tuned in {len(t['steps'])} step(s): {t['verdict']}" if t else "no change beat the bot as it stands")
               + f"; {len(res['failures'])} key failure(s)", json.dumps(res, default=str), now_iso(), oid))
         db.event("ASSESSOR_TESTED", bot, {"assessment": oid, "verdict": t["verdict"] if t else None})
-        try:
-            assessor.raise_change_requests(db, bot, oid, rv, res)
-        except Exception as e:
-            db.event("ASSESSOR_ERROR", bot, {"assessment": oid, "error": f"change requests: {e}"})
 
     def test_worker():
         while True:
@@ -438,6 +445,16 @@ def register(app: FastAPI, state, auth) -> None:
         """The Engineer's change requests: rule changes no setting can make, written up for a developer."""
         from .. import assessor
         return assessor.change_requests(db, status)
+
+    @app.post("/api/workshop/send", dependencies=[Depends(auth)])
+    def workshop_send(body: SendToEngineerBody):
+        """You decide what goes to the Engineer: one failure or rule idea becomes a change request (not twice)."""
+        from .. import assessor
+        if body.bot_id not in BOT_IDS:
+            raise HTTPException(404)
+        t = assessor.latest_test(db, body.bot_id)
+        rid = assessor.send_to_engineer(db, body.bot_id, body.title, body.rule, body.evidence, body.operator, t["id"] if t else None)
+        return db.one("SELECT * FROM change_requests WHERE id=?", (rid,))
 
     @app.post("/api/workshop/{rid}/status", dependencies=[Depends(auth)])
     def workshop_status(rid: int, body: RequestStatusBody):

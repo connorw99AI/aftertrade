@@ -27,7 +27,12 @@ function BulkControls({ sum }: { sum: Any }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const kill = !!sum.kill;
-  const active = sum.bots.filter((b: Any) => b.status !== "RETIRED");
+  // bots in a trade first (largest open profit or loss first), then the rest in their usual order
+  const active = sum.bots.filter((b: Any) => b.status !== "RETIRED")
+    .map((b: Any, i: number) => ({ b, i })).sort((x: Any, y: Any) =>
+      Number(y.b.open_positions.length > 0) - Number(x.b.open_positions.length > 0)
+      || (y.b.open_positions.length > 0 ? Math.abs(y.b.unrealized ?? 0) - Math.abs(x.b.unrealized ?? 0) : 0) || x.i - y.i)
+    .map((x: Any) => x.b);
   const running = active.filter((b: Any) => b.status === "RUNNING").length;
   const trades = sum.open_trades ?? 0;
   const inTrade = active.filter((b: Any) => b.open_positions.length).length;
@@ -119,7 +124,12 @@ export default function Lab() {
   }
   if (!sum) return <p className="empty">Loading…</p>;
   const shadow = sum.bots.some((b: Any) => b.shadow);
-  const active = sum.bots.filter((b: Any) => b.status !== "RETIRED");
+  // bots in a trade first (largest open profit or loss first), then the rest in their usual order
+  const active = sum.bots.filter((b: Any) => b.status !== "RETIRED")
+    .map((b: Any, i: number) => ({ b, i })).sort((x: Any, y: Any) =>
+      Number(y.b.open_positions.length > 0) - Number(x.b.open_positions.length > 0)
+      || (y.b.open_positions.length > 0 ? Math.abs(y.b.unrealized ?? 0) - Math.abs(x.b.unrealized ?? 0) : 0) || x.i - y.i)
+    .map((x: Any) => x.b);
   const retired = sum.bots.filter((b: Any) => b.status === "RETIRED");
   async function unretireAll() {
     const name = await confirmAction({ title: `Un-retire all ${retired.length}?`, tone: "go", confirmLabel: "Un-retire all",

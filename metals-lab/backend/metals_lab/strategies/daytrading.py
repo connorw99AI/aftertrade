@@ -446,18 +446,21 @@ class VolatilityCompressionBreakout(Strategy):
         for role in self.roles:
             if ctx.position(role) or not ctx.has(role, "M15", 30):
                 continue
-            r = ctx.last(role, "M15")
+            r, pv = ctx.last(role, "M15"), ctx.last(role, "M15", 2)
             if not r["release_live"] or pd.isna(r["atr"]):
                 continue
             if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
                 continue
             sd = self.p["stop_atr"] * r["atr"]
             vals = {"close": r["close"], "squeeze_high": r["sq_high"], "squeeze_low": r["sq_low"], "atr": r["atr"]}
-            if r["close"] > r["sq_high"]:
+            # only the first close beyond the squeeze range: a trade that closes does not re-enter the same breakout
+            first_up = not (pv["release_live"] and pv["sq_high"] == r["sq_high"] and pv["close"] > pv["sq_high"])
+            first_dn = not (pv["release_live"] and pv["sq_low"] == r["sq_low"] and pv["close"] < pv["sq_low"])
+            if r["close"] > r["sq_high"] and first_up:
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "volatility squeeze released upward", vals,
                                         stop_price=r["close"] - sd, target_price=r["close"] + self.p["reward_risk"] * sd,
                                         max_hold_bars=self.p["max_hold_bars"]))
-            elif r["close"] < r["sq_low"]:
+            elif r["close"] < r["sq_low"] and first_dn:
                 sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "volatility squeeze released downward", vals,
                                         stop_price=r["close"] + sd, target_price=r["close"] - self.p["reward_risk"] * sd,
                                         max_hold_bars=self.p["max_hold_bars"]))
