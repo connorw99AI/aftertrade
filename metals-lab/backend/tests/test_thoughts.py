@@ -119,9 +119,11 @@ def test_min_lot_never_risks_more_than_the_cap(armed):
     assert not tp.skipped and tp.volume == 0.04
 
 
-def test_wide_stop_bots_have_their_own_trade_cap(armed, cfg):
+def test_a_strategy_can_have_its_own_trade_cap(armed, cfg):
     from metals_lab.backtest.models import RiskParams
     from metals_lab.risk import trade_cap_for
+    assert {trade_cap_for(cfg, b) for b in ("S01L", "S07L", "S10S", "S12L")} == {0.05}      # one cap for every bot by default
+    cfg["risk"]["max_trade_risk_by_strategy"] = {"S07": 0.10, "S08": 0.10, "S09": 0.10, "S10": 0.10}
     assert [trade_cap_for(cfg, b) for b in ("S01L", "S06S", "S07L", "S08S", "S09L", "S10S", "S11L")] == [0.05, 0.05, 0.10, 0.10, 0.10, 0.10, 0.05]
     assert RiskParams.from_live(cfg, "S09S").max_trade_risk == 0.10 and RiskParams.from_live(cfg, "S01L").max_trade_risk == 0.05
     sig = make_open_proposal(armed, bot="S07L", volume=0.01).signal
@@ -155,11 +157,11 @@ def test_settings_update_edits_config_once_and_keeps_the_rest(tmp_path):
                  "  daily_loss_pause: 0.50\n  daily_profit_stop: false\n  max_drawdown_pause: 0.50\n"
                  "trading:\n  all_metals: true\n  all_hours: true\n\nnews:\n  enabled: false\n")
     assert apply(p) == ["2026-10-25-risk", "2026-10-25-silver", "2026-10-25-silver-006", "2026-10-25-windows", "2026-10-25-22-bots",
-                       "2026-10-26-small-trades", "2026-10-26-wide-stop-cap"]
+                       "2026-10-26-small-trades", "2026-10-26-wide-stop-cap", "2026-10-27-24-bots", "2026-10-27-one-trade-cap"]
     assert "trading" not in yaml.safe_load(p.read_text()) and yaml.safe_load(p.read_text())["news"] == {"enabled": False}
     r = yaml.safe_load(p.read_text())["risk"]
     assert r["min_lot"] == {"GOLD": 0.01, "SILVER": 0.01} and r["big_lot"] == 0 and r["max_trade_risk"] == 0.05
-    assert r["max_trade_risk_by_strategy"] == {"S07": 0.10, "S08": 0.10, "S09": 0.10, "S10": 0.10}
+    assert r["max_trade_risk_by_strategy"] == {} and yaml.safe_load(p.read_text())["capital"]["bot_fraction"] == 0.041666
     assert r["daily_loss_pause"] == 0.30 and r["daily_profit_stop"] == 0 and r["risk_per_trade"] == 0.02
     assert r["max_drawdown_pause"] == 0.50 and "# keep me" in p.read_text()
     assert (tmp_path / "config.yaml.bak-2026-10-25-risk").exists()
@@ -237,28 +239,53 @@ def test_next_up_lists_bots_one_condition_from_an_entry():
     assert next_up(**{**base, "th": blocked}) is None                                  # a filter fails
 
 
-def test_launcher_resplits_a_running_lab_for_22_bots_keeping_every_trade(tmp_path):
+def test_launcher_resplits_a_running_lab_for_24_bots_keeping_every_trade(tmp_path):
     from metals_lab.cli import RESPLIT_MARK, pending_resplit
     from metals_lab.ledger import Ledger
     from metals_lab.store import Store
     from metals_lab.strategies import BOT_IDS
     cfg_p, db_p = tmp_path / "config.yaml", tmp_path / "metals_lab.db"
-    cfg_p.write_text("capital:\n  bot_fraction: 0.045454\n")
-    old20 = [b for b in BOT_IDS if not b.startswith("S11")]
+    cfg_p.write_text("capital:\n  bot_fraction: 0.041666\n")
+    old22 = [b for b in BOT_IDS if not b.startswith("S12")]
     st = Store(db_p)
     led = Ledger(st)
-    led.initialize("f" * 64, 5000.0, "GBP", 0.05, old20)                 # this morning's lab: 20 bots at 250
+    led.initialize("f" * 64, 5000.0, "GBP", 0.045454, old22)             # a running lab: 22 bots at 227.27
     led.post_deal("S03L", {"ticket": 1, "profit": 12.0, "commission": 0.0, "swap": 0.0, "fee": 0.0, "symbol": "XAUUSD"})
     led.post_deal("S08S", {"ticket": 2, "profit": -30.0, "commission": -1.0, "swap": 0.0, "fee": 0.0, "symbol": "XAGUSD"})
     st.x("INSERT INTO positions(position_key,bot_id,status) VALUES('open1','S01L','OPEN')")   # an open trade does not block it
     st.conn.close()
-    assert "starting share is now 227.27" in pending_resplit(cfg_p, db_p)
+    assert "starting share is now 208.33" in pending_resplit(cfg_p, db_p)
     st = Store(db_p)
     led = Ledger(st)
-    assert led.book("S03L").equity == pytest.approx(239.27) and led.book("S08S").equity == pytest.approx(196.27)
-    assert led.book("S11L").equity == pytest.approx(227.27) and led.book("S11S").equity == pytest.approx(227.27)
+    assert led.book("S03L").equity == pytest.approx(220.33) and led.book("S08S").equity == pytest.approx(177.33)
+    assert led.book("S12L").equity == pytest.approx(208.33) and led.book("S12S").equity == pytest.approx(208.33)
     assert sum(led.allocation(b) for b in BOT_IDS) == pytest.approx(5000.0, abs=0.2)
-    assert st.one("SELECT COUNT(*) n FROM ledger WHERE kind='DEAL'")["n"] >= 2 or st.one("SELECT COUNT(*) n FROM ledger")["n"] > 22
-    assert st.one("SELECT COUNT(*) n FROM config_audit WHERE action='ALLOCATION_RESPLIT'")["n"] == 22
+    assert st.one("SELECT COUNT(*) n FROM ledger WHERE kind='DEAL'")["n"] >= 2 or st.one("SELECT COUNT(*) n FROM ledger")["n"] > 24
+    assert st.one("SELECT COUNT(*) n FROM config_audit WHERE action='ALLOCATION_RESPLIT'")["n"] == 24
     st.conn.close()
     assert RESPLIT_MARK in cfg_p.read_text() and pending_resplit(cfg_p, db_p) == ""   # once only
+
+
+def test_launcher_starts_a_new_lab_when_the_demo_account_changes(tmp_path, cfg):
+    from metals_lab.cli import new_lab_if_account_changed
+    from metals_lab.ledger import Ledger
+    from metals_lab.mt5.gateway import TradingGateway
+    from metals_lab.mt5.guard import check_account
+    from metals_lab.mt5.sim import SimAccount, SimTerminal
+    from metals_lab.store import Store
+    from metals_lab.strategies import BOT_IDS
+    t = SimTerminal()
+    gw = TradingGateway(t, is_simulated=True)
+    db_p = tmp_path / "metals_lab.db"
+    st = Store(db_p)
+    Ledger(st).initialize(check_account(gw.read_only()).fingerprint, 10000.0, "GBP", 0.041666, BOT_IDS)
+    st.conn.close()
+    assert new_lab_if_account_changed(cfg, db_p, gw) == "" and db_p.exists()          # same account: the lab carries on
+    t.add_account(SimAccount(login=7007, server="Sim-Live", trade_mode=2))
+    t.switch_account(7007)
+    assert new_lab_if_account_changed(cfg, db_p, gw) == "" and db_p.exists()          # a live account never touches it
+    t.add_account(SimAccount(login=8008, server="Sim-Demo"))
+    t.switch_account(8008)
+    msg = new_lab_if_account_changed(cfg, db_p, gw)
+    assert "New MT5 demo account" in msg and "24 bots" in msg and not db_p.exists()
+    assert list((tmp_path / "archive").glob("metals_lab-*.db"))                       # archived, not deleted

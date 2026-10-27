@@ -54,7 +54,7 @@ function limitSentences(l: Any): [string, string][] {
 
 const ACTION: Record<string, string> = {
   INITIAL_ALLOCATION: "Initial allocation", ALLOCATION_MOVE: "Allocation moved", STATUS: "Status changed", PARAMS: "Rules changed",
-  ARM: "Armed", "ARM (dashboard)": "Armed from the dashboard", ALLOCATION_RESPLIT: "Starting share re-split for 22 bots", DISARM: "Disarmed", CLEAR_BACKTESTS: "Backtest results cleared", DELETE_HISTORY: "Price history deleted", KILL: "Kill switch", RETIRE: "Retired", UNRETIRE: "Un-retired",
+  ARM: "Armed", "ARM (dashboard)": "Armed from the dashboard", ALLOCATION_RESPLIT: "Starting shares re-split for a new bot count", DISARM: "Disarmed", CLEAR_BACKTESTS: "Backtest results cleared", DELETE_HISTORY: "Price history deleted", KILL: "Kill switch", RETIRE: "Retired", UNRETIRE: "Un-retired",
 };
 const STATUS_WORD: Record<string, string> = { RUNNING: "Running", PAUSED: "Paused", PAUSED_RISK: "Paused (drawdown)", STOPPED: "Stopped", RETIRED: "Retired" };
 
@@ -75,7 +75,7 @@ function change(a: Any): string {
   return String(n ?? "");
 }
 
-/** Rows of the same action, operator and minute become one line ("Initial allocation: 22 bots, £227.27 each"). */
+/** Rows of the same action, operator and minute become one line ("Initial allocation: 24 bots, £416.66 each"). */
 function groupAudit(rows: Any[]): Any[] {
   const out: Any[] = [];
   for (const a of rows) {

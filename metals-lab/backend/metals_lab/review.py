@@ -24,8 +24,15 @@ MIN_N = 10
 MIN_WINDOW_N = 20  # trades a metal needs in a session before the review suggests changing that metal's windows
 
 STOP_PARAMS = {"S01": "stop_atr", "S02": "stop_atr", "S05": "stop_atr", "S06": "stop_atr", "S07": "stop_atr",
-               "S08": "stop_n", "S09": "stop_atr", "S10": "leg_stop_atr", "S11": "stop_atr"}
-TARGET_PARAMS = {"S01": "reward_risk", "S03": "reward_risk", "S05": "reward_risk", "S06": "reward_risk", "S04": "tp_range_mult"}
+               "S08": "stop_n", "S09": "stop_atr", "S10": "leg_stop_atr", "S11": "stop_atr", "S12": "stop_atr"}
+TARGET_PARAMS = {"S01": "reward_risk", "S03": "reward_risk", "S05": "reward_risk", "S06": "reward_risk", "S04": "tp_range_mult",
+                 "S12": "reward_risk"}
+
+
+def metal_keys(params: dict, name: str) -> list[str]:
+    """Where a setting lives on this bot: its gold and silver copies when it keeps one per metal, else the shared name."""
+    keys = [f"{m}_{name}" for m in ("gold", "silver") if params.get(f"{m}_{name}") is not None]
+    return keys or ([name] if params.get(name) is not None else [])
 
 # UK time (Europe/London), the clock the trading windows use
 SESSIONS = (("Asia 00-07", 0, 7), ("London 07-12", 7, 12), ("London/NY 12-16", 12, 16), ("New York 16-21", 16, 21), ("Late 21-24", 21, 24))
@@ -233,17 +240,18 @@ def suggest(bot: str, df: pd.DataFrame, stats: dict, params: dict) -> list[dict]
     ex = stats.get("excursions") or {}
     sp = STOP_PARAMS.get(sid)
     # stops too tight: winners often came close to the stop, or many stopped trades first went 1R our way
-    if ex.get("winners_near_stop_pct") is not None and ex["winners_near_stop_pct"] >= 40 and sp and params.get(sp):
+    if ex.get("winners_near_stop_pct") is not None and ex["winners_near_stop_pct"] >= 40 and sp and metal_keys(params, sp):
         add("stop_tight", "Stop looks tight: many winners nearly hit it first",
             f"{ex['winners_near_stop_pct']}% of winning trades went at least 0.8R against you before winning.",
-            change={sp: round(float(params[sp]) * 1.25, 2)})
+            change={k: round(float(params[k]) * 1.25, 2) for k in metal_keys(params, sp)})
     if ex.get("stopped_after_reaching_1r_pct") is not None and ex["stopped_after_reaching_1r_pct"] >= 30:
         tp = TARGET_PARAMS.get(sid)
         losers_mfe = ex.get("avg_mfe_r_losers")
-        if tp and params.get(tp) and float(params[tp]) > 1.0:
+        tks = [k for k in metal_keys(params, tp) if float(params[k]) > 1.0] if tp else []
+        if tks:
             add("give_back_target", "Trades often reach 1R and then get stopped: target may be too far",
                 f"{ex['stopped_after_reaching_1r_pct']}% of stopped trades were at least 1R in profit first "
-                f"(losers' average best point {losers_mfe}R).", change={tp: max(1.0, round(float(params[tp]) - 0.5, 2))})
+                f"(losers' average best point {losers_mfe}R).", change={k: max(1.0, round(float(params[k]) - 0.5, 2)) for k in tks})
         else:
             add("give_back_rule", "Trades often reach 1R and then get stopped",
                 f"{ex['stopped_after_reaching_1r_pct']}% of stopped trades were at least 1R in profit first.",
@@ -329,7 +337,13 @@ def key_failures(df: pd.DataFrame, stats: dict, tuning: Optional[dict] = None) -
     if net > 0 and len(wins) >= 5 and wins.iloc[:5].sum() > net:
         add("concentrated", "Profit depends on a handful of trades", f"The best 5 trades made {wins.iloc[:5].sum():+.2f}, "
             f"more than the whole net {net:+.2f}: without them the bot loses.")
-    for col, label in (("by_side", "side"), ("by_metal", "metal")):
+    for g in stats.get("by_metal") or []:  # gold and silver are judged on their own
+        if g["n"] >= 30 and g["avg_r"] is not None and g["avg_r"] < 0:
+            m = g["key"].lower()
+            add(f"metal_{g['key']}", f"{g['key'].capitalize()} loses money",
+                f"{g['key'].capitalize()}: {g['n']} trades, {g['avg_r']:+.2f}R a trade, net {g['net']:+.2f}. If tuning {m}'s "
+                f"own stop and target does not fix it, switch {m} off for this bot (trade_{m} off).")
+    for col, label in (("by_side", "side"),):
         groups = stats.get(col) or []
         losses = sum(-g["net"] for g in groups if g["net"] < 0)
         for g in groups:

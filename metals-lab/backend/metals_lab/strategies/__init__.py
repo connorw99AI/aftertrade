@@ -1,5 +1,5 @@
 from .base import Param, Strategy, StrategyContext  # noqa: F401
-from .daytrading import BreakoutRetest, NewYorkOpeningRangeBreakout, SessionMomentum, VolatilityCompressionBreakout
+from .daytrading import BreakoutRetest, NewYorkOpeningRangeBreakout, SessionMomentum, VolatilityCompressionBreakout, VWAPTrendCross
 from .scalping import AsianRangeReversion, FailedBreakoutReversal, TrendPullbackScalper
 from .swing import DonchianChannelBreakout, GoldSilverRatioReversion, RegimeRSI2Reversion, TimeSeriesMomentum
 
@@ -9,7 +9,7 @@ STRATEGY_CLASSES = {
         TrendPullbackScalper, AsianRangeReversion, FailedBreakoutReversal,
         NewYorkOpeningRangeBreakout, BreakoutRetest, VolatilityCompressionBreakout,
         RegimeRSI2Reversion, DonchianChannelBreakout, TimeSeriesMomentum, GoldSilverRatioReversion,
-        SessionMomentum,
+        SessionMomentum, VWAPTrendCross,
     )
 }
 

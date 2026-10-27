@@ -88,7 +88,7 @@ All limits are configurable (`config.yaml → risk`) and measured against each b
 |---|---|
 | Planned loss at stop (`order_calc_profit`) + estimated spread/commission ≤ risk per trade | **off** (`per_trade_limit_enabled: false`); planned risk is logged. 2% when on |
 | Minimum trade size (sizing floor) | 0.01 lot on both metals (`min_lot`); the forced larger size for tight stops is off (`big_lot: 0`) |
-| Trade skipped if even the minimum size would lose more than this share of the bot at its stop | 5% (`max_trade_risk: 0.05`); 10% for the wide-stop bots S07, S08, S09, S10 (`max_trade_risk_by_strategy`) |
+| Trade skipped if even the minimum size would lose more than this share of the bot at its stop | 5% for every bot (`max_trade_risk: 0.05`; `max_trade_risk_by_strategy` can give a strategy its own cap, none by default) |
 | New trades per bot per UTC day (a two-leg group counts once; shadow approvals count too) | 5 |
 | Daily bot loss → entries blocked for the rest of the UTC day | 30% (`daily_loss_pause`) |
 | Profit lock: once up 5%+ on the day, giving back half the day's best gain → entries blocked for the rest of the day | 5% / half (`daily_lock_from`, `daily_giveback`) |
@@ -146,7 +146,7 @@ These are planning limits, not guarantees: gaps, slippage and weekend opens can 
 - Popups: a `TRADE_CLOSED` event fires only when a position or trade group is fully closed. It stays provisional until a settle window (default 5 min) passes with no further deals, then becomes `TRADE_FINALIZED`.
 - The following raise **blocking** alerts and stop new entries until an operator reviews them: manual or unknown trades, unknown positions, positions that vanished without a closing deal, and balance operations (deposits, withdrawals, credits).
 - Balance operations land in an unallocated pool and are never distributed automatically.
-- Every half has its own allocation (1/22 of the starting balance: £227.27 on a £5,000 demo; labs set up with 20 bots are re-split to 1/22 once, keeping their trades) and its own ledger; retiring a half only stops new entries, its balance stays on its own book. Un-retiring returns any balance an older lab moved to the other half, as an audited `ALLOCATION_MOVE`.
+- Every half has its own allocation (1/24 of the starting balance: £416.66 on a £10,000 demo; a lab set up with 22 bots on the same account is re-split to 1/24 once, keeping its trades, and a new demo account starts a fresh lab) and its own ledger; retiring a half only stops new entries, its balance stays on its own book. Un-retiring returns any balance an older lab moved to the other half, as an audited `ALLOCATION_MOVE`.
 
 ## Per-bot guard (from the Metal Lab MT5 risk guard)
 

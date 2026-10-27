@@ -20,24 +20,26 @@ def client(armed, cfg, tmp_path, monkeypatch):
     return TestClient(create_app(State(cfg, armed.db, armed, "SIMULATED")))
 
 
-def test_api_contracts(client):
+def test_api_contracts(client, cfg):
+    from metals_lab.strategies import BOT_IDS
     s = client.get("/api/status").json()
     assert s["terminal_kind"] == "SIMULATED" and s["account"]["state"] == "DEMO" and s["armed"] is True
     assert "login" not in json.dumps(s["account"])
     bots = client.get("/api/bots").json()
-    assert len(bots) == 22
+    assert len(bots) == len(BOT_IDS) == 24
+    frac = cfg["capital"]["bot_fraction"]
     for b in bots:
         for k in ("bot_id", "name", "style", "symbols", "status", "book", "risk_budget_per_trade", "open_positions",
                   "closed_net_pnl", "return_pct", "max_drawdown_closed_pct", "last_signal", "last_audit", "last_risk", "magic"):
             assert k in b
-        assert b["book"]["allocation"] == round(200_000 * 0.045454, 2)  # 1/22 each
+        assert b["book"]["allocation"] == round(200_000 * frac, 2)  # 1/24 each
     d = client.get("/api/bots/S04L").json()
     assert d["strategy"]["citations"] and d["strategy"]["long_rules"]
     assert client.get("/api/strategies").status_code == 200
-    assert client.get("/api/risk").json()["capital_snapshot"]["bot_fraction"] == 0.045454
+    assert client.get("/api/risk").json()["capital_snapshot"]["bot_fraction"] == frac == 0.041666
     assert client.get("/api/auditor/decisions").status_code == 200
     assert isinstance(client.get("/api/events?after=0").json(), list)
-    assert len(client.get("/api/compare").json()) == 22
+    assert len(client.get("/api/compare").json()) == 24
 
 
 def test_arming_from_the_dashboard_is_local_typed_demo_only_and_logged(coord, cfg, tmp_path, monkeypatch):
@@ -49,7 +51,7 @@ def test_arming_from_the_dashboard_is_local_typed_demo_only_and_logged(coord, cf
     local = TestClient(app, client=("127.0.0.1", 50000))
     remote = TestClient(app, client=("192.168.1.20", 50000))
     pv = local.get("/api/arm/preview").json()
-    assert not pv["armed"] and pv["problems"] == [] and pv["phrase"].startswith("ARM DEMO ") and pv["bots"] == 22
+    assert not pv["armed"] and pv["problems"] == [] and pv["phrase"].startswith("ARM DEMO ") and pv["bots"] == 24
     assert pv["per_bot"] == round(pv["starting_balance"] * cfg["capital"]["bot_fraction"], 2)
     good = {"phrase": pv["phrase"], "operator": "pytest"}
     assert remote.post("/api/arm", json=good).status_code == 403                  # only from this PC
@@ -108,7 +110,7 @@ def test_backtest_endpoint_labels_replay(client, cfg):
     assert b["status"] == "DONE", b.get("diagnostics")
     assert b["label"].startswith("HISTORICAL REPLAY")
     assert any("SYNTHETIC" in x for x in b["reliability"])
-    # each bot starts with bot_fraction (1/22) of the starting balance, not whatever an old database allocated
+    # each bot starts with bot_fraction (1/24) of the starting balance, not whatever an old database allocated
     assert b["metrics"]["initial_capital"] == round(200000.0 * cfg["capital"]["bot_fraction"], 2)
 
 

@@ -72,7 +72,7 @@ function Leaderboard() {
   const need = Number(String(rk?.rule ?? "").match(/(\d+) closed/)?.[1] ?? 50);
   return (
     <>
-      <p className="muted">Rule for a live candidate: {rk?.rule ?? "…"}. Picking the best of {rows.length || 22} bots still favours luck, so treat the top as a shortlist and test it on history it has never seen.
+      <p className="muted">Rule for a live candidate: {rk?.rule ?? "…"}. Picking the best of {rows.length || 24} bots still favours luck, so treat the top as a shortlist and test it on history it has never seen.
         Every chart below uses the same scale, so a flat line is a bot that has barely traded.</p>
       <div className="multiples">
         {rows.map((r) => {

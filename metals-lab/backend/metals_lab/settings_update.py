@@ -39,6 +39,9 @@ UPDATES: list[tuple[str, str, Optional[dict[str, str]]]] = [
                                           "max_trade_risk": "0.05"}),
     # wide-stop bots (S07-S10, both halves) may lose up to 10% at the stop, so 0.01 lot fits their stops
     ("2026-10-26-wide-stop-cap", "risk", {"max_trade_risk_by_strategy": "{S07: 0.10, S08: 0.10, S09: 0.10, S10: 0.10}"}),
+    # S12 (VWAP trend cross) makes 24 bots at 1/24 each; on a 10,000 demo every bot then fits the 5% cap, so no exceptions
+    ("2026-10-27-24-bots", "capital", {"bot_fraction": "0.041666"}),
+    ("2026-10-27-one-trade-cap", "risk", {"max_trade_risk_by_strategy": "{}"}),
 ]
 
 MARK = "# metal-lab settings applied: "

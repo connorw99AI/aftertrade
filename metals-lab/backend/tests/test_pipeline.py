@@ -19,7 +19,7 @@ from metals_lab.timeutil import utc_now
 
 from conftest import approve, make_open_proposal
 
-ALLOC = round(200_000 * 0.045454, 2)  # each of the 22 bots gets 1/22 of the simulated 200,000 balance
+ALLOC = round(200_000 * 0.041666, 2)  # each of the 24 bots gets 1/24 of the simulated 200,000 balance
 
 
 def open_position(c, **kw):
@@ -321,7 +321,7 @@ def test_shadow_mode_records_decisions_without_orders(coord, sim):
 
 def test_shadow_mode_sizes_on_would_be_allocation(coord):
     b = coord.bot_book("S08L")
-    assert b.shadow and b.allocation == ALLOC  # 1/22 of the 200,000 simulated balance, not 0
+    assert b.shadow and b.allocation == ALLOC  # 1/24 of the 200,000 simulated balance, not 0
     coord.arm("pytest")
     real = coord.bot_book("S08L")
     assert not real.shadow and real.allocation == ALLOC

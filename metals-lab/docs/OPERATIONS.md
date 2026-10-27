@@ -93,7 +93,7 @@ Six pages, each named for a job. Old addresses (/positions, /history, /compare, 
 | Trades | Open: every trade with live P&L, a bar from stop to target with entry and the current price marked, and whether MT5 still holds the stop and target; close one, one bot's, or all. Closed: a daily P&L calendar for the last eight weeks (click a day to filter), filters, every closed trade with its rules version and reasons, CSV download. |
 | Assessor | Grades (a progress bar until there are enough trades to judge), Leaderboard (one small equity chart per bot on the same scale with the live-candidate checks, and the ranking table), Suggestions to test and apply, and Blocked trades (why trades did or did not happen, what the auditor and risk engine blocked, stops and targets put back). |
 | Research | Download MT5 history (with a coverage timeline of what you have, and a list of every download with Delete and Delete all; live trading never reads these files), run one bot or all 22 over a date range with your live risk settings, results by bot name, the newest run opened automatically, and backtest results next to demo results. |
-| System | Risk controls and every limit written as a sentence, account and capital, the audit log grouped ("Initial allocation, all 22 bots, £227.27 each" on a £5,000 demo), the market auditor, the MT5 connection, the full decision Log filterable by bot, and research Experiments. |
+| System | Risk controls and every limit written as a sentence, account and capital, the audit log grouped ("Initial allocation, all 24 bots, £416.66 each" on a £10,000 demo), the market auditor, the MT5 connection, the full decision Log filterable by bot, and research Experiments. |
 
 The bell at the top right holds open alerts on every page; resolve them from its drawer.
 
@@ -110,7 +110,7 @@ Both do the same, and the dashboard refuses while the kill switch is on (clear i
 **Disarm** on the System page stops all new automatic trading at any time.
 
 1. Arming re-verifies DEMO, hedging, Algo Trading, instruments and clock.
-2. It shows the starting balance snapshot and the per-bot allocation (1/22 each, £227.27 on a £5,000 demo; a lab set up with 20 bots is re-split to 1/22 once by the launcher, keeping its trades).
+2. It shows the starting balance snapshot and the per-bot allocation (1/24 each, £416.66 on a £10,000 demo; a lab set up with 22 bots on the same account is re-split to 1/24 once by the launcher, keeping its trades).
 3. It asks you to type `ARM DEMO <6-char fingerprint>` (shown in the dialog), and logs your name.
 
 On the first activation for an account, the balance is snapshotted once and the allocations are created. Re-arming later never resets them.
@@ -122,7 +122,7 @@ On the first activation for an account, the balance is snapshotted once and the 
 
 ## 5. Historical data and research
 
-The Research page does the common steps from the dashboard: **Download history from MT5** for a From/To date range (M5, M15, H1 for both metals; set MT5's Tools → Options → Charts → Max bars in chart to Unlimited and restart MT5 first, or downloads stop at about 100,000 bars), **Run all 22 bots** over a date range, **Clear old results**. Backtests run in separate processes (two at a time), so the dashboard and the trading loop stay responsive while they run. The command line does the same and more:
+The Research page does the common steps from the dashboard: **Download history from MT5** for a From/To date range (M5, M15, H1 for both metals; set MT5's Tools → Options → Charts → Max bars in chart to Unlimited and restart MT5 first, or downloads stop at about 100,000 bars), **Run all 24 bots** over a date range, **Clear old results**. Backtests run in separate processes (two at a time), so the dashboard and the trading loop stay responsive while they run. The command line does the same and more:
 
 ```
 metals-lab fetch-history --days 730 --tf M5 M15 H1        # Parquet cache + manifest + quality report
@@ -140,16 +140,22 @@ metals-lab research --strategy S08 --holdout                    # touches the fi
 - Reports are written to `reports/`. Every trial, including failures, is stored in the `experiments` table and shown on the Research page.
 - How much history you get is limited by the terminal's "Max bars in chart" setting and by the broker.
 
-## 6. Upgrading to the long/short split (one-off)
+## 6. Switching to a new MT5 demo account
 
-Old databases have ten bots with the old magic numbers. The new loop does not recognise those, so:
+A lab belongs to one MT5 account. When the launcher starts and MT5 is logged in to a different **demo** account from
+the one the lab was set up on, it archives the old lab to `data\archive\` (nothing is deleted) and a fresh lab starts:
+24 bots at 1/24 of the new balance each. A live or contest account, or MT5 not running, changes nothing.
 
-1. Close every open trade first (the command refuses while any are open).
-2. Stop the lab (Ctrl+C), then `git pull`.
-3. In `config\config.yaml` set `capital: bot_fraction: 0.05`.
-4. `.venv\Scripts\metals-lab new-lab --confirm "NEW LAB"`. This moves the old database to `data\archive\` (nothing is deleted) and starts a fresh one with 22 bots.
-5. Start Metal Lab, then **Arm demo trading** on the Lab page (or `metals-lab arm --operator "Your Name"`). The balance is snapshotted again and allocations are created.
-6. Start the halves you want from the Lab page.
+1. On the old account, close any trades the bots still hold (the old lab's records stay in the archive; MT5 keeps the
+   trades on that account).
+2. Stop Metal Lab. In MT5, log in to the new demo account and leave the terminal running.
+3. Start Metal Lab with the desktop launcher. It prints "New MT5 demo account: the previous lab was archived to ...".
+4. **Arm demo trading** on the Lab page (or `metals-lab arm --operator "Your Name"`). The new balance is snapshotted once
+   and the 24 allocations are created.
+5. Research page: download history (if the broker changed), then **Run all 24 bots**; Assessor page: **Test all bots**.
+6. Start the bots you want from the Lab page.
+
+`metals-lab new-lab --confirm "NEW LAB"` still starts a fresh lab by hand on the same account.
 
 ## 7. Moving to a server later
 

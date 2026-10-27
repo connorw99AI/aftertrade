@@ -10,24 +10,24 @@ from metals_lab.strategies.base import StrategyContext, contract_loss
 
 from conftest import frames_for_strategy, scan_signals
 
-INTRADAY = ["S01", "S02", "S03", "S04", "S05", "S06"]
+INTRADAY = ["S01", "S02", "S03", "S04", "S05", "S06", "S12"]
 SWING = ["S07", "S08", "S09", "S10"]
 # Loosened only where a cost/regime filter blocks every synthetic bar; rules are otherwise unchanged.
 SCAN_PARAMS = {"S02": {"max_spread_atr": 5.0}, "S01": {"max_spread_atr": 5.0}, "S03": {"max_spread_atr": 5.0},
                "S06": {"max_spread_atr": 5.0}, "S07": {"max_spread_atr": 5.0}, "S08": {"max_spread_atr": 5.0},
                "S09": {"max_spread_atr": 5.0, "entry_strength": 0.25}, "S04": {"max_spread_atr": 5.0},
-               "S05": {"max_spread_atr": 5.0}}
+               "S05": {"max_spread_atr": 5.0}, "S12": {"max_spread_atr": 5.0}}
 
 
-def test_eleven_distinct_strategies_with_full_metadata():
-    assert len(STRATEGY_CLASSES) == 11
+def test_twelve_distinct_strategies_with_full_metadata():
+    assert len(STRATEGY_CLASSES) == 12
     styles = [c.style for c in STRATEGY_CLASSES.values()]
-    assert styles.count(Style.SCALP) == 3 and styles.count(Style.DAY) == 8
+    assert styles.count(Style.SCALP) == 3 and styles.count(Style.DAY) == 9
     tfs = [c.primary_timeframe for c in STRATEGY_CLASSES.values()]
-    # operator rule: nothing trades slower than M15, and only one bot trades M1
-    assert {tf: tfs.count(tf) for tf in set(tfs)} == {"M5": 6, "M15": 5}  # no one-minute entries: deep history for every bot
+    # operator rule: nothing trades slower than M15
+    assert {tf: tfs.count(tf) for tf in set(tfs)} == {"M5": 7, "M15": 5}  # no one-minute entries: deep history for every bot
     names = {c.name for c in STRATEGY_CLASSES.values()}
-    assert len(names) == 11
+    assert len(names) == 12
     for sid, cls in STRATEGY_CLASSES.items():
         s = cls()
         d = s.describe()
@@ -43,9 +43,9 @@ def test_eleven_distinct_strategies_with_full_metadata():
 
 def test_magic_numbers_unique_and_reversible():
     from metals_lab.strategies import BOT_IDS
-    assert len(BOT_IDS) == 22
+    assert len(BOT_IDS) == 24
     mags = {magic_for(b) for b in BOT_IDS}
-    assert len(mags) == 22
+    assert len(mags) == 24
     for b in BOT_IDS:
         assert strategy_for_magic(magic_for(b)) == b
     assert strategy_for_magic(0) is None
@@ -316,3 +316,42 @@ def test_range_bots_keep_their_range_until_the_next_one_when_sessions_are_off():
     assert (off.loc[late, "orb_dir"] == 1).any()                             # overnight breakout of Monday's range counts
     assert not (on.loc[late, "orb_dir"] != 0).any()                          # with sessions on it is past the cut-off
     assert not off["time_exit"].any()
+
+
+def test_s12_vwap_restarts_at_the_london_open_and_takes_one_entry_per_crossover(specs):
+    from zoneinfo import ZoneInfo
+    s = build("S12")
+    frames = frames_for_strategy(type(s))
+    df = s.prepare({("GOLD", "M5"): frames[("GOLD", "M5")]})[("GOLD", "M5")]
+    uk = df["time"].dt.tz_convert(ZoneInfo("Europe/London"))
+    first = df[(uk.dt.hour == 8) & (uk.dt.minute == 0)].head(20)
+    assert len(first) and np.allclose(first["vwap"], (first["high"] + first["low"] + first["close"]) / 3)   # restarts at 08:00 UK
+    cross_id = (df["ema_f"] > df["ema_s"]).ne((df["ema_f"] > df["ema_s"]).shift(1)).cumsum()
+    per_cross = (df["go_long"] | df["go_short"]).groupby(cross_id).sum()
+    assert per_cross.max() == 1 and per_cross.sum() > 10                    # never a second entry on the same crossover
+    bad = df[df["go_long"] & ((df["close"] <= df["vwap"]) | (df["vwap_slope"] <= 0) | (df["ema_f"] <= df["ema_s"]))]
+    assert bad.empty
+
+
+def test_s12_enters_only_in_london_hours_and_exits_back_through_vwap(specs):
+    from zoneinfo import ZoneInfo
+    s = build("S12", {"max_spread_atr": 5.0})
+    frames = frames_for_strategy(type(s))
+    pre = s.prepare({(r, "M5"): frames[(r, "M5")] for r in s.roles})
+    g = pre[("GOLD", "M5")]
+    hits = g.index[g["go_long"] | g["go_short"]]
+    times = []
+    for i in hits[:300]:
+        T = g["time"].iloc[i] + pd.Timedelta(minutes=5)
+        ctx = StrategyContext(T.to_pydatetime(), {k: v.iloc[: i + 1] for k, v in pre.items()}, [], specs)
+        times += [T for x in s.entry_signals(ctx) if x.role == "GOLD"]
+    uk = [t.tz_convert(ZoneInfo("Europe/London")) for t in times]
+    assert uk and all((8, 30) <= (t.hour, t.minute) < (20, 0) for t in uk)
+    assert len(times) < len(hits)                                           # crossovers outside the hours are skipped
+    # a long whose bar closes below VWAP is closed
+    i = int(g.index[(g["close"] < g["vwap"]) & (g["time"].dt.tz_convert(ZoneInfo("Europe/London")).dt.hour == 12)][0])
+    T = g["time"].iloc[i] + pd.Timedelta(minutes=5)
+    pos = PositionView(key="k", role="GOLD", symbol="XAUUSD", side="LONG", volume=0.01, entry_price=float(g["close"].iloc[i - 1]),
+                       opened_at=T.to_pydatetime(), sl=None, tp=None, bars_held=1, max_hold_bars=24)
+    ctx = StrategyContext(T.to_pydatetime(), {k: v.iloc[: i + 1] for k, v in pre.items()}, [pos], specs)
+    assert [x.rationale for x in s.exit_signals(ctx)] == ["closed back through VWAP"]

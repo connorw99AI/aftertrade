@@ -25,7 +25,7 @@ def _open(c, bot="S01L", volume=0.04):
 def test_summary_lists_every_bot_with_account_strip(client, armed):
     _open(armed)
     s = client.get("/api/summary").json()
-    assert len(s["bots"]) == 22 and s["armed"] and s["open_trades"] == 1
+    assert len(s["bots"]) == 24 and s["armed"] and s["open_trades"] == 1
     assert {"balance", "equity", "currency"} <= set(s["account"])
     s01 = next(b for b in s["bots"] if b["bot_id"] == "S01L")
     assert s01["open_positions"] and s01["max_entries_per_day"] == 5
@@ -54,7 +54,7 @@ def test_manual_close_goes_through_pipeline(client, armed):
 def test_activity_feed_and_funnel(client, armed):
     _open(armed)
     a = client.get("/api/activity").json()
-    assert len(a["funnel"]) == 22 and {"signals", "skipped_sizing", "auditor_held", "risk_rejected", "approved", "filled"} <= set(a["funnel"][0])
+    assert len(a["funnel"]) == 24 and {"signals", "skipped_sizing", "auditor_held", "risk_rejected", "approved", "filled"} <= set(a["funnel"][0])
     assert next(f for f in a["funnel"] if f["bot_id"] == "S01L")["filled"] == 1
 
 

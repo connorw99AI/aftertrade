@@ -1,4 +1,4 @@
-/* The 22 creatures: one per bot. Each is its own character; long bots are blues and greens, short bots reds and oranges. */
+/* The 24 creatures: one per bot. Each is its own character; long bots are blues and greens, short bots reds and oranges. */
 
 export type Character = { name: string; side: "long" | "short"; looks: string; personality: string };
 
@@ -69,4 +69,10 @@ export const CHARACTERS: Record<string, Character> = {
   S11S: { name: "Copper Vigil", side: "short",
     looks: "A copper riveted robot with a crescent head, three gold eye-lamps, a glowing gold chest core and pincer hands.",
     personality: "Patient. If New York's first half hour fell, it sells for the last half hour and leaves at the close." },
+  S12L: { name: "Azure Lantern", side: "long",
+    looks: "A tall blue mushroom-capped alien with green-veined fins and pale cyan lanterns hanging from its cap.",
+    personality: "Methodical. When the fast average crosses up and price is above a rising VWAP, it buys; it leaves if price slips back under." },
+  S12S: { name: "Ember Lantern", side: "short",
+    looks: "A tall orange mushroom-capped alien with crimson fins and amber lanterns hanging from its cap.",
+    personality: "Cool-headed. When the fast average crosses down and price is below a falling VWAP, it sells; it leaves if price climbs back over." },
 };

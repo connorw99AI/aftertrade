@@ -13,16 +13,16 @@ FP = "f" * 64
 
 def test_equal_share_allocation_snapshot_once():
     led = Ledger(Store(":memory:"))
-    led.initialize(FP, 22000.0, "USD", 1 / 22, BOT_IDS)
+    led.initialize(FP, 24000.0,"USD", 1 / 24, BOT_IDS)
     assert all(led.allocation(b) == 1000.0 for b in BOT_IDS)
-    led.initialize(FP, 50000.0, "USD", 1 / 22, BOT_IDS)  # later balance changes never reset allocations
+    led.initialize(FP, 50000.0, "USD", 1 / 24, BOT_IDS)  # later balance changes never reset allocations
     assert all(led.allocation(b) == 1000.0 for b in BOT_IDS)
     assert led.unallocated_pool(FP) == 0.0
 
 
 def test_bot_capital_isolation_and_idempotent_deals():
     led = Ledger(Store(":memory:"))
-    led.initialize(FP, 22000.0, "USD", 1 / 22, BOT_IDS)
+    led.initialize(FP, 24000.0,"USD", 1 / 24, BOT_IDS)
     deal = {"ticket": 77, "profit": -250.0, "commission": -3.5, "swap": -1.0, "fee": 0.0, "symbol": "XAUUSD"}
     led.post_deal("S01L", deal)
     led.post_deal("S01L", deal)  # reconciliation re-run: no double booking
@@ -33,7 +33,7 @@ def test_bot_capital_isolation_and_idempotent_deals():
 
 def test_free_capital_excludes_reserved_margin_and_short_proceeds():
     led = Ledger(Store(":memory:"))
-    led.initialize(FP, 22000.0, "USD", 1 / 22, BOT_IDS)
+    led.initialize(FP, 24000.0,"USD", 1 / 24, BOT_IDS)
     b = led.book("S02L", unrealized=0.0, reserved_margin=400.0, pending_reserved=100.0)
     assert b.free_capital == 500.0  # opening a short adds margin usage, never notional cash
 
@@ -41,7 +41,7 @@ def test_free_capital_excludes_reserved_margin_and_short_proceeds():
 def test_allocation_change_requires_explicit_funded_action():
     st = Store(":memory:")
     led = Ledger(st)
-    led.initialize(FP, 22000.0, "USD", 1 / 22, BOT_IDS)
+    led.initialize(FP, 24000.0,"USD", 1 / 24, BOT_IDS)
     with pytest.raises(ValueError):
         led.change_allocation(FP, "S01L", 100.0, "more", "op")  # pool is empty
     with pytest.raises(ValueError):

@@ -105,22 +105,22 @@ class TrendPullbackScalper(Strategy):
                 continue
             if pd.isna(r["atr_pct"]) or not (20 <= r["atr_pct"] <= 90):
                 continue
-            if spread_price(r, spec) > self.p["max_spread_atr"] * r["atr"]:
+            if spread_price(r, spec) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
             vals = {"close": r["close"], "ema20": r["ema_f"], "ema50": r["ema_m"], "m15_ema_fast": t["t_fast"], "m15_ema_slow": t["t_slow"],
                     "rsi": r["rsi"], "prev_rsi": pv["rsi"], "atr": r["atr"], "atr_pct": r["atr_pct"]}
-            stop_d = self.p["stop_atr"] * r["atr"]
+            stop_d = self.pm("stop_atr", role) * r["atr"]
             if (trend == 1 and pv["low"] <= pv["ema_f"] and r["close"] > r["ema_f"]
                     and r["close"] > r["open"] and pv["rsi"] < self.p["rsi_pull"] and r["rsi"] > pv["rsi"]):
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "M15 uptrend; M5 pullback to EMA20 rejected with bullish close",
                                         vals, stop_price=r["close"] - stop_d,
-                                        target_price=r["close"] + self.p["reward_risk"] * stop_d,
+                                        target_price=r["close"] + self.pm("reward_risk", role) * stop_d,
                                         max_hold_bars=self.p["max_hold_bars"]))
             elif (trend == -1 and pv["high"] >= pv["ema_f"] and r["close"] < r["ema_f"]
                   and r["close"] < r["open"] and pv["rsi"] > 100 - self.p["rsi_pull"] and r["rsi"] < pv["rsi"]):
                 sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "M15 downtrend; M5 rally to EMA20 rejected with bearish close",
                                         vals, stop_price=r["close"] + stop_d,
-                                        target_price=r["close"] - self.p["reward_risk"] * stop_d,
+                                        target_price=r["close"] - self.pm("reward_risk", role) * stop_d,
                                         max_hold_bars=self.p["max_hold_bars"]))
         return sigs
 
@@ -158,7 +158,7 @@ class TrendPullbackScalper(Strategy):
                       if self.p["use_session"] == "on" else []),
                     chk("Volatility normal (ATR percentile 20-90)", 20 <= (r["atr_pct"] if not pd.isna(r["atr_pct"]) else -1) <= 90,
                         f"percentile {fmt(r['atr_pct'], 0)}"),
-                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"],
                         f"spread {fmt(spr, d)} vs ATR {fmt(r['atr'], d)}"),
                 ],
                 "long": [
@@ -256,11 +256,11 @@ class AsianRangeReversion(Strategy):
             spec = ctx.specs[role]
             if pd.isna(r["adx"]) or pd.isna(r["bbw_pct"]) or r["adx"] >= self.p["adx_max"] or r["bbw_pct"] >= 50:
                 continue
-            if spread_price(r, spec) > self.p["max_spread_atr"] * r["atr"]:
+            if spread_price(r, spec) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
             vals = {"close": r["close"], "bb_lower": r["bb_l"], "bb_upper": r["bb_u"], "bb_mid": r["bb_m"],
                     "rsi5": r["rsi"], "adx": r["adx"], "bbw_pct": r["bbw_pct"], "atr": r["atr"]}
-            sd = self.p["stop_atr"] * r["atr"]
+            sd = self.pm("stop_atr", role) * r["atr"]
             if r["close"] < r["bb_l"] and r["rsi"] < self.p["rsi_low"]:
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "ranging Asian session, close below lower band, RSI oversold",
                                         vals, stop_price=r["close"] - sd, target_price=r["bb_m"], max_hold_bars=self.p["max_hold_bars"]))
@@ -302,7 +302,7 @@ class AsianRangeReversion(Strategy):
                       if self.p["use_session"] == "on" else []),
                     chk(f"Ranging: ADX below {self.p['adx_max']}", r["adx"] < self.p["adx_max"], f"ADX {fmt(r['adx'], 1)}"),
                     chk("Bands not wide (width percentile < 50)", r["bbw_pct"] < 50, f"percentile {fmt(r['bbw_pct'], 0)}"),
-                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"],
                         f"spread {fmt(spr, d)} vs ATR {fmt(r['atr'], d)}"),
                 ],
                 "long": [
@@ -387,7 +387,7 @@ class FailedBreakoutReversal(Strategy):
             spec = ctx.specs[role]
             if pd.isna(r["ph"]) or pd.isna(r["adx"]) or r["adx"] >= self.p["adx_max"]:
                 continue
-            if (b["high"] - b["low"]) > 2.5 * r["atr"] or spread_price(r, spec) > self.p["max_spread_atr"] * r["atr"]:
+            if (b["high"] - b["low"]) > 2.5 * r["atr"] or spread_price(r, spec) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
             hi2, lo2 = max(r["high"], b["high"]), min(r["low"], b["low"])
             vals = {"close": r["close"], "prior_high": r["ph"], "prior_low": r["pl"], "atr": r["atr"], "adx": r["adx"],
@@ -395,12 +395,12 @@ class FailedBreakoutReversal(Strategy):
             if hi2 > r["ph"] and r["close"] < r["ph"] and r["close"] < r["open"]:
                 stop = hi2 + 0.2 * r["atr"]
                 sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, f"failed breakout above {self.p['lookback']}-bar high, closed back inside",
-                                        vals, stop_price=stop, target_price=r["close"] - self.p["reward_risk"] * (stop - r["close"]),
+                                        vals, stop_price=stop, target_price=r["close"] - self.pm("reward_risk", role) * (stop - r["close"]),
                                         max_hold_bars=self.p["max_hold_bars"]))
             elif lo2 < r["pl"] and r["close"] > r["pl"] and r["close"] > r["open"]:
                 stop = lo2 - 0.2 * r["atr"]
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, f"failed breakdown below {self.p['lookback']}-bar low, closed back inside",
-                                        vals, stop_price=stop, target_price=r["close"] + self.p["reward_risk"] * (r["close"] - stop),
+                                        vals, stop_price=stop, target_price=r["close"] + self.pm("reward_risk", role) * (r["close"] - stop),
                                         max_hold_bars=self.p["max_hold_bars"]))
         return sigs
 
@@ -426,7 +426,7 @@ class FailedBreakoutReversal(Strategy):
                     chk(f"Not a strong trend (ADX < {self.p['adx_max']})", r["adx"] < self.p["adx_max"], f"ADX {fmt(r['adx'], 1)}"),
                     chk("Breakout bar not a news spike (< 2.5 ATR)", (b["high"] - b["low"]) <= 2.5 * r["atr"],
                         f"range {fmt(b['high'] - b['low'], d)} vs ATR {fmt(r['atr'], d)}"),
-                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"],
                         f"spread {fmt(spr, d)}"),
                 ],
                 "long": [

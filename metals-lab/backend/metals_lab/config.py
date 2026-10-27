@@ -18,7 +18,7 @@ DEFAULTS: dict[str, Any] = {
     },
     "instruments": {"gold": None, "silver": None, "reference_symbols": []},
     "sessions": {},                     # optional explicit session windows per role (server time)
-    "capital": {"bot_fraction": 0.045454,  # 22 bots (11 strategies x long/short halves), 1/22 each
+    "capital": {"bot_fraction": 0.041666,  # 24 bots (12 strategies x long/short halves), 1/24 each
                 "apply_assessor_retirements": False},  # true: a fresh lab starts with the assessor's flagged halves retired
     "risk": {
         "risk_per_trade": 0.02,             # sizing target: each trade risks 2% of the bot at its stop (a bot may override it)
@@ -31,7 +31,7 @@ DEFAULTS: dict[str, Any] = {
                                             # exposure caps below; False = losses are handled by the daily stops and drawdown pause
         "max_entries_per_bot_per_day": 5,   # new trades (a two-leg group counts once) per bot per UTC day; 0 = unlimited
         "max_trade_risk": 0.05,             # skip a trade whose size would lose more than 5% of the bot at its stop
-        "max_trade_risk_by_strategy": {"S07": 0.10, "S08": 0.10, "S09": 0.10, "S10": 0.10},  # wide-stop bots (both halves)
+        "max_trade_risk_by_strategy": {},   # per-strategy exceptions, e.g. {S07: 0.10}; none: at 1/24 of 10,000 every bot fits 5%
         "daily_loss_pause": 0.30,           # no new entries for the rest of the UTC day after losing this much
         "daily_lock_from": 0.05,            # profit lock: once up this much on the day...
         "daily_giveback": 0.5,              # ...stop for the day after giving back this share of the day's best gain (0 = off)

@@ -80,11 +80,11 @@ class RegimeRSI2Reversion(Strategy):
             r = ctx.last(role, "M15")
             if reg == 0 or pd.isna(r["rsi2"]) or (not pd.isna(d["adx"]) and d["adx"] >= self.p["adx_max"]):
                 continue
-            if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
+            if spread_price(r, ctx.specs[role]) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
             vals = {"close": r["close"], "rsi2": r["rsi2"], "sma5": r["sma_x"], "h1_close": d["close"], "h1_sma": d["sma_r"],
                     "h1_adx": d["adx"], "atr": r["atr"]}
-            sd = self.p["stop_atr"] * r["atr"]
+            sd = self.pm("stop_atr", role) * r["atr"]
             if reg == 1 and r["rsi2"] < self.p["rsi_entry"]:
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "hourly uptrend + sharp M15 dip", vals,
                                         stop_price=r["close"] - sd, max_hold_bars=self.p["max_hold_bars"]))
@@ -123,7 +123,7 @@ class RegimeRSI2Reversion(Strategy):
                 "filters": [
                     chk(f"Hourly trend not runaway (ADX < {self.p['adx_max']})", pd.isna(dd["adx"]) or dd["adx"] < self.p["adx_max"],
                         f"hourly ADX {fmt(dd['adx'], 1)}"),
-                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"], f"spread {fmt(spr, d)}"),
                 ],
                 "long": [
                     chk("Hourly uptrend (close above SMA)", reg == 1, f"hourly close {fmt(dd['close'], d)} vs {fmt(dd['sma_r'], d)}"),
@@ -188,11 +188,11 @@ class DonchianChannelBreakout(Strategy):
             if ctx.position(role) or not ctx.has(role, "M15", self.p["entry_n"] + 2):
                 continue
             r = ctx.last(role, "M15")
-            if pd.isna(r["hi_e"]) or pd.isna(r["atr"]) or spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
+            if pd.isna(r["hi_e"]) or pd.isna(r["atr"]) or spread_price(r, ctx.specs[role]) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
             trend, h = hourly_trend(ctx, role, self.p["trend_sma"])
             vals = {"close": r["close"], "upper": r["hi_e"], "lower": r["lo_e"], "N_atr20": r["atr"], "h1_trend": trend}
-            sd = self.p["stop_n"] * r["atr"]
+            sd = self.pm("stop_n", role) * r["atr"]
             if r["close"] > r["hi_e"] and (trend == 1 or not self.p["trend_sma"]):
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, f"close above {self.p['entry_n']}-bar high", vals,
                                         stop_price=r["close"] - sd, max_hold_bars=self.p["max_hold_bars"]))
@@ -232,7 +232,7 @@ class DonchianChannelBreakout(Strategy):
                 "price": float(r["close"]),
                 "levels": [v for v in (level(f"{n}-bar high (long entry)", r["hi_e"]), level(f"{n}-bar low (short entry)", r["lo_e"]),
                                        level(f"{x}-bar low (long exit)", r["lo_x"]), level(f"{x}-bar high (short exit)", r["hi_x"])) if v],
-                "filters": [chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}")],
+                "filters": [chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"], f"spread {fmt(spr, d)}")],
                 "long": [chk("Hourly uptrend", up_ok, tdetail),
                          chk(f"M15 close above the {n}-bar high", r["close"] > r["hi_e"],
                              f"close {fmt(r['close'], d)} vs {fmt(r['hi_e'], d)} ({fmt(r['hi_e'] - r['close'], d)} away)")],
@@ -305,11 +305,11 @@ class TimeSeriesMomentum(Strategy):
             r = ctx.last(role, "M15")
             if not r["rebalance"] or pd.isna(r["strength"]):
                 continue
-            if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
+            if spread_price(r, ctx.specs[role]) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
             trend, _ = hourly_trend(ctx, role, self.p["trend_sma"])
             vals = {"close": r["close"], "lookback_return": r["ret_lb"], "strength": r["strength"], "atr": r["atr"], "h1_trend": trend}
-            sd = self.p["stop_atr"] * r["atr"]
+            sd = self.pm("stop_atr", role) * r["atr"]
             if r["strength"] > self.p["entry_strength"] and (trend == 1 or not self.p["trend_sma"]):
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "positive vol-scaled trend at hourly evaluation", vals,
                                         stop_price=r["close"] - sd, max_hold_bars=self.p["max_hold_bars"]))
@@ -350,7 +350,7 @@ class TimeSeriesMomentum(Strategy):
                 "filters": [
                     chk("Hourly evaluation bar (first M15 bar of the hour)", bool(r["rebalance"]),
                         "evaluates once an hour; waiting for the next hour's first bar" if not r["rebalance"] else ""),
-                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"], f"spread {fmt(spr, d)}"),
                 ],
                 "long": [chk("Hourly uptrend", trend == 1 or not tsma, tdetail),
                          chk(f"Trend strength above +{th}", r["strength"] > th,

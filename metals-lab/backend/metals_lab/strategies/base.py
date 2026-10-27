@@ -26,6 +26,10 @@ from ..domain import Intent, PositionView, Signal, Style, TargetPosition
 from ..instruments import InstrumentSpec
 
 
+# Settings every strategy keeps separately for gold and silver when it has them: stop size, target and spread guard.
+METAL_TUNED = ("stop_atr", "stop_n", "reward_risk", "tp_range_mult", "max_spread_atr")
+
+
 @dataclass(frozen=True)
 class Param:
     default: Any
@@ -120,6 +124,12 @@ class Strategy(ABC):
     RETIRED_PARAMS: tuple = ()     # parameter names from older versions: ignored if still saved on a bot
 
     @classmethod
+    def metal_tuned(cls) -> tuple[str, ...]:
+        """Settings this strategy keeps separately for gold and silver (``gold_stop_atr``, ``silver_stop_atr`` ...).
+        A pair trades both metals at once, so its settings stay shared."""
+        return () if cls.pair_trades else tuple(k for k in cls.PARAMS if k in METAL_TUNED)
+
+    @classmethod
     def param_defs(cls) -> dict[str, Param]:
         from .filters import ALL_DAY
         f = cls.ASSESSOR_FILTERS
@@ -131,7 +141,14 @@ class Strategy(ABC):
             "trail_atr": Param(0.0, "Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only "
                                     "ever tightens. When on, the fixed target is dropped so winners can run. 0 = off.",
                                (0.0, 2.0, 3.0, 4.0))}
-        return {**cls.PARAMS, **exits,
+        own: dict[str, Param] = {}
+        for k, prm in cls.PARAMS.items():
+            if k in cls.metal_tuned():
+                for m in ("gold", "silver"):
+                    own[f"{m}_{k}"] = Param(prm.default, f"{m.capitalize()}: {prm.rationale}", prm.grid)
+            else:
+                own[k] = prm
+        return {**own, **exits,
                 "sides": Param(f.get("sides", "both"), f"Which sides may open: both, long or short. {why}"),
                 "trade_gold": Param(f.get("trade_gold", "on"), "on: this bot may open gold trades; off: it does not trade gold."),
                 "trade_silver": Param(f.get("trade_silver", "on"), "on: this bot may open silver trades; off: it does not trade silver."),
@@ -144,6 +161,10 @@ class Strategy(ABC):
         self.params = {k: p.default for k, p in defs.items()}
         if params:
             params = {k: v for k, v in params.items() if k not in self.RETIRED_PARAMS and k not in LEGACY_PARAMS}
+            for k in self.metal_tuned():  # a shared value (saved before the gold/silver split) sets both metals
+                if k in params:
+                    v = params.pop(k)
+                    params.update({f"{m}_{k}": v for m in ("gold", "silver")})
             unknown = set(params) - set(defs)
             if unknown:
                 raise ValueError(f"{self.strategy_id}: unknown parameters {sorted(unknown)}")
@@ -153,6 +174,10 @@ class Strategy(ABC):
     @property
     def p(self) -> dict:
         return self.params
+
+    def pm(self, name: str, role: str):
+        """A setting for one metal: its own gold/silver value when this strategy keeps one, else the shared value."""
+        return self.params.get(f"{role.lower()}_{name}", self.params.get(name))
 
     # ------------------------------------------------------------------ data
 

@@ -1,14 +1,14 @@
 # Strategy research notes
 
-Eleven explicit, rule-based hypotheses, each run as two bots (a long half and a short half, 22 bots in all), for spot/CFD gold and silver. None of them is a proven edge. The defaults are starting hypotheses taken from the cited sources or from common practice. Their job is to be tested on your broker's real data, not trusted.
+Twelve explicit, rule-based hypotheses, each run as two bots (a long half and a short half, 24 bots in all), for spot/CFD gold and silver. None of them is a proven edge. The defaults are starting hypotheses taken from the cited sources or from common practice. Their job is to be tested on your broker's real data, not trusted.
 
 Full rules, parameters and per-strategy citations: [STRATEGY_REFERENCE.md](STRATEGY_REFERENCE.md) (generated from code).
 
 ## Long and short halves
 
-Every strategy runs as two independent bots: `S04L` only takes long entries and `S04S` only takes short ones. Each half has its own magic number (`7710000 + strategy*10 + 1` long, `+ 2` short), its own 1/22 allocation (£227.27 on the £5,000 demo), its own ledger and its own record, so a side that loses can be retired without retiring the strategy. S10 is a two-leg pair, so its halves are split by direction of the trade rather than by a single side: `S10L` buys silver and sells gold when silver is cheap on the ratio, `S10S` does the opposite.
+Every strategy runs as two independent bots: `S04L` only takes long entries and `S04S` only takes short ones. Each half has its own magic number (`7710000 + strategy*10 + 1` long, `+ 2` short), its own 1/24 allocation (£416.66 on the £10,000 demo), its own ledger and its own record, so a side that loses can be retired without retiring the strategy. S10 is a two-leg pair, so its halves are split by direction of the trade rather than by a single side: `S10L` buys silver and sells gold when silver is cheap on the ratio, `S10S` does the opposite.
 
-**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. It stops opening trades and keeps its own balance; the two halves never share money, and each starts with 1/22 of the starting balance. Un-retiring brings it back stopped with that balance. Labs from before this change moved a retired half's balance to the other half; un-retiring moves it back (an audited ledger entry). The Lab page has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Lab page.
+**Retiring a half** (bot page or Assessor page, operator name required): the half must have no open trades. It stops opening trades and keeps its own balance; the two halves never share money, and each starts with 1/24 of the starting balance. Un-retiring brings it back stopped with that balance. Labs from before this change moved a retired half's balance to the other half; un-retiring moves it back (an audited ledger entry). The Lab page has **Un-retire all**, and the CLI has `metals-lab unretire-all --operator NAME`. A retired half collapses to one line at the bottom of the Lab page.
 
 ## Assessor changes applied from the backtest review
 
@@ -34,6 +34,15 @@ UK time inside one of its windows; S10 (a gold/silver pair) needs both metals' w
 Backtests use the same windows. "Copy to all bots" on the bot page copies one bot's metals and windows to every paused,
 flat bot.
 
+**Gold and silver have their own settings.** Silver moves more than gold, its spread is a bigger share of its moves, and
+its Asian hours are thin, so one value rarely suits both. Every bot keeps its stop size, target and spread guard twice,
+once per metal: `gold_stop_atr` / `silver_stop_atr`, `gold_reward_risk` / `silver_reward_risk`,
+`gold_max_spread_atr` / `silver_max_spread_atr` (S04's `tp_range_mult` and S08's `stop_n` the same way). Both start at the
+strategy's old shared value; nothing silver-specific is assumed without data. The Assessor tunes each metal on its own
+and reports R per trade for gold and for silver; a metal that loses over 30+ trades is named as a key failure ("switch
+silver off for this bot" when tuning its own settings does not fix it). A value saved before the split applies to both
+metals. The S10 pair trades both metals at once, so its settings stay shared.
+
 **Every bot starts with both metals on and 00:00-24:00**, so for now they trade every hour the market is open. The
 built-in session windows are off as well: S01 (07-20 UTC), S02 (Asian hours, flat before the London open) and S03 (08:00-21:00
 London) trade at any hour. S04 and S05 still build their range in session (08:30-09:00 New York; 08:00-13:00 London) and
@@ -54,7 +63,7 @@ single backtest run is no longer reviewed on its own. Each assessment:
    into losers, profit from a handful of trades, most losses from one side or metal, only working in one year, too few
    trades to judge.
 2. **Tunes** it in up to three rounds. History is split by time: search (first 60%), choose (next 20%), final (last 20%).
-   Each round tries up to 14 changes on search (stops wider/tighter, targets nearer/further, holds shorter/longer,
+   Each round tries up to 20 changes on search (each metal's stop wider/tighter and target nearer/further, holds shorter/longer,
    breakeven and trailing exits on/off, adding back a cut metal or hours, plus the review's own ideas). Changes that make
    more net profit with no deeper worst drawdown are checked on choose; the best is kept, and the next round searches on
    top of it.
@@ -64,7 +73,7 @@ single backtest run is no longer reviewed on its own. Each assessment:
 
 Apply takes the whole tuned change in one step and only works while the assessment is current (the bot's settings have
 not changed since). Applied changes are recorded and fold to one line. Two backtests run at a time
-(`assessor.parallel_backtests`); a full assessment is roughly 30-60 backtests, so assessing all 22 bots on a year or
+(`assessor.parallel_backtests`); a full assessment is roughly 30-70 backtests, so assessing all 24 bots on a year or
 more of M5 history takes hours.
 
 **Demo trading: every trade and the whole bot.** When a trade closes, the Assessor writes a note on it (shown on the bot's
@@ -107,11 +116,26 @@ commodity-futures study reports the same, but gold and silver are not confirmed)
 down, and closes at 13:30. Stop 2 ATR(14) on M5; one trade per metal per day. Unproven for spot metals: backtest it on
 your own MT5 history before trusting it.
 
-With S11 there are 22 bots, each with 1/22 (about 4.5%) of the starting balance (`capital.bot_fraction: 0.045454`; the
-desktop launcher updates your config once). A lab that was already running with 20 bots at 5% is re-split once on the
-next launch, keeping every trade: each bot's starting share becomes 1/22 of the recorded starting balance (the 20 bots give
-up £22.73 each on a £5,000 demo, S11L and S11S get £227.27 each), and each balance is that share plus its own results so
-far. Every adjustment is in the audit log ("Starting share re-split for 22 bots").
+## S12 VWAP Trend Cross (added October 2026)
+
+An EMA crossover on M5 that only trades when it agrees with the day's VWAP:
+
+- VWAP restarts every day at 08:00 UK (the London open) and is weighted by MT5 tick volume, the number of price changes,
+  because spot metals have no traded volume in MT5. It is an approximation and differs between brokers.
+- Long (S12L): EMA 9 crosses above EMA 21 (or did within the last 2 bars), the close is above VWAP and VWAP is higher than
+  6 bars ago. Short (S12S): the mirror image. One entry per crossover.
+- Entries 08:30-20:00 UK. Stop 1.5 ATR(14), target 2R, closed early when a bar closes back through VWAP, at most 2 hours,
+  flat at 21:00 UK.
+
+Evidence is thin: one single-author preprint on 15-minute spot gold (+0.41R per trade over one year, no out-of-sample
+test) and the general finding that moving-average crossovers look better before costs than after. Judge it by R per
+trade on your own history.
+
+With S12 there are 24 bots, each with 1/24 of the starting balance (`capital.bot_fraction: 0.041666`; the desktop
+launcher updates your config once). A new MT5 demo account starts a fresh lab automatically (see OPERATIONS.md). A lab
+that keeps running on the same account is re-split once instead, keeping every trade: each bot's starting share becomes
+1/24 of the recorded starting balance and each balance is that share plus its own results so far. Every adjustment is in
+the audit log.
 
 No half is retired by default. The Assessor flagged S01L, S01S, S02L, S02S (no edge on either side), S03S, S06S, S07S (shorts lost), S04L and S05L (longs lost); set `capital.apply_assessor_retirements: true` to start a fresh lab with those retired. Retire them yourself once demo results agree. Each filter is a normal setting (`sides`, the metal switches and windows) shown on the bot page, so you can change or remove it.
 
@@ -123,7 +147,7 @@ Trend bots read direction from a slower chart and enter on a faster one (the com
 
 ## Distribution and why
 
-Timeframes were set by the operator: nothing slower than M15 for entries and no M1. Six strategies enter on M5 (S01-S05 and S11; S01 also reads the M15 trend) and five on M15 (S06-S10; S07-S09 also read the H1 trend). The former swing strategies (S07, S08, S09) now run intraday on M15, so there is no swing bot any more.
+Timeframes were set by the operator: nothing slower than M15 for entries and no M1. Seven strategies enter on M5 (S01-S05, S11 and S12; S01 also reads the M15 trend) and five on M15 (S06-S10; S07-S09 also read the H1 trend). The former swing strategies (S07, S08, S09) now run intraday on M15, so there is no swing bot any more.
 
 | Bot | Timeframe | Style | Mechanism |
 |---|---|---|---|
@@ -137,6 +161,8 @@ Timeframes were set by the operator: nothing slower than M15 for entries and no 
 | S07 Regime-Filtered RSI(2) Reversion | M15 (H1 regime filter) | day | pullback reversion with trend filter |
 | S08 Donchian Channel Breakout | M15 entries, H1 trend | day | 6-hour channel breakout with the hourly trend |
 | S09 Time-Series Momentum | M15 entries, H1 trend | day | one-day momentum with the hourly trend, evaluated hourly |
+| S11 Session Momentum | M5 (last half hour of 08:20-13:30 New York) | day | first half hour predicts the last |
+| S12 VWAP Trend Cross | M5 (entries 08:30-20:00 UK) | day | EMA crossover agreeing with the day's VWAP |
 
 **No one-minute entries.** Every bot enters on M5 or M15 charts (S01 moved from M1 to M5) because MT5 keeps years of M5/M15 history but often only months of M1, so every bot can be backtested over the same long periods. H1 is used only as a trend filter by S07-S09 and has the deepest history of all. S01 keeps a spread guard (spread ≤ 20% of ATR) and a 2:1 target; on gold, the roughly $0.43 spread is a much smaller share of a five-minute range than of a one-minute one.
 
@@ -144,7 +170,7 @@ S07, S08, S09 and S10 on M15 are adaptations. The cited evidence for all four is
 
 **Trade frequency.** The operator target is about 5 trades per bot per day, and the risk engine caps each bot at 5 new trades per UTC day (`risk.max_entries_per_bot_per_day`; a two-leg S10 group counts once). Filters were loosened to trade more often. On synthetic data, S03 and S07 reach roughly 3-5 a day, S01 fewer since it moved to M5 entries, and S08, S09 and S10 roughly 2-3. The session strategies (S02 Asian range, S04 New York opening range, S05 London range, S06 squeeze) are built around one setup per session, so expect about 1 a day from each. Real-market frequency will differ from the synthetic figures. Trading more often is not evidence of edge: each extra trade pays the spread again.
 
-They are deliberately not eleven renamings of one idea. They differ in mechanism (trend, mean reversion, failed break, volatility regime, cross-sectional relative value), horizon and entry trigger.
+They are deliberately not twelve renamings of one idea. They differ in mechanism (trend, mean reversion, failed break, volatility regime, cross-sectional relative value), horizon and entry trigger.
 
 ## Evidence base and how strong it is
 
@@ -156,6 +182,7 @@ They are deliberately not eleven renamings of one idea. They differ in mechanism
 - **RSI(2) with a 200-day filter (S07).** Connors & Alvarez (2008) on US equities, mostly long-side. Using it on metals, on M15 bars with an H1 regime filter, and on the short side are all adaptations.
 - **Squeeze (S06).** Bollinger (2001); Carter (2005). Compression predicts expansion better than it predicts direction.
 - **Gold/silver ratio (S10).** Gatev, Goetzmann & Rouwenhorst (2006) for the pairs methodology. Cointegration studies of gold and silver (TCD IIIS DP 55; MPRA 109830) give mixed findings. The ratio trended for years at a time (e.g. 2011-2020), so it can stop mean-reverting for long stretches.
+- **VWAP and EMA crossover (S12).** VWAP as the day's fair-price benchmark: Berkowitz, Logue & Noser (1988, *J. Finance* 43(1)). For gold specifically only a single-author SSRN preprint (Bhatti; XAU/USD M15, one year, no out-of-sample test). Park & Irwin (2007, *J. Economic Surveys* 21(4)): moving-average rules often profit before costs and much less after. MT5 tick volume is a proxy for real volume.
 - **Multiple testing.** Bailey & López de Prado (2014, *JPM* 40(5)): Deflated Sharpe Ratio, implemented in `research/validation.py`.
 
 Sources I could not verify against primary full text (I relied on abstracts and well-known summaries): Crabel (out of print), Connors & Raschke, Carter. Treat their descriptions as practitioner rules, not peer-reviewed evidence.
@@ -165,13 +192,13 @@ Sources I could not verify against primary full text (I relied on abstracts and 
 - Every exposure change is labelled `OPEN_LONG`, `CLOSE_LONG`, `OPEN_SHORT` or `COVER_SHORT`. A buy is never ambiguous.
 - Decisions use completed bars only. Orders fill at the next bar's open in backtests, and on the next live tick after the bar closes in live trading.
 - Each opening carries a protective stop that is sent to the server with the order.
-- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. Each trade risks 2% of the bot at its stop (`risk_per_trade: 0.02`), never below the broker minimum of 0.01 lot (`min_lot`), and a trade whose size would lose more than 5% of the bot at its stop is skipped (`max_trade_risk: 0.05`; 10% for the wide-stop bots S07-S10, `max_trade_risk_by_strategy`). The forced larger size for tight stops (`big_lot`) is off.
+- Sizing comes from the bot's own equity: risk budget ÷ (loss at stop per lot + estimated round-trip cost per lot), rounded down to the lot step. Each trade risks 2% of the bot at its stop (`risk_per_trade: 0.02`), never below the broker minimum of 0.01 lot (`min_lot`), and a trade whose size would lose more than 5% of the bot at its stop is skipped (`max_trade_risk: 0.05`, the same for every bot). The forced larger size for tight stops (`big_lot`) is off.
 - S10 opens two legs as one trade group. Both legs must pass the auditor and risk checks; if one leg fails after the other has filled, the filled leg is closed. The money popup fires only when the whole group has closed.
 - Strategy rules are never rewritten automatically. Parameter changes are an operator action, allowed only while the bot is paused and flat, and each change is versioned and logged.
 
 ## A consequence you should know before arming
 
-The operator runs a £5,000 demo. With 22 independent bots at 1/22 each, every bot starts with £227.27. Operator choices:
+The operator runs a £10,000 demo. With 24 independent bots at 1/24 each, every bot starts with £416.66. Operator choices:
 
 - **Small trades for small bots** (changed October 2026, after backtests where every bot lost about 98%):
   - Each trade risks **2%** of the bot at the strategy's own stop (`risk_per_trade: 0.02`), at least **0.01 lot** (the broker
@@ -179,21 +206,21 @@ The operator runs a £5,000 demo. With 22 independent bots at 1/22 each, every b
   - The earlier sizes (gold 0.05/0.1, silver 0.03/0.06, no cap) made the typical trade risk 14-40% of a £227 bot. With trading
     costs of roughly 0.08R a trade on five-minute charts, that ruins a bot with no edge within weeks, and backtests that restart
     after a 50% fall ground on to -98%. The strategies themselves were checked and are coded as written.
-  - What it means: on £227, 2% is about £4.50 at the stop, so most trades are 0.01 lot (gold about £0.75 per $1 move) and make
-    or lose a few pounds. Bigger trades need bigger bots.
-  - **Wide-stop bots get 10%** (`max_trade_risk_by_strategy`: S07, S08, S09, S10, both halves). Their stops (2-3 ATR on
-    15-minute charts) are often too wide for 0.01 lot within 5%, so they skipped most trades. At 10% a gold stop of up to about
-    $30 fits; four losses in a row then cost a bot about 35%. Every other bot stays at 5%.
-- Leverage (1:500) sets the margin, not the loss. Margin for 0.1 lot gold is lots × 100 oz × price ÷ 500, roughly £50-80, and each bot must cover it from its own free balance, so two open gold trades can use half or more of a £227 bot. The loss at the stop is the same at any leverage.
+  - What it means: on £416.66, 2% is about £8.33 at the stop and the 5% cap is £20.83, so most trades are 0.01 lot (gold
+    about £0.75 per $1 move) and make or lose a few pounds. A gold stop of up to about $27 fits at 0.01 lot. Bigger trades
+    need bigger bots.
+  - Every bot has the same 5% cap. On the earlier £227 bots the wide-stop strategies (S07-S10) needed 10% to trade at all;
+    at £416.66 they fit 5%, so that exception was removed (`max_trade_risk_by_strategy: {}`; it can still name a strategy).
+- Leverage (1:500) sets the margin, not the loss. Margin for 0.01 lot gold is lots × 100 oz × price ÷ 500, roughly £6, so margin rarely limits a £416 bot. The loss at the stop is the same at any leverage.
 - **Daily stops** (new entries only; open trades keep running, so a day can end worse):
   - **Loss stop 30%** (`daily_loss_pause: 0.30`): down 30% on the day.
   - **Profit lock** (`daily_lock_from: 0.05`, `daily_giveback: 0.5`): once a bot is up 5% or more on the day, it stops for the day if it gives back half of its best gain that day. Three wins then losses: it stops with about half the day's gain kept.
   - **No daily profit stop** (`daily_profit_stop: 0`).
   - A daily stop, once hit, holds until the UTC day ends even if equity recovers.
-- **Drawdown pause at 50%** (`max_drawdown_pause: 0.50`): a bot that falls 50% (£114 from £227) from its best balance stops opening trades until the operator restarts it. Open trades keep being managed.
+- **Drawdown pause at 50%** (`max_drawdown_pause: 0.50`): a bot that falls 50% (£208 from £416) from its best balance stops opening trades until the operator restarts it. Open trades keep being managed.
 - **No pre-trade risk caps** (`pre_trade_limits: false`): per-trade risk, margin-share and exposure caps are off. Still enforced before each entry: the bot's own free capital covers the margin, the account margin level stays above 300%, at most 2 open trades and 5 new trades a day per bot, and the daily stops.
 - **News checks are off** (`news.enabled: false`).
 - **Flat for the weekend** (`weekend_flat_from: "20:00"`): from Friday 20:00 UTC every bot closes its positions and opens nothing until Sunday 22:00 UTC. Overnight holds on weekdays are allowed.
 - Exposure caps are per bot (`exposure_scope: per_bot`) at 200× equity; they only stop extreme stacking.
 
-**Choosing a live candidate** (Ranking page): a bot is eligible after at least 50 closed demo trades and a profit after costs; eligible bots are ranked by smallest maximum drawdown, then net profit. Picking the best of 22 bots still favours luck, so treat the top rank as a shortlist and check it with the research tools (walk-forward, deflated Sharpe, cost stress) before risking money.
+**Choosing a live candidate** (Ranking page): a bot is eligible after at least 50 closed demo trades and a profit after costs; eligible bots are ranked by smallest maximum drawdown, then net profit. Picking the best of 24 bots still favours luck, so treat the top rank as a shortlist and check it with the research tools (walk-forward, deflated Sharpe, cost stress) before risking money.

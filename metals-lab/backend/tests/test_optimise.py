@@ -18,8 +18,8 @@ def test_split_is_60_20_20_by_time():
 def test_candidates_try_both_directions_and_add_back_what_was_cut():
     p = build("S01L", {"trade_gold": "off", "silver_windows": "06:00-11:00"}).params
     ids = {c["id"] for c in O.candidates("S01L", p, [{"id": "by_metal:GOLD", "title": "x", "change": {"trade_silver": "off"}}])}
-    assert {"stop_atr:wider", "stop_atr:tighter", "reward_risk:further", "reward_risk:nearer", "hold:longer", "hold:shorter",
-            "exit:breakeven", "exit:trail3", "metal:GOLD:on", "by_metal:GOLD"} <= ids
+    assert {"gold_stop_atr:wider", "silver_stop_atr:tighter", "gold_reward_risk:further", "silver_reward_risk:nearer",
+            "hold:longer", "hold:shorter", "exit:breakeven", "exit:trail3", "metal:GOLD:on", "by_metal:GOLD"} <= ids   # each metal on its own
     pair = {c["id"] for c in O.candidates("S10L", build("S10L").params, [])}
     assert not any(i.startswith(("exit:", "metal:")) for i in pair)
 
@@ -33,11 +33,11 @@ def _fake(base, wins_final=True):
         net, dd = 100.0, -0.10
         if params.get("trail_atr") == 3.0:
             net, dd = net + 50, -0.08
-        if params.get("trail_atr") == 3.0 and params.get("reward_risk", 0) > base["reward_risk"]:
+        if params.get("trail_atr") == 3.0 and params.get("gold_reward_risk", 0) > base["gold_reward_risk"]:
             net += 20
         if params.get("breakeven_r") == 1.0:
             net += 40 if where == "search" else -40
-        if params.get("stop_atr", 0) > base["stop_atr"]:
+        if params.get("gold_stop_atr", 0) > base["gold_stop_atr"]:
             net, dd = net + 100, -0.30                      # more profit but a deeper drawdown: never passes
         if where == "final" and not wins_final and params != base:
             net = 50.0
@@ -50,10 +50,10 @@ def test_tunes_in_rounds_and_confirms_on_the_untouched_final_period():
     res = O.evaluate("S01L", p, [], "2025-01-01", "2025-12-31", _fake(p))
     t = res["tuned"]
     steps = [s["id"] for s in t["steps"]]
-    assert steps[0] == "exit:trail3" and steps[1].startswith("reward_risk:further")   # round 2 builds on round 1
+    assert steps[0] == "exit:trail3" and steps[1].startswith("gold_reward_risk:further")   # round 2 builds on round 1
     assert t["change"]["trail_atr"] == 3.0 and t["verdict"] == "passed" and t["gain"] > 0
     r1 = {c["id"]: c["verdict"] for c in res["rounds"][0]["candidates"]}
-    assert r1["exit:trail3"] == "kept" and r1["exit:breakeven"] == "noise" and r1["stop_atr:wider"] == "no_help"
+    assert r1["exit:trail3"] == "kept" and r1["exit:breakeven"] == "noise" and r1["gold_stop_atr:wider"] == "no_help"
     assert len(res["rounds"]) <= O.ROUNDS and res["variants_tried"] >= len(res["rounds"][0]["candidates"])
 
 
@@ -78,7 +78,7 @@ def test_key_failures_name_what_breaks_a_strategy():
     df = R.from_backtest(rows)
     st = R.summarise(df)
     codes = {f["code"] for f in R.key_failures(df, st, {"tuned": None, "variants_tried": 10})}
-    assert {"no_edge", "costs"} <= codes
+    assert {"no_edge", "costs", "metal_GOLD"} <= codes   # each metal is judged on its own R per trade
     assert all(f["needs_code"] for f in R.key_failures(df, st, {"tuned": None, "variants_tried": 10}) if f["code"] in ("no_edge", "costs"))
 
 
@@ -189,7 +189,7 @@ def test_assess_and_test_all_run_real_backtests(armed, client):
         time.sleep(0.2)
     assert armed.db.one("SELECT 1 FROM reviews WHERE bot_id='S08L'") is None             # no review per backtest run any more
     q = client.post("/api/optimise/all", json={}).json()
-    assert q["queued"] == ["S08L"] and len(q["skipped"]) == 21
+    assert q["queued"] == ["S08L"] and len(q["skipped"]) == 23
     for _ in range(4000):
         t = client.get("/api/optimise/S08L").json()
         if t["status"] in ("DONE", "FAILED"):

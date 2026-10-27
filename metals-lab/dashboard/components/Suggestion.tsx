@@ -142,6 +142,11 @@ export function AssessmentCard({ bot, t, tuned, who, locked, onApply, onAssess, 
         <span>win <b>{sm.win_rate != null ? `${sm.win_rate}%` : "–"}</b></span>
         <span>worst drawdown <b>{pct1(sm.max_drawdown)}</b></span>
       </div>
+      {(sm.by_metal ?? []).length > 0 && <div className="assessment-stats per-metal">
+        {sm.by_metal.map((g: Any) => (
+          <span key={g.key} className={g.avg_r > 0 ? "pos" : g.avg_r < 0 ? "neg" : ""}>{g.key === "GOLD" ? "Gold" : "Silver"}: {g.n} trades,
+            {" "}<b>{g.avg_r != null ? `${g.avg_r > 0 ? "+" : ""}${g.avg_r}R` : "–"}</b> per trade, net <Pnl v={g.net} /></span>))}
+      </div>}
       <div className={`verdict-box v-${verdict.cls}`}>
         <b>{verdict.text}</b>
         {tu && tuned && !tuned.applied && tu.verdict === "passed" && <>

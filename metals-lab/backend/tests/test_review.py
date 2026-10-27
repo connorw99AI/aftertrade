@@ -103,7 +103,8 @@ def test_review_and_test_change_via_api(armed, cfg, tmp_path, monkeypatch):
         if all(rows[i]["status"] not in ("RUNNING", "QUEUED") for i in (t["baseline_id"], t["candidate_id"])):
             break
         time.sleep(0.1)
-    assert rows[t["candidate_id"]]["params"]["stop_atr"] == 1.5 and rows[t["baseline_id"]]["params"]["stop_atr"] == 1.2
+    cand, base = rows[t["candidate_id"]]["params"], rows[t["baseline_id"]]["params"]
+    assert cand["gold_stop_atr"] == cand["silver_stop_atr"] == 1.5 and base["gold_stop_atr"] == 1.2   # a shared change sets both metals
     assert client.post("/api/review/S01L/test", json={"change": {"nope": 1}}).status_code == 400
 
 

@@ -25,7 +25,7 @@ from typing import Callable, Optional
 
 import pandas as pd
 
-from .review import STOP_PARAMS, TARGET_PARAMS
+from .review import STOP_PARAMS, TARGET_PARAMS, metal_keys
 from .strategies import bot_class, build
 from .strategies.filters import ALL_DAY, METAL_PARAMS, parse_windows
 
@@ -33,7 +33,7 @@ SPLITS = (0.6, 0.8)       # search | choose | final, by time
 ROUNDS = 3
 MIN_CONFIRM_TRADES = 10   # fewer trades than this in a checking period: too few to call it confirmed
 DD_TOLERANCE = 0.001      # worst drawdown may be this much deeper (0.1 percentage point) and still count as "no deeper"
-MAX_CANDIDATES = 14
+MAX_CANDIDATES = 20
 
 Metrics = dict  # {"net_pnl", "max_drawdown", "n_trades"}
 RunFn = Callable[[dict, str, str], Metrics]  # (params, start YYYY-MM-DD, end YYYY-MM-DD inclusive) -> metrics
@@ -72,18 +72,19 @@ def candidates(bot: str, params: dict, review_suggestions: list[dict]) -> list[d
     for s in review_suggestions:
         if s.get("change"):
             add(s["id"], s["title"], s["change"], "review")
+    who = lambda k: f"{k.split('_')[0].capitalize()}: " if k.startswith(("gold_", "silver_")) else ""
     sp = STOP_PARAMS.get(sid)
-    if sp and params.get(sp):
-        v = float(params[sp])
-        add(f"{sp}:wider", f"Wider stop ({sp} {v:g} -> {v * 1.25:.2f})", {sp: round(v * 1.25, 2)})
-        add(f"{sp}:tighter", f"Tighter stop ({sp} {v:g} -> {v * 0.75:.2f})", {sp: round(v * 0.75, 2)})
+    for k in metal_keys(params, sp) if sp else []:  # each metal is tuned on its own
+        v = float(params[k])
+        add(f"{k}:wider", f"{who(k)}wider stop ({k} {v:g} -> {v * 1.25:.2f})", {k: round(v * 1.25, 2)})
+        add(f"{k}:tighter", f"{who(k)}tighter stop ({k} {v:g} -> {v * 0.75:.2f})", {k: round(v * 0.75, 2)})
     tp = TARGET_PARAMS.get(sid)
-    if tp and params.get(tp):
-        v = float(params[tp])
-        add(f"{tp}:further", f"Further target ({tp} {v:g} -> {v + 0.5:g})", {tp: round(v + 0.5, 2)})
-        add(f"{tp}:further2", f"Much further target ({tp} {v:g} -> {v + 1.0:g})", {tp: round(v + 1.0, 2)})
+    for k in metal_keys(params, tp) if tp else []:
+        v = float(params[k])
+        add(f"{k}:further", f"{who(k)}further target ({k} {v:g} -> {v + 0.5:g})", {k: round(v + 0.5, 2)})
+        add(f"{k}:further2", f"{who(k)}much further target ({k} {v:g} -> {v + 1.0:g})", {k: round(v + 1.0, 2)})
         if v - 0.5 >= 1.0:
-            add(f"{tp}:nearer", f"Nearer target ({tp} {v:g} -> {v - 0.5:g})", {tp: round(v - 0.5, 2)})
+            add(f"{k}:nearer", f"{who(k)}nearer target ({k} {v:g} -> {v - 0.5:g})", {k: round(v - 0.5, 2)})
     mh = params.get("max_hold_bars")
     if mh:
         add("hold:longer", f"Hold longer (max_hold_bars {mh} -> {int(round(int(mh) * 1.5))})", {"max_hold_bars": int(round(int(mh) * 1.5))})

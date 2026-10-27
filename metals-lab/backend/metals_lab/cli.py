@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import config as config_mod
 from .mt5.gateway import TradingGateway, load_real_backend
-from .mt5.guard import check_account
+from .mt5.guard import AccountState, check_account
 from .jsonutil import dumps as jdumps
 from .store import Store, now_iso
 from .strategies import BOT_IDS
@@ -266,6 +266,12 @@ def cmd_apply_settings(cfg, a):
     if done:
         print(f"Updated {p} with: {', '.join(done)} (backup saved next to it)")
     try:
+        switched = new_lab_if_account_changed(cfg, Path(cfg["storage"]["db_path"]))
+    except Exception as e:  # never stop the lab from starting over this
+        switched = f"Account check skipped: {e}"
+    if switched:
+        print(switched)
+    try:
         msg = pending_resplit(p, Path(cfg["storage"]["db_path"]))
     except Exception as e:  # never stop the lab from starting over this
         msg = f"Share re-split skipped: {e}"
@@ -287,10 +293,37 @@ def archive_db(p: Path) -> Path:
     return arch
 
 
+def new_lab_if_account_changed(cfg: dict, db_path: Path, gw=None) -> str:
+    """A lab belongs to one MT5 account. When the terminal is now logged in to a different DEMO account, archive the old
+    lab (nothing is deleted) so this start creates a fresh one. Disconnected, live or unknown accounts change nothing."""
+    if not db_path.exists():
+        return ""
+    st = Store(db_path)
+    fps = {r["fingerprint"] for r in st.q("SELECT fingerprint FROM capital_snapshot")}
+    open_n = st.one("SELECT COUNT(*) n FROM positions WHERE status='OPEN'")["n"]
+    st.conn.close()
+    if not fps:
+        return ""
+    gw = gw or _gateway(False)[0]
+    try:
+        if not gw.initialize(cfg["mt5"]["terminal_path"], cfg["mt5"]["timeout_ms"]):
+            return ""
+        acct = check_account(gw.read_only())
+    finally:
+        gw.shutdown()
+    if acct.state != AccountState.DEMO or not acct.fingerprint or acct.fingerprint in fps:
+        return ""
+    arch = archive_db(db_path)
+    left = (f" {open_n} trade(s) were still open on the old account; they stay there (close them in MT5 on that account)."
+            if open_n else "")
+    return (f"New MT5 demo account: the previous lab was archived to {arch}. A fresh lab starts now, {len(BOT_IDS)} bots at "
+            f"1/{len(BOT_IDS)} of the new balance each.{left}")
+
+
 # One-time re-split of a running lab, run by the desktop launcher (apply-settings). Keeps every trade and record:
 # each bot's starting share becomes the configured fraction of the recorded starting balance. The marker lives in
 # config.yaml.
-RESPLITS = ("2026-10-26-resplit-22",)
+RESPLITS = ("2026-10-26-resplit-22", "2026-10-27-resplit-24")
 RESPLIT_MARK = "# metal-lab shares re-split: "
 
 
@@ -340,7 +373,7 @@ def cmd_new_lab(cfg, a):
         print('Run again with --confirm "NEW LAB" to proceed.')
         return 2
     arch = archive_db(p)
-    print(f"archived to {arch}; start the lab and arm again (metals-lab arm) to create the 22-bot allocations")
+    print(f"archived to {arch}; start the lab and arm again (metals-lab arm) to create the {len(BOT_IDS)}-bot allocations")
     return 0
 
 

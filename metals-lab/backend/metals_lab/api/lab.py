@@ -396,7 +396,8 @@ def register(app: FastAPI, state, auth) -> None:
         res["backtest_id"] = jid
         st, bm = rv.get("stats") or {}, json.loads(out["metrics"])
         res["summary"] = {"n": st.get("n", 0), "net": st.get("net"), "expectancy_r": st.get("expectancy_r"),
-                          "win_rate": st.get("win_rate"), "max_drawdown": bm.get("max_drawdown"), "total_return": bm.get("total_return")}
+                          "win_rate": st.get("win_rate"), "max_drawdown": bm.get("max_drawdown"), "total_return": bm.get("total_return"),
+                          "by_metal": [{k: g.get(k) for k in ("key", "n", "net", "avg_r", "win_rate")} for g in st.get("by_metal") or []]}
         rv["failures"] = res["failures"]
         assessor.store_review(db, bot, f"assessment:{oid}", row["trigger"] or "assessment", rv)
         t = res.get("tuned")
@@ -644,11 +645,11 @@ def register(app: FastAPI, state, auth) -> None:
             raise HTTPException(404)
         base = current_params(bot)
         try:
-            build(bot, {**base, **body.change})
+            changed = build(bot, {**base, **body.change}).params  # the settings exactly as the bot will run them
         except Exception as e:
             raise HTTPException(400, f"invalid change: {e}")
         jobs = []
-        for params in (base, {**base, **body.change}):
+        for params in (base, changed):
             jb = BacktestBody(strategy_id=bot, params=params, dataset=body.dataset, start=body.start, end=body.end)
             jobs.append((create_job(jb), jb))
 

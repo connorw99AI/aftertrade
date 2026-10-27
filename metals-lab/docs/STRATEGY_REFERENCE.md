@@ -26,10 +26,13 @@ Trades short M5 pullbacks to the 20-EMA in the direction of the M15 trend (M15 E
 | `ema_slow` | 200 | 150, 200 | M15 slow trend EMA (200 x 15 min = 50 hours). |
 | `rsi_n` | 7 | 5, 7 | Short RSI to measure pullback depth. |
 | `rsi_pull` | 40 | 35, 40, 45 | Pullback must push RSI below this (long). |
-| `stop_atr` | 1.2 | 1.0, 1.2, 1.5 | Stop beyond normal M5 noise. |
-| `reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Target a multiple of the stop so it clears costs. |
+| `gold_stop_atr` | 1.2 | 1.0, 1.2, 1.5 | Gold: Stop beyond normal M5 noise. |
+| `silver_stop_atr` | 1.2 | 1.0, 1.2, 1.5 | Silver: Stop beyond normal M5 noise. |
+| `gold_reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Gold: Target a multiple of the stop so it clears costs. |
+| `silver_reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Silver: Target a multiple of the stop so it clears costs. |
 | `max_hold_bars` | 12 | 6, 12, 18 | Scalps that do not work quickly are closed (12 M5 bars = 1 hour). |
-| `max_spread_atr` | 0.2 | 0.15, 0.2, 0.3 | Skip when the spread exceeds 20% of ATR(14,M5), like the other M5 bots. |
+| `gold_max_spread_atr` | 0.2 | 0.15, 0.2, 0.3 | Gold: Skip when the spread exceeds 20% of ATR(14,M5), like the other M5 bots. |
+| `silver_max_spread_atr` | 0.2 | 0.15, 0.2, 0.3 | Silver: Skip when the spread exceeds 20% of ATR(14,M5), like the other M5 bots. |
 | `use_session` | off | – | on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now). |
 | `start_hour` | 7 | – | UTC start of liquid hours (used when use_session is on). |
 | `end_hour` | 20 | – | UTC end of liquid hours. |
@@ -70,14 +73,16 @@ Fades Bollinger-band excursions (bb_k sigma) back to the mean during the quieter
 | `bb_k` | 1.8 | 1.5, 1.8, 2.0 | 1.8 standard deviations (looser than 2.0 for more trades). |
 | `rsi_low` | 30 | 20, 25, 30 | Short-term oversold threshold (loosened from 20). |
 | `adx_max` | 25 | 20, 25, 30 | Only trade when trend strength is low. |
-| `stop_atr` | 1.0 | 0.8, 1.0, 1.3 | Tight stop; ranges that break tend to run. |
+| `gold_stop_atr` | 1.0 | 0.8, 1.0, 1.3 | Gold: Tight stop; ranges that break tend to run. |
+| `silver_stop_atr` | 1.0 | 0.8, 1.0, 1.3 | Silver: Tight stop; ranges that break tend to run. |
 | `max_hold_bars` | 9 | 6, 9, 12 | 45 minutes. |
 | `use_session` | on | – | on (default) = entries only in the quiet Asian hours this bot is built for, flat before the London open; off = any hour the market is open. |
 | `tz` | Europe/London | – | Session clock (follows UK summer time). |
 | `entry_start` | 00:00 | – | London time: start of the quiet Asian hours. |
 | `entry_end` | 07:00 | – | London time: no new entries after this. |
 | `flat_time` | 07:45 | – | London time: flatten before the 08:00 London open. |
-| `max_spread_atr` | 0.2 | 0.15, 0.2 | Cost guard. |
+| `gold_max_spread_atr` | 0.2 | 0.15, 0.2 | Gold: Cost guard. |
+| `silver_max_spread_atr` | 0.2 | 0.15, 0.2 | Silver: Cost guard. |
 | `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
 | `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
@@ -112,10 +117,12 @@ Explicitly defined failed breakout: price takes out the prior N-bar extreme, the
 | Parameter | Default | Research grid | Rationale |
 |---|---|---|---|
 | `lookback` | 20 | 15, 20, 30 | Prior range length (Turtle Soup uses 20). |
-| `reward_risk` | 1.5 | 1.0, 1.5, 2.0 | Target multiple. |
+| `gold_reward_risk` | 1.5 | 1.0, 1.5, 2.0 | Gold: Target multiple. |
+| `silver_reward_risk` | 1.5 | 1.0, 1.5, 2.0 | Silver: Target multiple. |
 | `adx_max` | 30 | 25, 30 | Avoid fading strong trends. |
 | `max_hold_bars` | 10 | 6, 10, 15 | Reversal should work quickly (50 min). |
-| `max_spread_atr` | 0.15 | 0.15, 0.2 | Cost guard: spread <= 15% of ATR(14,M5). |
+| `gold_max_spread_atr` | 0.15 | 0.15, 0.2 | Gold: Cost guard: spread <= 15% of ATR(14,M5). |
+| `silver_max_spread_atr` | 0.15 | 0.15, 0.2 | Silver: Cost guard: spread <= 15% of ATR(14,M5). |
 | `tz` | Europe/London | – | Session clock (follows UK summer time). |
 | `use_session` | off | – | on = only trade inside this strategy's session window; off = any hour the market is open (operator choice for now). |
 | `session_start` | 08:00 | – | London time: London open. |
@@ -161,9 +168,11 @@ Builds the first half hour of the New York session (08:30-09:00 New York time, w
 | `min_range_atr` | 1.0 | 1.0, 1.5, 2.0 | Too-narrow ranges produce noise breaks (in M5 ATRs). |
 | `max_range_atr` | 10.0 | 8.0, 10.0, 12.0 | Too-wide ranges leave little room (in M5 ATRs). |
 | `wide_range_atr` | 6.0 | 6.0 | Use midpoint stop for wide ranges (in M5 ATRs). |
-| `tp_range_mult` | 1.5 | 1.0, 1.5, 2.0 | Target as multiple of the range. |
+| `gold_tp_range_mult` | 1.5 | 1.0, 1.5, 2.0 | Gold: Target as multiple of the range. |
+| `silver_tp_range_mult` | 1.5 | 1.0, 1.5, 2.0 | Silver: Target as multiple of the range. |
 | `max_hold_bars` | 84 | – | Safety cap (7h of M5 bars). |
-| `max_spread_atr` | 0.2 | – | Cost guard. |
+| `gold_max_spread_atr` | 0.2 | – | Gold: Cost guard. |
+| `silver_max_spread_atr` | 0.2 | – | Silver: Cost guard. |
 | `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
 | `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
@@ -204,10 +213,13 @@ Marks the London-morning range (08:00-13:00 London). After a decisive break duri
 | `breakout_atr` | 0.1 | 0.05, 0.1, 0.2 | Close beyond the level. |
 | `retest_tol_atr` | 0.4 | 0.25, 0.4, 0.6 | How close the retest must come. |
 | `retest_bars` | 36 | 24, 36, 48 | Setup expiry (3h of M5 bars). |
-| `stop_atr` | 0.5 | 0.5, 0.75 | Below the retest structure. |
-| `reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Target multiple. |
+| `gold_stop_atr` | 0.5 | 0.5, 0.75 | Gold: Below the retest structure. |
+| `silver_stop_atr` | 0.5 | 0.5, 0.75 | Silver: Below the retest structure. |
+| `gold_reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Gold: Target multiple. |
+| `silver_reward_risk` | 2.0 | 1.5, 2.0, 2.5 | Silver: Target multiple. |
 | `max_hold_bars` | 96 | – | Safety cap (8h of M5 bars). |
-| `max_spread_atr` | 0.2 | – | Cost guard. |
+| `gold_max_spread_atr` | 0.2 | – | Gold: Cost guard. |
+| `silver_max_spread_atr` | 0.2 | – | Silver: Cost guard. |
 | `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
 | `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | short | – | Which sides may open: both, long or short. Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): longs -81 vs shorts +190. |
@@ -244,11 +256,14 @@ Detects M15 volatility compression (Bollinger Bands inside Keltner Channels for 
 | `bb_k` | 2.0 | – | Standard. |
 | `kc_k` | 1.5 | 1.25, 1.5, 2.0 | Carter's setting. |
 | `min_squeeze` | 6 | 4, 6, 12 | Bars of compression required (1.5h of M15). |
-| `stop_atr` | 1.5 | 1.0, 1.5, 2.0 | Stop. |
-| `reward_risk` | 2.0 | 1.5, 2.0, 3.0 | Target multiple. |
+| `gold_stop_atr` | 1.5 | 1.0, 1.5, 2.0 | Gold: Stop. |
+| `silver_stop_atr` | 1.5 | 1.0, 1.5, 2.0 | Silver: Stop. |
+| `gold_reward_risk` | 2.0 | 1.5, 2.0, 3.0 | Gold: Target multiple. |
+| `silver_reward_risk` | 2.0 | 1.5, 2.0, 3.0 | Silver: Target multiple. |
 | `max_hold_bars` | 64 | 32, 64, 96 | 16 hours of M15 bars. |
 | `release_window` | 4 | 0, 2, 4, 8 | Bars after the release in which a breakout still counts (1 hour). |
-| `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are smaller than H1). |
+| `gold_max_spread_atr` | 0.15 | – | Gold: Cost guard (M15 ranges are smaller than H1). |
+| `silver_max_spread_atr` | 0.15 | – | Silver: Cost guard (M15 ranges are smaller than H1). |
 | `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
 | `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 0-7,16-24 UTC). Both metals trade for now (operator choice). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -269 vs longs +276; silver -27 vs gold +35; 07-16 UTC lost, Asia +125. |
@@ -285,10 +300,12 @@ Buys sharp M15 pullbacks only when the hourly regime is up (H1 close > H1 SMA200
 | `rsi_entry` | 15 | 10, 15, 20 | Looser than Connors' 10 so it trades several times a day. |
 | `sma_exit` | 5 | 3, 5, 8 | Short mean for exit. |
 | `regime_sma` | 200 | 100, 200 | 200 H1 bars, about 8 trading days. |
-| `stop_atr` | 2.5 | 2.0, 2.5, 3.0 | Wide stop: reversion needs room. |
+| `gold_stop_atr` | 2.5 | 2.0, 2.5, 3.0 | Gold: Wide stop: reversion needs room. |
+| `silver_stop_atr` | 2.5 | 2.0, 2.5, 3.0 | Silver: Wide stop: reversion needs room. |
 | `adx_max` | 40 | 35, 40, 50 | Skip runaway trends. |
 | `max_hold_bars` | 32 | 16, 32, 48 | 8 hours of M15 bars. |
-| `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
+| `gold_max_spread_atr` | 0.15 | – | Gold: Cost guard (M15 ranges are small next to the spread). |
+| `silver_max_spread_atr` | 0.15 | – | Silver: Cost guard (M15 ranges are small next to the spread). |
 | `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
 | `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | long | – | Which sides may open: both, long or short. All hours trade for now (operator choice; the backtest preferred 12-24 UTC). Assessor, MT5 backtest 2025-10-23..2026-10-23 (in-sample): shorts -135 vs longs +31; 00-12 UTC -160 vs later +56. |
@@ -322,9 +339,11 @@ Turtle-style channel breakout on M15: enter on a close beyond the prior entry_n-
 |---|---|---|---|
 | `entry_n` | 24 | 16, 24, 32 | 24 M15 bars = 6 hours (Turtle System 2 used 55 days). |
 | `exit_n` | 12 | 8, 12, 16 | 12 M15 bars = 3 hours. |
-| `stop_n` | 2.0 | 2.0, 3.0 | 2N stop. |
+| `gold_stop_n` | 2.0 | 2.0, 3.0 | Gold: 2N stop. |
+| `silver_stop_n` | 2.0 | 2.0, 3.0 | Silver: 2N stop. |
 | `max_hold_bars` | 96 | 48, 96 | One day of M15 bars (safety cap). |
-| `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
+| `gold_max_spread_atr` | 0.15 | – | Gold: Cost guard (M15 ranges are small next to the spread). |
+| `silver_max_spread_atr` | 0.15 | – | Silver: Cost guard (M15 ranges are small next to the spread). |
 | `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
 | `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
 | `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
@@ -362,9 +381,11 @@ Each metal is held long or short according to the sign of its own volatility-sca
 | `lookback` | 96 | 48, 96, 192 | 96 M15 bars (one trading day); far shorter than the 1-12 month horizons studied. |
 | `entry_strength` | 0.3 | 0.2, 0.3, 0.5 | Require some trend (loosened from 0.5). |
 | `exit_strength` | 0.0 | 0.0, 0.25 | Exit on sign flip. |
-| `stop_atr` | 3.0 | 2.0, 3.0, 4.0 | Wide stop: momentum needs room. |
+| `gold_stop_atr` | 3.0 | 2.0, 3.0, 4.0 | Gold: Wide stop: momentum needs room. |
+| `silver_stop_atr` | 3.0 | 2.0, 3.0, 4.0 | Silver: Wide stop: momentum needs room. |
 | `max_hold_bars` | 48 | 24, 48, 96 | 12 hours of M15 bars. |
-| `max_spread_atr` | 0.15 | – | Cost guard (M15 ranges are small next to the spread). |
+| `gold_max_spread_atr` | 0.15 | – | Gold: Cost guard (M15 ranges are small next to the spread). |
+| `silver_max_spread_atr` | 0.15 | – | Silver: Cost guard (M15 ranges are small next to the spread). |
 | `trend_sma` | 200 | 0, 100, 200 | Hourly trend filter: 200 H1 bars, about 8 trading days (0 = off). |
 | `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
 | `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
@@ -440,9 +461,11 @@ Intraday momentum: the move from the previous session's close to the end of the 
 | `session_open` | 08:20 | – | New York: COMEX metals open. |
 | `session_close` | 13:30 | – | New York: COMEX metals close. |
 | `min_move` | 0.0 | 0.0, 0.001, 0.002 | Smallest first-half-hour return (as a fraction, 0.001 = 0.1%) that counts as a direction. |
-| `stop_atr` | 2.0 | 1.5, 2.0, 3.0 | Stop distance in ATR(14) of M5 bars. |
+| `gold_stop_atr` | 2.0 | 1.5, 2.0, 3.0 | Gold: Stop distance in ATR(14) of M5 bars. |
+| `silver_stop_atr` | 2.0 | 1.5, 2.0, 3.0 | Silver: Stop distance in ATR(14) of M5 bars. |
 | `max_hold_bars` | 8 | – | Safety cap (40 min of M5 bars). |
-| `max_spread_atr` | 0.25 | – | Cost guard. |
+| `gold_max_spread_atr` | 0.25 | – | Gold: Cost guard. |
+| `silver_max_spread_atr` | 0.25 | – | Silver: Cost guard. |
 | `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
 | `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
 | `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
@@ -456,3 +479,52 @@ Intraday momentum: the move from the previous session's close to the end of the 
 - Gao, L., Han, Y., Li, S. Z. & Zhou, G. (2018) 'Market intraday momentum', Journal of Financial Economics 129(2):394-414 - the first half-hour return predicts the last half-hour return (S&P 500 ETF 1993-2013 and other ETFs and index futures).
 - A commodity-futures study (University of Hull repository) reports the same predictability in four commodity futures; whether gold or silver were among them is not confirmed here.
 - Studies of Chinese metal futures found the day-session effect disappeared there (Pacific-Basin Finance Journal 80, 2023).
+
+## S12 VWAP Trend Cross
+- Style: day | instruments: GOLD, SILVER | timeframes: M5 (decisions on completed M5 bars) | min history: 300 bars | magic: 7710012
+
+Trades a fast/slow EMA crossover on M5 only when it agrees with the day's VWAP: price on the same side of VWAP and VWAP sloping the same way. VWAP restarts every day at the London open and is weighted by tick volume, the only volume MT5 gives for spot metals.
+
+**Long (OPEN_LONG / CLOSE_LONG).** EMA(ema_fast) crosses above EMA(ema_slow) on a completed M5 bar (or did within cross_window bars and is still above); close above VWAP; VWAP higher than slope_bars bars ago. One entry per crossover.
+
+**Short (OPEN_SHORT / COVER_SHORT).** Mirror image: EMA fast crosses below slow, close below VWAP, VWAP falling. One entry per crossover.
+
+**Exits, stops, targets, max holding.** Stop stop_atr x ATR(14, M5) from entry; target reward_risk x stop distance; close early when a bar closes back through VWAP against the trade; max hold max_hold_bars (2 hours); flat at flat_time London.
+
+**Invalidation.** A close back through VWAP against the position.
+
+**Spread, liquidity and volatility filters.** Spread guard; entries entry_start-entry_end London; VWAP needs slope_bars bars since its daily restart.
+
+**Limitations.** No independent evidence that this works on gold or silver. MT5 tick volume counts price changes, not traded volume, and differs between brokers, so the VWAP is an approximation. EMA crossovers on M5 trade often, so costs matter: judge it by R per trade on your own history.
+
+| Parameter | Default | Research grid | Rationale |
+|---|---|---|---|
+| `tz` | Europe/London | – | Clock for the VWAP restart and the entry hours (follows UK summer time). |
+| `vwap_anchor` | 08:00 | – | London: VWAP restarts at the London open. |
+| `entry_start` | 08:30 | – | London: first entry, once VWAP has half an hour of data. |
+| `entry_end` | 20:00 | – | London: last entry. |
+| `flat_time` | 21:00 | – | London: any open trade is closed. |
+| `ema_fast` | 9 | 5, 9, 12 | Fast EMA (45 minutes of M5). |
+| `ema_slow` | 21 | 21, 34 | Slow EMA (1h45 of M5). |
+| `slope_bars` | 6 | 3, 6, 12 | VWAP must be higher (lower) than this many bars ago for a long (short): 30 minutes. |
+| `cross_window` | 2 | 0, 2, 4 | Bars after the crossover in which the VWAP conditions may still line up (0 = the crossover bar only). |
+| `gold_stop_atr` | 1.5 | 1.0, 1.5, 2.0 | Gold: Stop distance in ATR(14) of M5 bars. |
+| `silver_stop_atr` | 1.5 | 1.0, 1.5, 2.0 | Silver: Stop distance in ATR(14) of M5 bars. |
+| `gold_reward_risk` | 2.0 | 1.5, 2.0, 3.0 | Gold: Target as a multiple of the stop distance. |
+| `silver_reward_risk` | 2.0 | 1.5, 2.0, 3.0 | Silver: Target as a multiple of the stop distance. |
+| `max_hold_bars` | 24 | 12, 24, 36 | Two hours of M5 bars. |
+| `gold_max_spread_atr` | 0.2 | – | Gold: Cost guard. |
+| `silver_max_spread_atr` | 0.2 | – | Silver: Cost guard. |
+| `breakeven_r` | 0.0 | 0.0, 0.5, 1.0, 1.5 | Move the stop to the entry price once a trade is this many R in profit (R = the distance to the original stop). 0 = off. |
+| `trail_atr` | 0.0 | 0.0, 2.0, 3.0, 4.0 | Trailing stop: keep the stop this many ATR(14) behind the best price since entry; it only ever tightens. When on, the fixed target is dropped so winners can run. 0 = off. |
+| `sides` | both | – | Which sides may open: both, long or short. No assessor change; trades every side, metal and hour. |
+| `trade_gold` | on | – | on: this bot may open gold trades; off: it does not trade gold. |
+| `trade_silver` | on | – | on: this bot may open silver trades; off: it does not trade silver. |
+| `gold_windows` | 00:00-24:00 | – | Gold: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+| `silver_windows` | 00:00-24:00 | – | Silver: UK time windows new entries are allowed in, e.g. 06:00-11:00, 13:00-17:00 (00:00-24:00 = all day). |
+
+**Sources.**
+
+- Berkowitz, Logue & Noser (1988) 'The total cost of transactions on the NYSE', Journal of Finance 43(1) - VWAP as the day's fair-price benchmark.
+- Bhatti, A. (SSRN preprint) 'A Regime-Filtered Intraday Trading Framework for Gold: VWAP microstructure and EMA-based exits' - XAU/USD M15, one year, +0.41R per trade before out-of-sample testing (single author, not peer reviewed).
+- Park & Irwin (2007) 'What do we know about the profitability of technical analysis?', Journal of Economic Surveys 21(4) - moving-average rules often profitable before costs; edges shrink or vanish after realistic costs.

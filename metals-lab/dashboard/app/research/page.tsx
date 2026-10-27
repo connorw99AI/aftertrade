@@ -99,7 +99,7 @@ function DataPanel() {
       {f?.failed?.length > 0 && <div className="notice notice-danger">Some downloads failed: {f.failed.join("; ")}. MT5 only returns as much history as its &quot;Max bars in chart&quot; setting allows (Tools → Options → Charts).</div>}
       <Coverage ds={data?.datasets ?? []} />
       <Downloads onChange={reload} busy={f?.state === "RUNNING"} />
-      <p className="muted small">{ready} of {data?.bots?.length ?? 22} bots have all the history they need. Add an older year to test on data the bots have never seen.</p>
+      <p className="muted small">{ready} of {data?.bots?.length ?? 24} bots have all the history they need. Add an older year to test on data the bots have never seen.</p>
     </Panel>
   );
 }

@@ -49,7 +49,8 @@ if (-not (Test-Path $stamp) -or (Get-Content $stamp -Raw).Trim() -ne $hash) {
   else { Write-Host "Updating the Python environment failed; it will be retried next launch." -ForegroundColor Yellow }
 }
 
-# 3. Apply settings agreed since setup to config\config.yaml (once each, backup kept next to it), and any one-time
+# 3. Apply settings agreed since setup to config\config.yaml (once each, backup kept next to it); start a fresh lab if
+#    MT5 is now logged in to a different demo account (the old lab is archived, not deleted); and any one-time
 #    re-split of the bots' starting shares (trades and balances kept)
 & $vpy -m metals_lab.cli apply-settings
 

@@ -6,7 +6,7 @@ import pandas as pd
 
 from .. import indicators as ind
 from ..domain import Intent, Style
-from .base import Param, Strategy, chk, fmt, level, local_window, spread_price
+from .base import Param, Strategy, chk, fmt, in_local_window, level, local_window, spread_price
 
 
 def _local_minutes(df: pd.DataFrame, tz: str) -> tuple[pd.Series, pd.Series]:
@@ -126,7 +126,7 @@ class NewYorkOpeningRangeBreakout(Strategy):
             width = r["or_high"] - r["or_low"]
             if not (self.p["min_range_atr"] * r["atr"] <= width <= self.p["max_range_atr"] * r["atr"]):
                 continue
-            if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
+            if spread_price(r, ctx.specs[role]) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
             mid = (r["or_high"] + r["or_low"]) / 2
             wide = width > self.p["wide_range_atr"] * r["atr"]
@@ -134,12 +134,12 @@ class NewYorkOpeningRangeBreakout(Strategy):
             if r["orb_dir"] == 1:
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "first close above the New York opening range", vals,
                                         stop_price=mid if wide else r["or_low"],
-                                        target_price=r["close"] + self.p["tp_range_mult"] * width,
+                                        target_price=r["close"] + self.pm("tp_range_mult", role) * width,
                                         max_hold_bars=self.p["max_hold_bars"]))
             else:
                 sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "first close below the New York opening range", vals,
                                         stop_price=mid if wide else r["or_high"],
-                                        target_price=r["close"] - self.p["tp_range_mult"] * width,
+                                        target_price=r["close"] - self.pm("tp_range_mult", role) * width,
                                         max_hold_bars=self.p["max_hold_bars"]))
         return sigs
 
@@ -179,7 +179,7 @@ class NewYorkOpeningRangeBreakout(Strategy):
                     chk(f"Range width {self.p['min_range_atr']}-{self.p['max_range_atr']} ATR",
                         done and self.p["min_range_atr"] * r["atr"] <= width <= self.p["max_range_atr"] * r["atr"],
                         f"width {fmt(width, d)} = {fmt(width / r['atr'] if r['atr'] else float('nan'), 1)} ATR"),
-                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"], f"spread {fmt(spr, d)}"),
                 ],
                 "long": [chk("Closed above range high + buffer", done and r["close"] > r["or_high"] + buf,
                              f"close {fmt(r['close'], d)} vs {fmt(r['or_high'] + buf, d)}")],
@@ -305,18 +305,18 @@ class BreakoutRetest(Strategy):
             width = r["lvl_hi"] - r["lvl_lo"]
             if not (3 * r["atr"] <= width <= 16 * r["atr"]):
                 continue
-            if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
+            if spread_price(r, ctx.specs[role]) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
             vals = {"close": r["close"], "level_high": r["lvl_hi"], "level_low": r["lvl_lo"], "atr": r["atr"], "bar_low": r["low"], "bar_high": r["high"]}
             if r["retest_dir"] == 1:
-                stop = min(r["low"], r["lvl_hi"]) - self.p["stop_atr"] * r["atr"]
+                stop = min(r["low"], r["lvl_hi"]) - self.pm("stop_atr", role) * r["atr"]
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "broke London range high and held the retest", vals,
-                                        stop_price=stop, target_price=r["close"] + self.p["reward_risk"] * (r["close"] - stop),
+                                        stop_price=stop, target_price=r["close"] + self.pm("reward_risk", role) * (r["close"] - stop),
                                         max_hold_bars=self.p["max_hold_bars"]))
             else:
-                stop = max(r["high"], r["lvl_lo"]) + self.p["stop_atr"] * r["atr"]
+                stop = max(r["high"], r["lvl_lo"]) + self.pm("stop_atr", role) * r["atr"]
                 sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "broke London range low and failed the retest from below", vals,
-                                        stop_price=stop, target_price=r["close"] - self.p["reward_risk"] * (stop - r["close"]),
+                                        stop_price=stop, target_price=r["close"] - self.pm("reward_risk", role) * (stop - r["close"]),
                                         max_hold_bars=self.p["max_hold_bars"]))
         return sigs
 
@@ -351,7 +351,7 @@ class BreakoutRetest(Strategy):
                     *([chk("Before 16:00 New York", not bool(r["ny_exit"]), "")] if self.p["use_session"] == "on" else []),
                     chk("Range width 3-16 ATR", done and 3 * r["atr"] <= width <= 16 * r["atr"],
                         f"{fmt(width / r['atr'] if r['atr'] else float('nan'), 1)} ATR"),
-                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"], f"spread {fmt(spr, d)}"),
                 ],
                 "long": [
                     chk("Decisive break above range high", not pd.isna(up), "not yet" if pd.isna(up) else f"{int(up)} bars ago"),
@@ -449,20 +449,20 @@ class VolatilityCompressionBreakout(Strategy):
             r, pv = ctx.last(role, "M15"), ctx.last(role, "M15", 2)
             if not r["release_live"] or pd.isna(r["atr"]):
                 continue
-            if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
+            if spread_price(r, ctx.specs[role]) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
-            sd = self.p["stop_atr"] * r["atr"]
+            sd = self.pm("stop_atr", role) * r["atr"]
             vals = {"close": r["close"], "squeeze_high": r["sq_high"], "squeeze_low": r["sq_low"], "atr": r["atr"]}
             # only the first close beyond the squeeze range: a trade that closes does not re-enter the same breakout
             first_up = not (pv["release_live"] and pv["sq_high"] == r["sq_high"] and pv["close"] > pv["sq_high"])
             first_dn = not (pv["release_live"] and pv["sq_low"] == r["sq_low"] and pv["close"] < pv["sq_low"])
             if r["close"] > r["sq_high"] and first_up:
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "volatility squeeze released upward", vals,
-                                        stop_price=r["close"] - sd, target_price=r["close"] + self.p["reward_risk"] * sd,
+                                        stop_price=r["close"] - sd, target_price=r["close"] + self.pm("reward_risk", role) * sd,
                                         max_hold_bars=self.p["max_hold_bars"]))
             elif r["close"] < r["sq_low"] and first_dn:
                 sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "volatility squeeze released downward", vals,
-                                        stop_price=r["close"] + sd, target_price=r["close"] - self.p["reward_risk"] * sd,
+                                        stop_price=r["close"] + sd, target_price=r["close"] - self.pm("reward_risk", role) * sd,
                                         max_hold_bars=self.p["max_hold_bars"]))
         return sigs
 
@@ -503,7 +503,7 @@ class VolatilityCompressionBreakout(Strategy):
                         f"currently squeezed for {sq_now} bars" if sq_now else f"last squeeze {sq_prev} bars"),
                     chk(f"Squeeze released within the last {self.p['release_window']} bars", bool(r["release_live"]),
                         "still compressed" if sq_now else ""),
-                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"], f"spread {fmt(spr, d)}"),
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"], f"spread {fmt(spr, d)}"),
                 ],
                 "long": [chk("Closed above the squeeze high", bool(r["release_live"]) and r["close"] > r["sq_high"],
                              f"close {fmt(r['close'], d)} vs {fmt(r['sq_high'], d)}")],
@@ -595,14 +595,14 @@ class SessionMomentum(Strategy):
             r = ctx.last(role, "M5")
             if not r["entry_bar"] or pd.isna(r["r_first"]) or pd.isna(r["atr"]):
                 continue
-            if spread_price(r, ctx.specs[role]) > self.p["max_spread_atr"] * r["atr"]:
+            if spread_price(r, ctx.specs[role]) > self.pm("max_spread_atr", role) * r["atr"]:
                 continue
             mv = float(r["r_first"])
             if abs(mv) <= self.p["min_move"] or mv == 0:
                 continue
             vals = {"first_half_hour_return": mv, "prev_session_close": r["prev_close"], "first_half_hour_close": r["first_close"],
                     "close": r["close"], "atr": r["atr"]}
-            dist = self.p["stop_atr"] * r["atr"]
+            dist = self.pm("stop_atr", role) * r["atr"]
             if mv > 0:
                 sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, f"first half hour up {mv:+.2%}: ride it into the close", vals,
                                         stop_price=r["close"] - dist, max_hold_bars=self.p["max_hold_bars"]))
@@ -639,12 +639,169 @@ class SessionMomentum(Strategy):
                         f"return {mv:+.2%}" if known else "not yet today"),
                     chk(f"Session's last half hour starts ({self.session_text})", bool(r["entry_bar"]),
                         "entries only at the start of the last half hour"),
-                    chk(f"Spread <= {self.p['max_spread_atr']:.0%} of ATR", spr <= self.p["max_spread_atr"] * r["atr"],
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"],
                         f"spread {fmt(spr, d)}"),
                 ],
                 "long": [chk(f"First half hour up more than {self.p['min_move']:.2%}", known and mv > self.p["min_move"],
                              f"{mv:+.2%}" if known else "")],
                 "short": [chk(f"First half hour down more than {self.p['min_move']:.2%}", known and mv < -self.p["min_move"],
                               f"{mv:+.2%}" if known else "")],
+            }
+        return out
+
+
+class VWAPTrendCross(Strategy):
+    strategy_id = "S12"
+    ASSESSOR_FILTERS = {}
+    name = "VWAP Trend Cross"
+    style = Style.DAY
+    timeframes = ("M5",)
+    primary_timeframe = "M5"
+    min_history_bars = 300
+    magic_offset = 12
+    description = ("Trades a fast/slow EMA crossover on M5 only when it agrees with the day's VWAP: price on the same side of "
+                   "VWAP and VWAP sloping the same way. VWAP restarts every day at the London open and is weighted by tick "
+                   "volume, the only volume MT5 gives for spot metals.")
+    long_rules = ("EMA(ema_fast) crosses above EMA(ema_slow) on a completed M5 bar (or did within cross_window bars and is still "
+                  "above); close above VWAP; VWAP higher than slope_bars bars ago. One entry per crossover.")
+    short_rules = "Mirror image: EMA fast crosses below slow, close below VWAP, VWAP falling. One entry per crossover."
+    exit_rules = ("Stop stop_atr x ATR(14, M5) from entry; target reward_risk x stop distance; close early when a bar closes back "
+                  "through VWAP against the trade; max hold max_hold_bars (2 hours); flat at flat_time London.")
+    invalidation_rules = "A close back through VWAP against the position."
+    filters = "Spread guard; entries entry_start-entry_end London; VWAP needs slope_bars bars since its daily restart."
+    citations = (
+        "Berkowitz, Logue & Noser (1988) 'The total cost of transactions on the NYSE', Journal of Finance 43(1) - VWAP as the "
+        "day's fair-price benchmark.",
+        "Bhatti, A. (SSRN preprint) 'A Regime-Filtered Intraday Trading Framework for Gold: VWAP microstructure and EMA-based "
+        "exits' - XAU/USD M15, one year, +0.41R per trade before out-of-sample testing (single author, not peer reviewed).",
+        "Park & Irwin (2007) 'What do we know about the profitability of technical analysis?', Journal of Economic Surveys 21(4) "
+        "- moving-average rules often profitable before costs; edges shrink or vanish after realistic costs.",
+    )
+    limitations = ("No independent evidence that this works on gold or silver. MT5 tick volume counts price changes, not traded "
+                   "volume, and differs between brokers, so the VWAP is an approximation. EMA crossovers on M5 trade often, so "
+                   "costs matter: judge it by R per trade on your own history.")
+    PARAMS = {
+        "tz": Param("Europe/London", "Clock for the VWAP restart and the entry hours (follows UK summer time).", ()),
+        "vwap_anchor": Param("08:00", "London: VWAP restarts at the London open.", ()),
+        "entry_start": Param("08:30", "London: first entry, once VWAP has half an hour of data.", ()),
+        "entry_end": Param("20:00", "London: last entry.", ()),
+        "flat_time": Param("21:00", "London: any open trade is closed.", ()),
+        "ema_fast": Param(9, "Fast EMA (45 minutes of M5).", (5, 9, 12)),
+        "ema_slow": Param(21, "Slow EMA (1h45 of M5).", (21, 34)),
+        "slope_bars": Param(6, "VWAP must be higher (lower) than this many bars ago for a long (short): 30 minutes.", (3, 6, 12)),
+        "cross_window": Param(2, "Bars after the crossover in which the VWAP conditions may still line up (0 = the crossover bar only).",
+                              (0, 2, 4)),
+        "stop_atr": Param(1.5, "Stop distance in ATR(14) of M5 bars.", (1.0, 1.5, 2.0)),
+        "reward_risk": Param(2.0, "Target as a multiple of the stop distance.", (1.5, 2.0, 3.0)),
+        "max_hold_bars": Param(24, "Two hours of M5 bars.", (12, 24, 36)),
+        "max_spread_atr": Param(0.2, "Cost guard.", ()),
+    }
+
+    @property
+    def session_text(self):
+        return f"{self.p['entry_start']}-{self.p['entry_end']} London"
+
+    def session_windows(self, day):
+        return [local_window(day, self.p["tz"], self.p["entry_start"], self.p["entry_end"])]
+
+    def prepare(self, frames):
+        out = {}
+        anchor = _hhmm(self.p["vwap_anchor"])
+        for key, df in frames.items():
+            df = df.copy()
+            d, mins = _local_minutes(df, self.p["tz"])
+            # the VWAP day runs from one London open to the next
+            vday = _range_day(d, mins, anchor, sessions=False)
+            vol = df["tick_volume"].astype(float) if "tick_volume" in df else pd.Series(1.0, index=df.index)
+            vol = vol.where(vol > 0, 1.0)
+            tp = (df["high"] + df["low"] + df["close"]) / 3.0
+            g = pd.Series(pd.to_datetime(vday).values, index=df.index)
+            df["vwap"] = (tp * vol).groupby(g).cumsum() / vol.groupby(g).cumsum()
+            nth = g.groupby(g).cumcount()
+            sb = int(self.p["slope_bars"])
+            df["vwap_slope"] = (df["vwap"] - df["vwap"].shift(sb)).where(nth >= sb)
+            df["ema_f"] = ind.ema(df["close"], int(self.p["ema_fast"]))
+            df["ema_s"] = ind.ema(df["close"], int(self.p["ema_slow"]))
+            above = df["ema_f"] > df["ema_s"]
+            crossed = above != above.shift(1)
+            cross_id = crossed.cumsum()
+            since = cross_id.groupby(cross_id).cumcount()  # bars since the last crossover (0 = the crossover bar)
+            live = crossed.groupby(cross_id).transform("max").astype(bool) & (since <= int(self.p["cross_window"]))
+            ok_long = live & above & (df["close"] > df["vwap"]) & (df["vwap_slope"] > 0)
+            ok_short = live & ~above & (df["close"] < df["vwap"]) & (df["vwap_slope"] < 0)
+            # one entry per crossover: only the first bar of a crossover where everything lines up
+            df["go_long"] = ok_long & (ok_long.astype(int).groupby(cross_id).cumsum() == 1)
+            df["go_short"] = ok_short & (ok_short.astype(int).groupby(cross_id).cumsum() == 1)
+            df["since_cross"] = since
+            df["atr"] = ind.atr(df, 14)
+            out[key] = df
+        return out
+
+    def entry_signals(self, ctx):
+        sigs = []
+        if not in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["entry_end"]):
+            return sigs
+        for role in self.roles:
+            if ctx.position(role) or not ctx.has(role, "M5", 30):
+                continue
+            r = ctx.last(role, "M5")
+            if pd.isna(r["atr"]) or pd.isna(r["vwap_slope"]):
+                continue
+            if spread_price(r, ctx.specs[role]) > self.pm("max_spread_atr", role) * r["atr"]:
+                continue
+            sd = self.pm("stop_atr", role) * r["atr"]
+            rr = self.pm("reward_risk", role)
+            vals = {"close": r["close"], "vwap": r["vwap"], "vwap_slope": r["vwap_slope"], "ema_fast": r["ema_f"],
+                    "ema_slow": r["ema_s"], "atr": r["atr"]}
+            if r["go_long"]:
+                sigs.append(self.signal(ctx, role, Intent.OPEN_LONG, "EMA crossed up above a rising VWAP", vals,
+                                        stop_price=r["close"] - sd, target_price=r["close"] + rr * sd,
+                                        max_hold_bars=self.p["max_hold_bars"]))
+            elif r["go_short"]:
+                sigs.append(self.signal(ctx, role, Intent.OPEN_SHORT, "EMA crossed down below a falling VWAP", vals,
+                                        stop_price=r["close"] + sd, target_price=r["close"] - rr * sd,
+                                        max_hold_bars=self.p["max_hold_bars"]))
+        return sigs
+
+    def exit_signals(self, ctx):
+        out = []
+        day = in_local_window(ctx.now, self.p["tz"], self.p["vwap_anchor"], self.p["flat_time"])
+        for pos in ctx.positions:
+            r = ctx.last(pos.role, "M5")
+            vals = {"close": r["close"], "vwap": r["vwap"]}
+            if not day:
+                out.append(self.close_signal(ctx, pos, f"flat at {self.p['flat_time']} London", vals))
+            elif (r["close"] < r["vwap"]) if pos.side == "LONG" else (r["close"] > r["vwap"]):
+                out.append(self.close_signal(ctx, pos, "closed back through VWAP", vals))
+        return out
+
+    def diagnose(self, ctx):
+        out = {}
+        for role in self.roles:
+            if not ctx.has(role, "M5", 30):
+                out[role] = {"waiting": "not enough bars yet"}
+                continue
+            r = ctx.last(role, "M5")
+            d = ctx.specs[role].digits
+            spr = spread_price(r, ctx.specs[role])
+            slope = None if pd.isna(r["vwap_slope"]) else float(r["vwap_slope"])
+            up, fresh = bool(r["ema_f"] > r["ema_s"]), int(r["since_cross"]) <= int(self.p["cross_window"])
+            out[role] = {
+                "price": float(r["close"]),
+                "levels": [x for x in (level("VWAP", r["vwap"]), level(f"EMA{self.p['ema_fast']}", r["ema_f"]),
+                                       level(f"EMA{self.p['ema_slow']}", r["ema_s"])) if x],
+                "filters": [
+                    chk(f"Entry hours ({self.session_text})",
+                        in_local_window(ctx.now, self.p["tz"], self.p["entry_start"], self.p["entry_end"]), ""),
+                    chk(f"VWAP has {self.p['slope_bars']} bars since {self.p['vwap_anchor']} London", slope is not None, ""),
+                    chk(f"Spread <= {self.pm('max_spread_atr', role):.0%} of ATR", spr <= self.pm("max_spread_atr", role) * r["atr"],
+                        f"spread {fmt(spr, d)}"),
+                ],
+                "long": [chk("Fast EMA crossed above the slow one (recently)", up and fresh, f"{int(r['since_cross'])} bars since the cross"),
+                         chk("Close above VWAP", r["close"] > r["vwap"], f"{fmt(r['close'], d)} vs {fmt(r['vwap'], d)}"),
+                         chk("VWAP rising", slope is not None and slope > 0, "")],
+                "short": [chk("Fast EMA crossed below the slow one (recently)", (not up) and fresh, f"{int(r['since_cross'])} bars since the cross"),
+                          chk("Close below VWAP", r["close"] < r["vwap"], f"{fmt(r['close'], d)} vs {fmt(r['vwap'], d)}"),
+                          chk("VWAP falling", slope is not None and slope < 0, "")],
             }
         return out

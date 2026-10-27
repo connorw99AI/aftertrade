@@ -1,6 +1,6 @@
 # Metal Lab
 
-A demo-only MetaTrader 5 laboratory for gold and silver. 22 independently configurable bots (11 strategies, each run as a long half and a short half), each a pixel creature with its own virtual portfolio, share one MT5 **demo** account. Every trade goes strategy → independent market auditor → central risk engine → demo executor. Live accounts are technically blocked.
+A demo-only MetaTrader 5 laboratory for gold and silver. 24 independently configurable bots (12 strategies, each run as a long half and a short half, with separate gold and silver settings), each a pixel creature with its own virtual portfolio, share one MT5 **demo** account. Every trade goes strategy → independent market auditor → central risk engine → demo executor. Live accounts are technically blocked.
 
 This makes no claim of profitability. The first backtests on real MT5 history (October 2026, with the old, larger trade sizes) lost money on every bot; they need re-running with the current small-trade sizing before any bot is judged.
 
@@ -56,7 +56,7 @@ cd backend && pip install -e . && cd .. && metals-lab --sim serve
 
 | Item | Status |
 |---|---|
-| Backend, eleven strategies (22 long/short bots), Assessor and Engineer, backtester, research, auditor, risk, ledgers, reconciliation, API, dashboard | Implemented; automated tests pass against a simulated terminal |
+| Backend, twelve strategies (24 long/short bots), Assessor and Engineer, backtester, research, auditor, risk, ledgers, reconciliation, API, dashboard | Implemented; automated tests pass against a simulated terminal |
 | Real MT5 demo connection | In use on the operator's Windows PC (reported by the operator; not checked from here). The code is still built and tested in a Linux container where the Windows-only MetaTrader5 package cannot run |
 | Demo execution against a real terminal | Demo trades taken on the operator's PC (reported by the operator). Live accounts stay blocked in code |
 | Windows launcher | Run on the operator's PC (reported by the operator) |

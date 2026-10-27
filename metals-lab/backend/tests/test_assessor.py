@@ -29,7 +29,7 @@ def test_assessor_reviews_automatically_when_a_trade_closes(armed, client):
     rows = armed.db.q("SELECT bot_id, source, trigger FROM reviews")
     assert any(r["bot_id"] == "S08L" and r["source"] == "demo" and r["trigger"] == "trade closed" for r in rows)
     a = client.get("/api/assessor").json()
-    assert len(a["cards"]) == 22 and a["last_review_at"]
+    assert len(a["cards"]) == 24 and a["last_review_at"]
     assert next(c for c in a["cards"] if c["bot_id"] == "S08L")["demo"]["grade"]["grade"] == "too early"
 
 
@@ -48,7 +48,7 @@ def test_backtests_are_not_reviewed_one_by_one_but_review_all_still_works(armed,
             break
         time.sleep(0.1)
     assert not armed.db.one("SELECT 1 FROM reviews WHERE bot_id='S09L' AND trigger='backtest finished'")  # judged overall instead
-    assert client.post("/api/assessor/run").json()["reviews"] >= 22
+    assert client.post("/api/assessor/run").json()["reviews"] >= 24
 
 
 def test_date_range_download_and_backtest(armed, client):

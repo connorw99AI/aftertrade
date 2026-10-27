@@ -76,7 +76,7 @@ def cfg():
 @pytest.fixture
 def sim():
     t = SimTerminal()
-    t.add_account(SimAccount(login=1001, server="Sim-Demo", balance=200000.0))  # 22 halves x 1/22 = 9,090.80 each
+    t.add_account(SimAccount(login=1001, server="Sim-Demo", balance=200000.0))  # 24 halves x 1/24 = 8,333.20 each
     t.switch_account(1001)
     replay = SimReplay(t, days=120, start_fraction=0.7, seed=4)
     set_provider(lambda: t._now)

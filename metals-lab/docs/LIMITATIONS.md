@@ -24,7 +24,8 @@ The code is built and tested in a Linux cloud container. The `MetaTrader5` packa
 - **Per-bot P&L includes only that bot's MT5 deals.** Account-level charges without a position (some fees) land in the unallocated pool.
 - **The approval mechanism** stops accidental bypass. It is not a defence against malicious code inside the process.
 - **Mobile access** is local-network only, with no auth beyond an optional token. Secure remote access is deferred.
-- **Performance:** a live cycle with all 22 bots takes about 150-200 ms on the simulator. Real terminal I/O will add to that. Long M5 backtests take tens of seconds per year of data, and an Assessor assessment is 30-60 backtests over all the downloaded history, so assessing all 22 bots on many years of M5 data can take a day or more.
+- **Performance:** a live cycle with all 24 bots takes about 150-250 ms on the simulator. Real terminal I/O will add to that. Long M5 backtests take tens of seconds per year of data, and an Assessor assessment is 30-70 backtests over all the downloaded history (each metal's stop and target are tuned separately), so assessing all 24 bots on many years of M5 data can take a day or more.
+- **S12's VWAP uses tick volume.** MT5 has no traded volume for spot metals, so VWAP is weighted by the number of price changes. It differs between brokers.
 
 ## Next priorities
 
